@@ -1,0 +1,66 @@
+import numpy as np
+import pandas as pd
+import torch
+from torch.utils.data import Dataset
+from configs.config import cfg
+
+class TS_CMIDataset(Dataset):
+    def __init__(self, dataframe, seq_len=100, target_col='gesture'):
+        self.df = dataframe.reset_index(drop=True)
+        self.seq_len = seq_len
+        self.target_col = target_col
+        
+        self.imu_cols = cfg.imu_cols
+        self.thm_cols = cfg.thm_cols
+        self.tof_cols = cfg.tof_cols
+    
+    def __len__(self):
+        return len(self.df)
+
+    def _pad_or_truncate(self, series_data, target_len):
+        series_data = np.asarray(series_data, dtype=np.float64)
+        current_len = len(series_data)
+        if current_len > target_len:
+            return series_data[:target_len]
+        elif current_len < target_len:
+            padding = np.zeros(target_len - current_len, dtype=series_data.dtype)
+            return np.concatenate((series_data, padding))
+        return series_data
+
+    def _prepare_sensor_data(self, row, sensor_cols):
+        processed_series_list = []
+        for col_name in sensor_cols:
+            series = row[col_name]
+            padded_truncated_series = self._pad_or_truncate(series, self.seq_len)
+            processed_series_list.append(padded_truncated_series)
+        
+        data_stacked = np.stack(processed_series_list, axis=1)
+        
+        for i in range(data_stacked.shape[1]):
+            column_data = data_stacked[:, i]
+            if np.all(np.isnan(column_data)):
+                data_stacked[:, i] = 0.0
+            elif np.any(np.isnan(column_data)):
+                s = pd.Series(column_data)
+                s_filled = s.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill').fillna(0.0)
+                data_stacked[:, i] = s_filled.values
+        
+        return data_stacked # shape: (seq_len, len(sensor_cols))
+    
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        
+        imu_data = self._prepare_sensor_data(row, self.imu_cols)
+        thm_data = self._prepare_sensor_data(row, self.thm_cols)
+        tof_data = self._prepare_sensor_data(row, self.tof_cols)
+        
+        features = {
+            'imu': torch.tensor(imu_data, dtype=torch.float32),
+            'thm': torch.tensor(thm_data, dtype=torch.float32),
+            'tof': torch.tensor(tof_data, dtype=torch.float32)
+        }
+        
+        if self.target_col and self.target_col in self.df.columns and self.target_col in row:
+            features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
+        
+        return features
