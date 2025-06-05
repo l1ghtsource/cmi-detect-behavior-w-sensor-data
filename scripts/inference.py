@@ -32,9 +32,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
-        seq_len=100, 
+        seq_len=cfg.seq_len, 
     )
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4) 
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
     
     num_folds = 5
     all_fold_predicted_indices = [] 
@@ -43,13 +43,20 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     for i in range(num_folds):
         TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
 
-        model = TSModel(
-            imu_features=len(cfg.imu_cols),
-            thm_features=len(cfg.thm_cols),
-            tof_features=len(cfg.tof_cols),
-            num_classes=cfg.num_classes,
-            hidden_dim=128
-        ).to(device)
+        m_params = {
+            'imu_features': len(cfg.imu_cols),
+            'thm_features': len(cfg.thm_cols),
+            'tof_features': len(cfg.tof_cols),
+            'num_classes': cfg.num_classes,
+            'hidden_dim': 128
+        }
+        if cfg.use_demo:
+            m_params['demo_features'] = len(cfg.demo_cols)
+
+        model = TSModel(**m_params).to(device)
+
+        model_path = f'{cfg.weights_pathes}/model_fold{i}.pt'
+        model.load_state_dict(torch.load(model_path, map_location=device))
 
         if cfg.use_ema:
             model_path = f'{cfg.weights_pathes}/model_ema_fold{i}.pt'
@@ -57,9 +64,6 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
             for name, param in model.named_parameters():
                 if name in ema_state_dict:
                     param.data = ema_state_dict[name]
-        else:
-            model_path = f'{cfg.weights_pathes}/model_fold{i}.pt'
-            model.load_state_dict(torch.load(model_path, map_location=device))
             
         model.eval()
         

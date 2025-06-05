@@ -174,14 +174,17 @@ def run_training_with_stratified_group_kfold():
 
         TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
         
-        model = TSModel(
-            imu_features=len(cfg.imu_cols),
-            thm_features=len(cfg.thm_cols),
-            tof_features=len(cfg.tof_cols),
-            demo_features=len(cfg.demo_cols),
-            num_classes=cfg.num_classes,
-            hidden_dim=128
-        ).to(device)
+        m_params = {
+            'imu_features': len(cfg.imu_cols),
+            'thm_features': len(cfg.thm_cols),
+            'tof_features': len(cfg.tof_cols),
+            'num_classes': cfg.num_classes,
+            'hidden_dim': 128
+        }
+        if cfg.use_demo:
+            m_params['demo_features'] = len(cfg.demo_cols)
+            
+        model = TSModel(**m_params).to(device)
 
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
