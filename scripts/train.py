@@ -233,7 +233,7 @@ def run_training_with_stratified_group_kfold():
         model.load_state_dict(torch.load(best_model_path))
 
         if cfg.use_ema and best_ema_path and os.path.exists(best_ema_path):
-            ema_state_dict = torch.load(best_ema_path)
+            ema_state_dict = torch.load(best_ema_path, map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:
                     param.data = ema_state_dict[name]

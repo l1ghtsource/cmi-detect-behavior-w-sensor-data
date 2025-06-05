@@ -60,7 +60,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
         if cfg.use_ema:
             model_path = f'{cfg.weights_pathes}/model_ema_fold{i}.pt'
-            ema_state_dict = torch.load(model_path)
+            ema_state_dict = torch.load(model_path, map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:
                     param.data = ema_state_dict[name]
