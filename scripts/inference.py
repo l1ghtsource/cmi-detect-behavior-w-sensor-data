@@ -8,8 +8,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from configs.config import cfg
-from data.ts_datasets import TS_CMIDataset
-from models.ts_models import TS_MSModel
+from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
+from models.ts_models import TS_MSModel, TS_Demo_MSModel
 from utils.data_preproc import fast_seq_agg, le
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -28,7 +28,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 
-    test_dataset = TS_CMIDataset(
+    test_dataset = TS_Demo_CMIDataset(
         dataframe=processed_df_for_dataset,
         seq_len=100, 
     )
@@ -39,7 +39,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     all_fold_logits = []
 
     for i in range(num_folds):
-        model = TS_MSModel(
+        model = TS_Demo_MSModel(
             imu_features=len(cfg.imu_cols),
             thm_features=len(cfg.thm_cols),
             tof_features=len(cfg.tof_cols),
@@ -57,8 +57,8 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
                 imu_inputs = batch['imu'].to(device)
                 thm_inputs = batch['thm'].to(device)
                 tof_inputs = batch['tof'].to(device)
-                
-                outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                demo_inputs = batch['demographics'].to(device)
+                outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
                 current_fold_batch_logits.append(outputs.cpu().numpy())
         
         concatenated_fold_logits = np.concatenate(current_fold_batch_logits, axis=0)

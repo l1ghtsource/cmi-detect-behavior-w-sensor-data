@@ -15,8 +15,8 @@ from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
 from configs.config import cfg
-from data.ts_datasets import TS_CMIDataset
-from models.ts_models import TS_MSModel
+from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
+from models.ts_models import TS_MSModel, TS_Demo_MSModel
 from modules.ema import EMA
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
@@ -62,9 +62,10 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         imu_inputs = batch['imu'].to(device)
         thm_inputs = batch['thm'].to(device)
         tof_inputs = batch['tof'].to(device)
+        demo_inputs = batch['demographics'].to(device)
         targets = batch['target'].to(device)
         
-        outputs = model(imu_inputs, thm_inputs, tof_inputs)
+        outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
 
         loss = criterion(outputs, targets)
         loss.backward()
@@ -107,9 +108,10 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
             imu_inputs = batch['imu'].to(device)
             thm_inputs = batch['thm'].to(device)
             tof_inputs = batch['tof'].to(device)
+            demo_inputs = batch['demographics'].to(device)
             targets = batch['target'].to(device)
             
-            outputs = model(imu_inputs, thm_inputs, tof_inputs)
+            outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
             loss = criterion(outputs, targets)
             
             total_loss += loss.item() * targets.size(0)
@@ -149,12 +151,12 @@ def run_training_with_stratified_group_kfold():
         train_subset = train_seq.iloc[train_idx].reset_index(drop=True)
         val_subset = train_seq.iloc[val_idx].reset_index(drop=True)
         
-        train_dataset = TS_CMIDataset(
+        train_dataset = TS_Demo_CMIDataset(
             dataframe=train_subset,
             seq_len=cfg.seq_len,
             target_col=cfg.target
         )
-        val_dataset = TS_CMIDataset(
+        val_dataset = TS_Demo_CMIDataset(
             dataframe=val_subset,
             seq_len=cfg.seq_len,
             target_col=cfg.target
@@ -163,10 +165,11 @@ def run_training_with_stratified_group_kfold():
         train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
         
-        model = TS_MSModel(
+        model = TS_Demo_MSModel(
             imu_features=len(cfg.imu_cols),
             thm_features=len(cfg.thm_cols),
             tof_features=len(cfg.tof_cols),
+            demo_features=len(cfg.demo_cols),
             num_classes=cfg.num_classes,
             hidden_dim=128
         ).to(device)
@@ -234,7 +237,8 @@ def run_training_with_stratified_group_kfold():
                 imu_inputs = batch['imu'].to(device)
                 thm_inputs = batch['thm'].to(device)
                 tof_inputs = batch['tof'].to(device)
-                outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                demo_inputs = batch['demographics'].to(device)
+                outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
                 all_preds.append(outputs.cpu().numpy())
         all_preds = np.concatenate(all_preds, axis=0)
         oof_preds[val_idx] = all_preds

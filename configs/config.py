@@ -9,6 +9,7 @@ cfg.train_demographics_path = '/kaggle/input/cmi-detect-behavior-with-sensor-dat
 cfg.test_path = '/kaggle/input/cmi-detect-behavior-with-sensor-data/test.csv'
 cfg.test_demographics_path = '/kaggle/input/cmi-detect-behavior-with-sensor-data/test_demographics.csv'
 
+cfg.demo_cols = ['adult_child', 'age', 'sex', 'handedness', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
 cfg.imu_cols = ['acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z']
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
