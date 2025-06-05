@@ -28,7 +28,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 
-    test_dataset = TS_Demo_CMIDataset(
+    TSDataset = TS_Demo_CMIDataset if cfg.use_demo else TS_CMIDataset
+
+    test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
         seq_len=100, 
     )
@@ -39,7 +41,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     all_fold_logits = []
 
     for i in range(num_folds):
-        model = TS_Demo_MSModel(
+        TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
+
+        model = TSModel(
             imu_features=len(cfg.imu_cols),
             thm_features=len(cfg.thm_cols),
             tof_features=len(cfg.tof_cols),
@@ -49,10 +53,14 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
         if cfg.use_ema:
             model_path = f'{cfg.weights_pathes}/model_ema_fold{i}.pt'
+            ema_state_dict = torch.load(model_path)
+            for name, param in model.named_parameters():
+                if name in ema_state_dict:
+                    param.data = ema_state_dict[name]
         else:
             model_path = f'{cfg.weights_pathes}/model_fold{i}.pt'
+            model.load_state_dict(torch.load(model_path, map_location=device))
             
-        model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         
         current_fold_batch_logits = []
@@ -61,8 +69,11 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
                 imu_inputs = batch['imu'].to(device)
                 thm_inputs = batch['thm'].to(device)
                 tof_inputs = batch['tof'].to(device)
-                demo_inputs = batch['demographics'].to(device)
-                outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                if cfg.use_demo:
+                    demo_inputs = batch['demographics'].to(device)
+                    outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                else:
+                    outputs = model(imu_inputs, thm_inputs, tof_inputs)
                 current_fold_batch_logits.append(outputs.cpu().numpy())
         
         concatenated_fold_logits = np.concatenate(current_fold_batch_logits, axis=0)

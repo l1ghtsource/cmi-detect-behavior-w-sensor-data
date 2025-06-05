@@ -36,6 +36,7 @@ cfg.seq_len = 100
 cfg.num_classes = 18
 cfg.n_splits = 5
 cfg.curr_fold = 0
+cfg.use_demo = True
 
 cfg.model_dir = 'weights'
 
