@@ -22,7 +22,7 @@ cfg.static_cols = [
 ]
 
 cfg.is_train = True
-cfg.cfg.is_infer = False
+cfg.is_infer = False
 
 cfg.seed = 42
 
@@ -45,6 +45,8 @@ cfg.lr = 1e-4
 cfg.weight_decay = 1e-2
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
+
+cfg.use_ema = True
 cfg.ema_decay = 0.998
 
 cfg.weights_pathes = '/kaggle/input/cmi-model/pytorch/default/2/models'
