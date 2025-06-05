@@ -47,7 +47,11 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
             hidden_dim=128
         ).to(device)
 
-        model_path = f'{cfg.weights_pathes}/model_fold{i}.pt'
+        if cfg.use_ema:
+            model_path = f'{cfg.weights_pathes}/model_ema_fold{i}.pt'
+        else:
+            model_path = f'{cfg.weights_pathes}/model_fold{i}.pt'
+            
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
         

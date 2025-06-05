@@ -37,7 +37,7 @@ cfg.num_classes = 18
 cfg.n_splits = 5
 cfg.curr_fold = 0
 
-cfg.model_dir = 'models'
+cfg.model_dir = 'weights'
 
 cfg.bs = 128
 cfg.n_epochs = 30
