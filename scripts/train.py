@@ -16,7 +16,7 @@ from transformers import get_cosine_schedule_with_warmup
 
 from configs.config import cfg
 from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
-from models.ts_models import TS_MSModel, TS_Demo_MSModel
+from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
 from modules.ema import EMA
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
@@ -60,14 +60,22 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         optimizer.zero_grad()
         
         imu_inputs = batch['imu'].to(device)
-        thm_inputs = batch['thm'].to(device)
-        tof_inputs = batch['tof'].to(device)
         targets = batch['target'].to(device)
-        if cfg.use_demo:
-            demo_inputs = batch['demographics'].to(device)
-            outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+        
+        if cfg.imu_only:
+            if cfg.use_demo:
+                demo_inputs = batch['demographics'].to(device)
+                outputs = model(imu_inputs, demo_inputs)
+            else:
+                outputs = model(imu_inputs)
         else:
-            outputs = model(imu_inputs, thm_inputs, tof_inputs)
+            thm_inputs = batch['thm'].to(device)
+            tof_inputs = batch['tof'].to(device)
+            if cfg.use_demo:
+                demo_inputs = batch['demographics'].to(device)
+                outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+            else:
+                outputs = model(imu_inputs, thm_inputs, tof_inputs)
 
         loss = criterion(outputs, targets)
         loss.backward()
@@ -108,14 +116,22 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
         loop = tqdm(val_loader, desc='val', leave=False)
         for batch in loop:
             imu_inputs = batch['imu'].to(device)
-            thm_inputs = batch['thm'].to(device)
-            tof_inputs = batch['tof'].to(device)
             targets = batch['target'].to(device)
-            if cfg.use_demo:
-                demo_inputs = batch['demographics'].to(device)
-                outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+            
+            if cfg.imu_only:
+                if cfg.use_demo:
+                    demo_inputs = batch['demographics'].to(device)
+                    outputs = model(imu_inputs, demo_inputs)
+                else:
+                    outputs = model(imu_inputs)
             else:
-                outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                thm_inputs = batch['thm'].to(device)
+                tof_inputs = batch['tof'].to(device)
+                if cfg.use_demo:
+                    demo_inputs = batch['demographics'].to(device)
+                    outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                else:
+                    outputs = model(imu_inputs, thm_inputs, tof_inputs)
 
             loss = criterion(outputs, targets)
             
@@ -172,17 +188,29 @@ def run_training_with_stratified_group_kfold():
         train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
 
-        TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
+        if cfg.imu_only:
+            TSModel = TS_Demo_IMUModel if cfg.use_demo else TS_IMUModel
+        else:
+            TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
         
-        m_params = {
-            'imu_features': len(cfg.imu_cols),
-            'thm_features': len(cfg.thm_cols),
-            'tof_features': len(cfg.tof_cols),
-            'num_classes': cfg.num_classes,
-            'hidden_dim': 128
-        }
-        if cfg.use_demo:
-            m_params['demo_features'] = len(cfg.demo_cols)
+        if cfg.imu_only:
+            m_params = {
+                'imu_features': len(cfg.imu_cols),
+                'num_classes': cfg.num_classes,
+                'hidden_dim': 128
+            }
+            if cfg.use_demo:
+                m_params['demo_features'] = len(cfg.demo_cols)
+        else:
+            m_params = {
+                'imu_features': len(cfg.imu_cols),
+                'thm_features': len(cfg.thm_cols),
+                'tof_features': len(cfg.tof_cols),
+                'num_classes': cfg.num_classes,
+                'hidden_dim': 128
+            }
+            if cfg.use_demo:
+                m_params['demo_features'] = len(cfg.demo_cols)
             
         model = TSModel(**m_params).to(device)
 
@@ -247,13 +275,22 @@ def run_training_with_stratified_group_kfold():
             val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
             for batch in val_loader:
                 imu_inputs = batch['imu'].to(device)
-                thm_inputs = batch['thm'].to(device)
-                tof_inputs = batch['tof'].to(device)
-                if cfg.use_demo:
-                    demo_inputs = batch['demographics'].to(device)
-                    outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                
+                if cfg.imu_only:
+                    if cfg.use_demo:
+                        demo_inputs = batch['demographics'].to(device)
+                        outputs = model(imu_inputs, demo_inputs)
+                    else:
+                        outputs = model(imu_inputs)
                 else:
-                    outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                    thm_inputs = batch['thm'].to(device)
+                    tof_inputs = batch['tof'].to(device)
+                    if cfg.use_demo:
+                        demo_inputs = batch['demographics'].to(device)
+                        outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                    else:
+                        outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                        
                 all_preds.append(outputs.cpu().numpy())
         all_preds = np.concatenate(all_preds, axis=0)
         oof_preds[val_idx] = all_preds

@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from configs.config import cfg
 from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
-from models.ts_models import TS_MSModel, TS_Demo_MSModel
+from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
 from utils.data_preproc import fast_seq_agg, le
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -41,17 +41,29 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     all_fold_logits = []
 
     for i in range(num_folds):
-        TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
+        if cfg.imu_only:
+            TSModel = TS_Demo_IMUModel if cfg.use_demo else TS_IMUModel
+        else:
+            TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
 
-        m_params = {
-            'imu_features': len(cfg.imu_cols),
-            'thm_features': len(cfg.thm_cols),
-            'tof_features': len(cfg.tof_cols),
-            'num_classes': cfg.num_classes,
-            'hidden_dim': 128
-        }
-        if cfg.use_demo:
-            m_params['demo_features'] = len(cfg.demo_cols)
+        if cfg.imu_only:
+            m_params = {
+                'imu_features': len(cfg.imu_cols),
+                'num_classes': cfg.num_classes,
+                'hidden_dim': 128
+            }
+            if cfg.use_demo:
+                m_params['demo_features'] = len(cfg.demo_cols)
+        else:
+            m_params = {
+                'imu_features': len(cfg.imu_cols),
+                'thm_features': len(cfg.thm_cols),
+                'tof_features': len(cfg.tof_cols),
+                'num_classes': cfg.num_classes,
+                'hidden_dim': 128
+            }
+            if cfg.use_demo:
+                m_params['demo_features'] = len(cfg.demo_cols)
 
         model = TSModel(**m_params).to(device)
 
@@ -71,13 +83,22 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         with torch.no_grad():
             for batch in test_loader:
                 imu_inputs = batch['imu'].to(device)
-                thm_inputs = batch['thm'].to(device)
-                tof_inputs = batch['tof'].to(device)
-                if cfg.use_demo:
-                    demo_inputs = batch['demographics'].to(device)
-                    outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                
+                if cfg.imu_only:
+                    if cfg.use_demo:
+                        demo_inputs = batch['demographics'].to(device)
+                        outputs = model(imu_inputs, demo_inputs)
+                    else:
+                        outputs = model(imu_inputs)
                 else:
-                    outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                    thm_inputs = batch['thm'].to(device)
+                    tof_inputs = batch['tof'].to(device)
+                    if cfg.use_demo:
+                        demo_inputs = batch['demographics'].to(device)
+                        outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                    else:
+                        outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                        
                 current_fold_batch_logits.append(outputs.cpu().numpy())
         
         concatenated_fold_logits = np.concatenate(current_fold_batch_logits, axis=0)

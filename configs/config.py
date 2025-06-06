@@ -36,21 +36,23 @@ cfg.seq_len = 110
 cfg.num_classes = 18
 cfg.n_splits = 5
 cfg.curr_fold = 0
+
 cfg.use_demo = False
+cfg.imu_only = False
 
 cfg.model_dir = 'weights'
 
-cfg.bs = 256
-cfg.n_epochs = 50
-cfg.patience = 7
-cfg.lr = 1e-4
-cfg.weight_decay = 1e-2
-cfg.num_warmup_steps_ratio = 0.03
-cfg.label_smoothing = 0.05
+cfg.bs = 256 # 128
+cfg.n_epochs = 50 # 100
+cfg.patience = 7 # 10
+cfg.lr = 1e-4 # 2e-4, 5e-5, 1e-3
+cfg.weight_decay = 1e-2 # 1e-3, 1e-4
+cfg.num_warmup_steps_ratio = 0.03 # 0.05, 0.02
+cfg.label_smoothing = 0.05 # 0.02, 0.03
 
 cfg.use_ema = True
-cfg.ema_decay = 0.998
+cfg.ema_decay = 0.998 # 0.999
 
-cfg.weights_pathes = None
+cfg.weights_pathes = '/kaggle/input/cmi-model/pytorch/default/6/weights'
 cfg.is_soft = True
 cfg.use_entmax = False
