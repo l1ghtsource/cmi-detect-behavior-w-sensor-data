@@ -36,11 +36,10 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     )
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
     
-    num_folds = 5
     all_fold_predicted_indices = [] 
     all_fold_logits = []
 
-    for i in range(num_folds):
+    for i in range(cfg.n_splits):
         if cfg.imu_only:
             TSModel = TS_Demo_IMUModel if cfg.use_demo else TS_IMUModel
         else:
