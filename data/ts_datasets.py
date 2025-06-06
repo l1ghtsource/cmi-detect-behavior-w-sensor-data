@@ -27,6 +27,24 @@ class TS_CMIDataset(Dataset):
             return np.concatenate((series_data, padding))
         return series_data
 
+    def _normalize_sensor_data(self, data):
+        if not cfg.norm_ts:
+            return data
+            
+        normalized_data = data.copy()
+        for i in range(data.shape[1]):
+            column_data = data[:, i]
+            if np.all(column_data == 0) or np.all(np.isnan(column_data)):
+                continue
+            
+            mean_val = np.nanmean(column_data)
+            std_val = np.nanstd(column_data)
+            
+            if std_val > 1e-8:
+                normalized_data[:, i] = (column_data - mean_val) / std_val
+        
+        return normalized_data
+
     def _prepare_sensor_data(self, row, sensor_cols):
         processed_series_list = []
         for col_name in sensor_cols:
@@ -45,6 +63,8 @@ class TS_CMIDataset(Dataset):
                 s_filled = s.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill').fillna(0.0)
                 data_stacked[:, i] = s_filled.values
         
+        data_stacked = self._normalize_sensor_data(data_stacked)
+
         return data_stacked # shape: (seq_len, len(sensor_cols))
     
     def __getitem__(self, idx):
@@ -86,6 +106,24 @@ class TS_Demo_CMIDataset(Dataset):
                 mean_val = self.df[col].mean()
                 std_val = self.df[col].std()
                 self.df[col] = (self.df[col] - mean_val) / (std_val + 1e-8)
+
+    def _normalize_sensor_data(self, data):
+        if not cfg.norm_ts:
+            return data
+            
+        normalized_data = data.copy()
+        for i in range(data.shape[1]):
+            column_data = data[:, i]
+            if np.all(column_data == 0) or np.all(np.isnan(column_data)):
+                continue
+            
+            mean_val = np.nanmean(column_data)
+            std_val = np.nanstd(column_data)
+            
+            if std_val > 1e-8:
+                normalized_data[:, i] = (column_data - mean_val) / std_val
+        
+        return normalized_data
        
     def __len__(self):
         return len(self.df)
@@ -117,6 +155,8 @@ class TS_Demo_CMIDataset(Dataset):
                 s = pd.Series(column_data)
                 s_filled = s.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill').fillna(0.0)
                 data_stacked[:, i] = s_filled.values
+       
+        data_stacked = self._normalize_sensor_data(data_stacked)
        
         return data_stacked  # shape: (seq_len, len(sensor_cols))
    

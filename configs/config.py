@@ -37,8 +37,9 @@ cfg.num_classes = 18
 cfg.n_splits = 5
 cfg.curr_fold = 0
 
+cfg.norm_ts = False # True
 cfg.use_demo = False
-cfg.imu_only = False
+cfg.imu_only = False # True
 
 cfg.model_dir = 'weights'
 
