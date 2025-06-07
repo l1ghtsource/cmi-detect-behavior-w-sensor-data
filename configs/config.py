@@ -51,6 +51,9 @@ cfg.weight_decay = 1e-2 # 1e-3, 1e-4
 cfg.num_warmup_steps_ratio = 0.03 # 0.05, 0.02
 cfg.label_smoothing = 0.05 # 0.02, 0.03
 
+cfg.use_mixup = False # True
+cfg.mixup_alpha = 0.4
+
 cfg.use_ema = True
 cfg.ema_decay = 0.998 # 0.999
 

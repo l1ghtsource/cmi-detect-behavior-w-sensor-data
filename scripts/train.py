@@ -18,6 +18,7 @@ from configs.config import cfg
 from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
 from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
 from modules.ema import EMA
+from modules.mixup import MixupLoss, mixup_batch, mixup_data
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
 
@@ -54,30 +55,46 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
     all_targets = []
     all_preds = []
     
+    if cfg.use_mixup:
+        mixup_criterion = MixupLoss(criterion, cfg.num_classes, cfg.mixup_alpha)
+    
     loop = tqdm(train_loader, desc='train', leave=False)
     
     for batch in loop:
         optimizer.zero_grad()
         
-        imu_inputs = batch['imu'].to(device)
-        targets = batch['target'].to(device)
+        for key in batch.keys():
+            batch[key] = batch[key].to(device)
         
-        if cfg.imu_only:
-            if cfg.use_demo:
-                demo_inputs = batch['demographics'].to(device)
-                outputs = model(imu_inputs, demo_inputs)
+        if cfg.use_mixup:
+            mixed_batch, targets_a, targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
+            if cfg.imu_only:
+                if cfg.use_demo:
+                    outputs = model(mixed_batch['imu'], mixed_batch['demographics'])
+                else:
+                    outputs = model(mixed_batch['imu'])
             else:
-                outputs = model(imu_inputs)
-        else:
-            thm_inputs = batch['thm'].to(device)
-            tof_inputs = batch['tof'].to(device)
-            if cfg.use_demo:
-                demo_inputs = batch['demographics'].to(device)
-                outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
-            else:
-                outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                if cfg.use_demo:
+                    outputs = model(mixed_batch['imu'], mixed_batch['thm'], mixed_batch['tof'], mixed_batch['demographics'])
+                else:
+                    outputs = model(mixed_batch['imu'], mixed_batch['thm'], mixed_batch['tof'])
 
-        loss = criterion(outputs, targets)
+            loss = mixup_criterion(outputs, targets_a, targets_b, lam)
+            targets = batch['target']
+        else:
+            if cfg.imu_only:
+                if cfg.use_demo:
+                    outputs = model(batch['imu'], batch['demographics'])
+                else:
+                    outputs = model(batch['imu'])
+            else:
+                if cfg.use_demo:
+                    outputs = model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
+                else:
+                    outputs = model(batch['imu'], batch['thm'], batch['tof'])
+            targets = batch['target']
+            loss = criterion(outputs, targets)
+
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -115,24 +132,21 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
     with torch.no_grad():
         loop = tqdm(val_loader, desc='val', leave=False)
         for batch in loop:
-            imu_inputs = batch['imu'].to(device)
-            targets = batch['target'].to(device)
-            
+            for key in batch.keys():
+                batch[key] = batch[key].to(device)
+    
             if cfg.imu_only:
                 if cfg.use_demo:
-                    demo_inputs = batch['demographics'].to(device)
-                    outputs = model(imu_inputs, demo_inputs)
+                    outputs = model(batch['imu'], batch['demographics'])
                 else:
-                    outputs = model(imu_inputs)
+                    outputs = model(batch['imu'])
             else:
-                thm_inputs = batch['thm'].to(device)
-                tof_inputs = batch['tof'].to(device)
                 if cfg.use_demo:
-                    demo_inputs = batch['demographics'].to(device)
-                    outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                    outputs = model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
                 else:
-                    outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                    outputs = model(batch['imu'], batch['thm'], batch['tof'])
 
+            targets = batch['target']
             loss = criterion(outputs, targets)
             
             total_loss += loss.item() * targets.size(0)
@@ -274,22 +288,19 @@ def run_training_with_stratified_group_kfold():
         with torch.no_grad():
             val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
             for batch in val_loader:
-                imu_inputs = batch['imu'].to(device)
+                for key in batch.keys():
+                    batch[key] = batch[key].to(device)
                 
                 if cfg.imu_only:
                     if cfg.use_demo:
-                        demo_inputs = batch['demographics'].to(device)
-                        outputs = model(imu_inputs, demo_inputs)
+                        outputs = model(batch['imu'], batch['demographics'])
                     else:
-                        outputs = model(imu_inputs)
+                        outputs = model(batch['imu'])
                 else:
-                    thm_inputs = batch['thm'].to(device)
-                    tof_inputs = batch['tof'].to(device)
                     if cfg.use_demo:
-                        demo_inputs = batch['demographics'].to(device)
-                        outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
+                        outputs = model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
                     else:
-                        outputs = model(imu_inputs, thm_inputs, tof_inputs)
+                        outputs = model(batch['imu'], batch['thm'], batch['tof'])
                         
                 all_preds.append(outputs.cpu().numpy())
         all_preds = np.concatenate(all_preds, axis=0)
