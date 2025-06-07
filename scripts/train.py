@@ -66,7 +66,7 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         for key in batch.keys():
             batch[key] = batch[key].to(device)
         
-        if cfg.use_mixup:
+        if cfg.use_mixup and np.random.random() > cfg.mixup_proba:
             mixed_batch, targets_a, targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
             if cfg.imu_only:
                 if cfg.use_demo:

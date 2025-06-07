@@ -53,6 +53,7 @@ cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
 
 cfg.use_mixup = True
+cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 
 cfg.use_ema = True
