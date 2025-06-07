@@ -105,7 +105,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             
         return result
     
-class TS_CMIDataset_DecomposeWHAR_Simple(TS_CMIDataset):
+class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
         
@@ -117,7 +117,7 @@ class TS_CMIDataset_DecomposeWHAR_Simple(TS_CMIDataset):
         
         model_input = all_sensors.unsqueeze(0).unsqueeze(0) # (1, 1, seq_len, 332)
          
-        result = {'sensors': model_input}
+        result = {'megasensor': model_input}
         if 'target' in features:
             result['target'] = features['target']
             
