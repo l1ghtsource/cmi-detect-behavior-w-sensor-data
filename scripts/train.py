@@ -47,7 +47,7 @@ train_seq, label_encoder = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, ema=None):
+def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0):
     model.train()
         
     total_loss = 0
@@ -66,7 +66,9 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         for key in batch.keys():
             batch[key] = batch[key].to(device)
         
-        if cfg.use_mixup and np.random.random() > cfg.mixup_proba:
+        curr_proba = np.random.random()
+        is_warmup_phase = current_step < num_warmup_steps
+        if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
             if cfg.imu_only:
                 if cfg.use_demo:
@@ -116,7 +118,9 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
     
     avg_loss = total_loss / total_samples
     m = just_stupid_macro_f1_haha(all_targets, all_preds)
-    return avg_loss, m
+    current_step += 1
+
+    return avg_loss, m, current_step
 
 def valid_epoch(val_loader, model, criterion, device, ema=None):
     model.eval()
@@ -235,6 +239,7 @@ def run_training_with_stratified_group_kfold():
 
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
+        current_step = 0
 
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
@@ -250,7 +255,10 @@ def run_training_with_stratified_group_kfold():
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
             
-            train_loss, train_f1 = train_epoch(train_loader, model, optimizer, criterion, device, scheduler, ema)
+            train_loss, train_f1, current_step = train_epoch(
+                train_loader, model, optimizer, criterion, device, scheduler, 
+                ema, current_step, num_warmup_steps
+            )
             val_loss, val_f1, _, _ = valid_epoch(val_loader, model, criterion, device, ema)
             
             print(f'{train_loss=}, {train_f1=}')
