@@ -85,6 +85,44 @@ class TS_CMIDataset(Dataset):
         
         return features
     
+class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
+    def __getitem__(self, idx):
+        features = super().__getitem__(idx)
+        
+        imu_data = features['imu'].unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, 7)
+        thm_data = features['thm'].unsqueeze(0).transpose(1, 2).unsqueeze(-1)  # (1, 5, seq_len, 1)
+        tof_tensor = features['tof']  # (seq_len, 320)
+        tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1).unsqueeze(0)  # (1, 5, seq_len, 64)
+        
+        result = {
+            'imu': imu_data,
+            'thm': thm_data, 
+            'tof': tof_reshaped
+        }
+        
+        if 'target' in features:
+            result['target'] = features['target']
+            
+        return result
+    
+class TS_CMIDataset_DecomposeWHAR_Simple(TS_CMIDataset):
+    def __getitem__(self, idx):
+        features = super().__getitem__(idx)
+        
+        all_sensors = torch.cat([
+            features['imu'],    # (seq_len, 7)
+            features['thm'],    # (seq_len, 5) 
+            features['tof']     # (seq_len, 320)
+        ], dim=1)  # (seq_len, 332)
+        
+        model_input = all_sensors.unsqueeze(0).unsqueeze(0) # (1, 1, seq_len, 332)
+         
+        result = {'sensors': model_input}
+        if 'target' in features:
+            result['target'] = features['target']
+            
+        return result
+    
 class TS_Demo_CMIDataset(Dataset):
     def __init__(self, dataframe, seq_len=100, target_col='gesture'):
         self.df = dataframe.reset_index(drop=True)
