@@ -6,6 +6,7 @@ from modules.mamba import Mamba_Layer, Att_Layer
 from modules.selfattn import FullAttention, AttentionLayer
 from mamba_ssm import Mamba
 from einops import rearrange
+from configs.config import cfg
 
 # https://arxiv.org/pdf/2501.10917v1 <- !!!
 
@@ -21,14 +22,14 @@ class DecomposeWHAR(nn.Module):
                  num_sensor,  # Number of sensors (N)
                  M,  # Number of variables in the multivariate sequence
                  L,  # Length of the input sequence (time steps)
-                 D=64,  # Number of channels per variable
-                 P=8,  # Kernel size of the embedding layer
-                 S=4,  # Stride of the embedding layer
-                 kernel_size=5,  # Kernel size for convolutional layers
-                 r=1,  # A hyperparameter for decomposition (e.g., reduction ratio)
-                 num_layers=2,  # Number of decomposition layers
-                 num_m_layers=1,   # Number of mamba layers
-                 num_a_layers=1):   # Number of attention layers
+                 D=cfg.ddim,  # Number of channels per variable
+                 P=cfg.emb_kernel_size,  # Kernel size of the embedding layer
+                 S=cfg.stride,  # Stride of the embedding layer
+                 kernel_size=cfg.kernel_size,  # Kernel size for convolutional layers
+                 r=cfg.reduction_ratio,  # A hyperparameter for decomposition (e.g., reduction ratio)
+                 num_layers=cfg.num_layers,  # Number of decomposition layers
+                 num_m_layers=cfg.num_m_layers,   # Number of mamba layers
+                 num_a_layers=cfg.num_a_layers):   # Number of attention layers
         super(DecomposeWHAR, self).__init__()
 
         self.num_layers = num_layers
@@ -124,28 +125,29 @@ class DecomposeWHAR(nn.Module):
 # just DecomposeWHAR for each sensor lol
 class MultiSensorDecomposeWHAR(nn.Module):
     def __init__(self, 
-                 imu_num_sensor=1, imu_M=7, imu_L=110, imu_D=32,
-                 thm_num_sensor=5, thm_M=1, thm_L=110, thm_D=32,
-                 tof_num_sensor=5, tof_M=64, tof_L=110, tof_D=64,
-                 num_classes=18, S=4, use_cross_sensor=True):
+                 imu_num_sensor=cfg.imu_num_sensor, imu_M=7,
+                 thm_num_sensor=cfg.thm_num_sensor, thm_M=1,
+                 tof_num_sensor=cfg.tof_num_sensor, tof_M=64,
+                 L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.num_classes, 
+                 S=4, use_cross_sensor=True):
         super().__init__()
         
         self.S = S
         self.use_cross_sensor = use_cross_sensor
         
         self.imu_dwhar = DecomposeWHAR(
-            num_sensor=imu_num_sensor, M=imu_M, L=imu_L, D=imu_D, S=S
+            num_sensor=imu_num_sensor, M=imu_M, L=L, D=D, S=S
         )
         self.thm_dwhar = DecomposeWHAR(
-            num_sensor=thm_num_sensor, M=thm_M, L=thm_L, D=thm_D, S=S
+            num_sensor=thm_num_sensor, M=thm_M, L=L, D=D, S=S
         )
         self.tof_dwhar = DecomposeWHAR(
-            num_sensor=tof_num_sensor, M=tof_M, L=tof_L, D=tof_D, S=S
+            num_sensor=tof_num_sensor, M=tof_M, L=L, D=D, S=S
         )
         
-        imu_size = imu_num_sensor * imu_D * (imu_L // S)
-        thm_size = thm_num_sensor * thm_D * (thm_L // S)
-        tof_size = tof_num_sensor * tof_D * (tof_L // S)
+        imu_size = imu_num_sensor * D * (L // S)
+        thm_size = thm_num_sensor * D * (L // S)
+        tof_size = tof_num_sensor * D * (L // S)
         
         if use_cross_sensor:
             common_dim = 512
@@ -192,29 +194,28 @@ class MultiSensorDecomposeWHAR(nn.Module):
             pred = self.classifier(comb_x)
             return pred
 
-class IMU_DecomposeWHAR(nn.Module):
+class OneSensorDecomposeWHAR(nn.Module):
     def __init__(
             self, 
-            num_sensor=1,
-            M=7,
-            L=110,
-            num_classes=18,
-            D=64,
-            S=4,
+            M=len(cfg.imu_cols),
+            L=cfg.seq_len,
+            num_classes=cfg.num_classes,
+            D=cfg.ddim,
+            S=cfg.stride,
         ):
         super().__init__()
 
         self.model = DecomposeWHAR(
-            num_sensor=num_sensor,
+            num_sensor=1,
             M=M,
             L=L,
             D=D,
             S=S
         )
 
-        self.classifier = nn.Linear(num_sensor * D * (L // S), num_classes)
+        self.classifier = nn.Linear(D * (L // S), num_classes)
     
-    def forward(self, imu_data):
-        x = self.model(imu_data)
+    def forward(self, data):
+        x = self.model(data)
         pred = self.classifier(x)
         return pred
