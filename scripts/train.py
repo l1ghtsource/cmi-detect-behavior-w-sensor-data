@@ -15,10 +15,9 @@ from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
 from configs.config import cfg
-from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
-from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
 from modules.ema import EMA
-from modules.mixup import MixupLoss, mixup_batch, mixup_data
+from modules.mixup import MixupLoss, mixup_batch
+from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
 
@@ -70,30 +69,11 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            if cfg.imu_only:
-                if cfg.use_demo:
-                    outputs = model(mixed_batch['imu'], mixed_batch['demographics'])
-                else:
-                    outputs = model(mixed_batch['imu'])
-            else:
-                if cfg.use_demo:
-                    outputs = model(mixed_batch['imu'], mixed_batch['thm'], mixed_batch['tof'], mixed_batch['demographics'])
-                else:
-                    outputs = model(mixed_batch['imu'], mixed_batch['thm'], mixed_batch['tof'])
-
+            outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
             loss = mixup_criterion(outputs, targets_a, targets_b, lam)
             targets = batch['target']
         else:
-            if cfg.imu_only:
-                if cfg.use_demo:
-                    outputs = model(batch['imu'], batch['demographics'])
-                else:
-                    outputs = model(batch['imu'])
-            else:
-                if cfg.use_demo:
-                    outputs = model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
-                else:
-                    outputs = model(batch['imu'], batch['thm'], batch['tof'])
+            outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['target']
             loss = criterion(outputs, targets)
 
@@ -139,17 +119,7 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            if cfg.imu_only:
-                if cfg.use_demo:
-                    outputs = model(batch['imu'], batch['demographics'])
-                else:
-                    outputs = model(batch['imu'])
-            else:
-                if cfg.use_demo:
-                    outputs = model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
-                else:
-                    outputs = model(batch['imu'], batch['thm'], batch['tof'])
-
+            outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['target']
             loss = criterion(outputs, targets)
             
@@ -190,7 +160,7 @@ def run_training_with_stratified_group_kfold():
         train_subset = train_seq.iloc[train_idx].reset_index(drop=True)
         val_subset = train_seq.iloc[val_idx].reset_index(drop=True)
         
-        TSDataset = TS_Demo_CMIDataset if cfg.use_demo else TS_CMIDataset
+        TSDataset = get_ts_dataset()
         
         train_dataset = TSDataset(
             dataframe=train_subset,
@@ -206,30 +176,7 @@ def run_training_with_stratified_group_kfold():
         train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
 
-        if cfg.imu_only:
-            TSModel = TS_Demo_IMUModel if cfg.use_demo else TS_IMUModel
-        else:
-            TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
-        
-        if cfg.imu_only:
-            m_params = {
-                'imu_features': len(cfg.imu_cols),
-                'num_classes': cfg.num_classes,
-                'hidden_dim': 128
-            }
-            if cfg.use_demo:
-                m_params['demo_features'] = len(cfg.demo_cols)
-        else:
-            m_params = {
-                'imu_features': len(cfg.imu_cols),
-                'thm_features': len(cfg.thm_cols),
-                'tof_features': len(cfg.tof_cols),
-                'num_classes': cfg.num_classes,
-                'hidden_dim': 128
-            }
-            if cfg.use_demo:
-                m_params['demo_features'] = len(cfg.demo_cols)
-            
+        TSModel, m_params = get_ts_model_and_params(imu_only=cfg.imu_only)
         model = TSModel(**m_params).to(device)
 
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
@@ -249,8 +196,10 @@ def run_training_with_stratified_group_kfold():
         
         best_val_score = -np.inf
         patience_counter = 0
-        best_model_path = os.path.join(cfg.model_dir, f'model_fold{fold}.pt')
-        best_ema_path = os.path.join(cfg.model_dir, f'model_ema_fold{fold}.pt') if cfg.use_ema else None
+        prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
+        prefix2 = 'imu_only_' if cfg.imu_only else ''
+        best_model_path = os.path.join(cfg.model_dir, f'{prefix1}{prefix2}model_fold{fold}.pt')
+        best_ema_path = os.path.join(cfg.model_dir, f'{prefix1}{prefix2}model_ema_fold{fold}.pt') if cfg.use_ema else None
         
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
@@ -298,19 +247,10 @@ def run_training_with_stratified_group_kfold():
             for batch in val_loader:
                 for key in batch.keys():
                     batch[key] = batch[key].to(device)
-                
-                if cfg.imu_only:
-                    if cfg.use_demo:
-                        outputs = model(batch['imu'], batch['demographics'])
-                    else:
-                        outputs = model(batch['imu'])
-                else:
-                    if cfg.use_demo:
-                        outputs = model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
-                    else:
-                        outputs = model(batch['imu'], batch['thm'], batch['tof'])
-                        
+
+                outputs = forward_model(model, batch, imu_only=cfg.imu_only)
                 all_preds.append(outputs.cpu().numpy())
+
         all_preds = np.concatenate(all_preds, axis=0)
         oof_preds[val_idx] = all_preds
     

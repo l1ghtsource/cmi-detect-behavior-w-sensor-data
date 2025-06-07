@@ -8,8 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from configs.config import cfg
-from data.ts_datasets import TS_CMIDataset, TS_Demo_CMIDataset
-from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
+from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
 from utils.data_preproc import fast_seq_agg, le
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -21,6 +20,14 @@ gc.collect()
 
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
+
+    use_imu_only = False
+    if 'tof_5_v64' in test_df.columns:
+        tof_values = test_df['tof_5_v64']
+        if tof_values.isna().all() or (tof_values == None).all():
+            use_imu_only = True
+    else:
+        use_imu_only = True
     
     if not demographics.is_empty():
         test_demographics = demographics.to_pandas()
@@ -28,7 +35,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 
-    TSDataset = TS_Demo_CMIDataset if cfg.use_demo else TS_CMIDataset
+    TSDataset = get_ts_dataset()
 
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
@@ -40,37 +47,17 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     all_fold_logits = []
 
     for i in range(cfg.n_splits):
-        if cfg.imu_only:
-            TSModel = TS_Demo_IMUModel if cfg.use_demo else TS_IMUModel
-        else:
-            TSModel = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
-
-        if cfg.imu_only:
-            m_params = {
-                'imu_features': len(cfg.imu_cols),
-                'num_classes': cfg.num_classes,
-                'hidden_dim': 128
-            }
-            if cfg.use_demo:
-                m_params['demo_features'] = len(cfg.demo_cols)
-        else:
-            m_params = {
-                'imu_features': len(cfg.imu_cols),
-                'thm_features': len(cfg.thm_cols),
-                'tof_features': len(cfg.tof_cols),
-                'num_classes': cfg.num_classes,
-                'hidden_dim': 128
-            }
-            if cfg.use_demo:
-                m_params['demo_features'] = len(cfg.demo_cols)
-
+        TSModel, m_params = get_ts_model_and_params(imu_only=use_imu_only)
         model = TSModel(**m_params).to(device)
 
-        model_path = f'{cfg.weights_pathes}/model_fold{i}.pt'
+        prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
+        prefix2 = 'imu_only_' if cfg.imu_only else ''
+
+        model_path = f'{cfg.weights_path}/{prefix1}{prefix2}model_fold{i}.pt'
         model.load_state_dict(torch.load(model_path, map_location=device))
 
         if cfg.use_ema:
-            model_path = f'{cfg.weights_pathes}/model_ema_fold{i}.pt'
+            model_path = f'{cfg.weights_path}/{prefix1}{prefix2}model_ema_fold{i}.pt'
             ema_state_dict = torch.load(model_path, map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:
@@ -81,23 +68,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         current_fold_batch_logits = []
         with torch.no_grad():
             for batch in test_loader:
-                imu_inputs = batch['imu'].to(device)
-                
-                if cfg.imu_only:
-                    if cfg.use_demo:
-                        demo_inputs = batch['demographics'].to(device)
-                        outputs = model(imu_inputs, demo_inputs)
-                    else:
-                        outputs = model(imu_inputs)
-                else:
-                    thm_inputs = batch['thm'].to(device)
-                    tof_inputs = batch['tof'].to(device)
-                    if cfg.use_demo:
-                        demo_inputs = batch['demographics'].to(device)
-                        outputs = model(imu_inputs, thm_inputs, tof_inputs, demo_inputs)
-                    else:
-                        outputs = model(imu_inputs, thm_inputs, tof_inputs)
-                        
+                outputs = forward_model(model, batch, imu_only=use_imu_only)   
                 current_fold_batch_logits.append(outputs.cpu().numpy())
         
         concatenated_fold_logits = np.concatenate(current_fold_batch_logits, axis=0)
