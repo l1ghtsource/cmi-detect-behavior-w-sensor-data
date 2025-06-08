@@ -115,7 +115,7 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
             features['tof']     # (seq_len, 320)
         ], dim=1)  # (seq_len, 332)
         
-        model_input = all_sensors.unsqueeze(0).unsqueeze(0) # (1, 1, seq_len, 332)
+        model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
          
         result = {'megasensor': model_input}
         if 'target' in features:
