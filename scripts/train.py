@@ -47,7 +47,7 @@ test_seq = fast_seq_agg(test)
 del train, test
 gc.collect()
 
-train_seq, label_encoder = le(train_seq)
+train_seq, label_encoder, label_encoder_aux = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

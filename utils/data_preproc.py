@@ -25,9 +25,12 @@ def fast_seq_agg(df):
 
 def le(train_seq):
     label_encoder = LabelEncoder()
-    train_seq['gesture'] = label_encoder.fit_transform(train_seq['gesture'])
+    label_encoder_aux = LabelEncoder()
 
-    return train_seq, label_encoder
+    train_seq[cfg.target] = label_encoder.fit_transform(train_seq[cfg.target])
+    train_seq[cfg.aux_target] = label_encoder_aux.fit_transform(train_seq[cfg.aux_target])
+
+    return train_seq, label_encoder, label_encoder_aux
 
 def get_means(train_seq):
     feature_means = {}
