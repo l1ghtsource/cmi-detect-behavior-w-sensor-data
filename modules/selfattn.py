@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from math import sqrt
-from masking import TriangularCausalMask, ProbMask
+from modules.masking import TriangularCausalMask, ProbMask
 from reformer_pytorch import LSHSelfAttention
 from einops import rearrange, repeat
 
