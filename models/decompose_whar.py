@@ -129,7 +129,7 @@ class MultiSensor_DecomposeWHAR_v1(nn.Module):
                  thm_num_sensor=cfg.thm_num_sensor, thm_M=cfg.thm_vars,
                  tof_num_sensor=cfg.tof_num_sensor, tof_M=cfg.tof_vars,
                  L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.num_classes, 
-                 S=4, use_cross_sensor=True):
+                 S=cfg.stride, use_cross_sensor=True):
         super().__init__()
         
         self.S = S

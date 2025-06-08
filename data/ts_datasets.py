@@ -7,7 +7,7 @@ from configs.config import cfg
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
 
 class TS_CMIDataset(Dataset):
-    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
         self.aux_target_col = aux_target_col
@@ -120,7 +120,7 @@ class TS_CMIDataset(Dataset):
         return features
     
 class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
-    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
     
     def __getitem__(self, idx):
@@ -144,7 +144,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         return result
     
 class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
-    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
     
     def __getitem__(self, idx):
@@ -166,7 +166,7 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         return result
     
 class TS_Demo_CMIDataset(Dataset):
-    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
         self.target_col = target_col
