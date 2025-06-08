@@ -1,16 +1,18 @@
+import random
 import numpy as np
 import torch
 import pywt
 from scipy import signal
 from scipy.ndimage import zoom
+import matplotlib.pyplot as plt
 from configs.config import cfg
 from data.ts_datasets import TS_CMIDataset
 
 class IMG_CMIDataset(TS_CMIDataset):
     def __init__(
             self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, 
-            train=True, im_size=cfg.im_size, transform_type='cwt'
-        ):
+            train=True, im_size=cfg.im_size, transform_type=cfg.transform_type
+    ):
         super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
         self.im_size = im_size
         self.transform_type = transform_type # cwt or stft
@@ -120,3 +122,35 @@ class IMG_CMIDataset(TS_CMIDataset):
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
         
         return features
+    
+    def visualize_samples(self, n_samples=5, figsize=(15, 10)):
+        random_indices = random.sample(range(len(self)), min(n_samples, len(self)))
+        
+        fig, axes = plt.subplots(n_samples, 3, figsize=figsize)
+        if n_samples == 1:
+            axes = axes.reshape(1, -1)
+        
+        for i, idx in enumerate(random_indices):
+            sample = self[idx]
+            
+            img_imu = sample['img_imu'].permute(1, 2, 0).numpy()
+            img_thm = sample['img_thm'].permute(1, 2, 0).numpy()
+            img_tof = sample['img_tof'].permute(1, 2, 0).numpy()
+            
+            target = sample.get('target', 'N/A')
+            aux_target = sample.get('aux_target', 'N/A')
+            
+            axes[i, 0].imshow(img_imu, cmap='viridis')
+            axes[i, 0].set_title(f'imu, {target=}, {aux_target=}')
+            axes[i, 0].axis('off')
+            
+            axes[i, 1].imshow(img_thm, cmap='plasma')
+            axes[i, 1].set_title(f'thm, {target=}, {aux_target=}')
+            axes[i, 1].axis('off')
+            
+            axes[i, 2].imshow(img_tof, cmap='hot')
+            axes[i, 2].set_title(f'tof, {target=}, {aux_target=}')
+            axes[i, 2].axis('off')
+        
+        plt.tight_layout()
+        plt.show()

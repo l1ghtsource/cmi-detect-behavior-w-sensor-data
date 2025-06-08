@@ -37,6 +37,10 @@ cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
 
+# --- img ds cfg ---
+cfg.im_size = 224
+cfg.transform_type = 'cwt'
+
 # --- ts ds cfg ---
 cfg.norm_ts = True
 cfg.use_demo = False
