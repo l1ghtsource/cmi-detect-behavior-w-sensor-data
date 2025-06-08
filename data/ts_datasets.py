@@ -89,10 +89,10 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
         
-        imu_data = features['imu'].unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, 7)
-        thm_data = features['thm'].unsqueeze(0).transpose(1, 2).unsqueeze(-1)  # (1, 5, seq_len, 1)
+        imu_data = features['imu'].unsqueeze(0)  # (1, seq_len, 7)
+        thm_data = features['thm'].transpose(1, 2).unsqueeze(-1)  # (5, seq_len, 1)
         tof_tensor = features['tof']  # (seq_len, 320)
-        tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1).unsqueeze(0)  # (1, 5, seq_len, 64)
+        tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1)  # (5, seq_len, 64)
         
         result = {
             'imu': imu_data,

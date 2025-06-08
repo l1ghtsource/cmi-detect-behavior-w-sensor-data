@@ -79,7 +79,7 @@ class DecomposeWHAR_Extractor(nn.Module):
         # )
 
     def forward(self, inputs):  # inputs: (B, N, L, M) - Batch size, Number of sensors, Sequence length, Number of variables
-        B, N, L, M = inputs.shape[0],inputs.shape[1],inputs.shape[2],inputs.shape[3] # 64,5,24,9
+        B, N, L, M = inputs.shape[0],inputs.shape[1],inputs.shape[2],inputs.shape[3] # bs,n_sensors,seq_len,n_vars
         x = inputs.reshape(B*N, L, M)  # (B*N, L, M)
         x = x.permute(0, 2, 1)  # (B*N, M, L)
 
