@@ -73,6 +73,17 @@ cfg.weight_decay = 1e-2
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
 
+# --- ts augs ---
+cfg.max_augmentations_per_sample = 2
+cfg.jitter_proba = 0.6
+cfg.jitter_sensors = ['imu', 'tof', 'thm']
+cfg.magnitude_warp_proba = 0.4
+cfg.magnitude_warp_sensors = ['imu', 'thm']
+cfg.time_warp_proba = 0.3
+cfg.time_warp_sensors = ['imu', 'tof', 'thm']
+cfg.scaling_proba = 0.1
+cfg.scaling_sensors = ['imu', 'thm']
+
 # --- mixup ---
 cfg.use_mixup = True
 cfg.mixup_proba = 0.7

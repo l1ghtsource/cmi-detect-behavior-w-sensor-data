@@ -39,7 +39,8 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
-        seq_len=cfg.seq_len, 
+        seq_len=cfg.seq_len,
+        train=False
     )
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
     
