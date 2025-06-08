@@ -108,6 +108,7 @@ cfg.ema_decay = 0.999
 cfg.weights_path = None
 cfg.is_soft = True
 cfg.use_entmax = False
+cfg.entmax_alpha = 1.25
 cfg.tta_strategies = {
     'jitter': {
         'sigma': 0.01,
