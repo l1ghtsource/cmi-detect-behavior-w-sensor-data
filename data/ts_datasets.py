@@ -162,7 +162,7 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
     
 class TS_Demo_CMIDataset(Dataset):
     def __init__(self, dataframe, seq_len=100, target_col='gesture', train=True):
-        self.df = dataframe.reset_index(drop=True)
+        self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
         self.target_col = target_col
         self.train = train
