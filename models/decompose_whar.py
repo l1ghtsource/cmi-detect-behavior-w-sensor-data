@@ -405,36 +405,45 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
         ])
 
         # Final classification layer
-        self.fc_out = nn.Linear(M * D * T, num_classes)
+        self.fc_out = nn.Linear(1 * D * T, num_classes)
 
     def forward(self, inputs):  # inputs: (B, 1, L, M) - Batch size, 1 sensor, Sequence length, Number of variables
-        B, N, L, M = inputs.shape[0], inputs.shape[1], inputs.shape[2], inputs.shape[3]  # bs, 1, seq_len, n_vars
-        
-        # Remove sensor dimension since we have only 1 sensor
-        x = inputs.squeeze(1)  # (B, 1, L, M) -> (B, L, M)
-        x = x.permute(0, 2, 1)  # (B, M, L)
+        B, N, L, M = inputs.shape[0],inputs.shape[1],inputs.shape[2],inputs.shape[3] # bs,n_sensors,seq_len,n_vars
+        x = inputs.reshape(B*N, L, M)  # (B*N, L, M)
+        x = x.permute(0, 2, 1)  # (B*N, M, L)
 
-        # Embedding
-        x_emb = self.embed_layer(x)  # [B, M, L] -> [B, M, D, T]
+        x_emb = self.embed_layer(x)  # [B*N, M, L] -> [B*N, M, D, T]
 
-        # Backbone decomposition blocks
         for i in range(self.num_layers):
-            x_emb = self.backbone[i](x_emb)  # [B, M, D, T] -> [B, M, D, T]
+            x_emb = self.backbone[i](x_emb)  # [B*N, M, D, L] -> [B*N, M, D, T]
 
-        # Reshape for temporal processing
-        # [B, M, D, T] -> [B, T, M*D]
-        x_emb = x_emb.permute(0, 3, 1, 2)  # [B, T, M, D]
-        x_emb = x_emb.reshape(B, self.T, -1)  # [B, T, M*D]
+        # Flatten
+        x_emb = rearrange(x_emb, 'b m d t -> b m (d t)', b=B*N, m=M)  # [B*N, M, D, T] -> [B*N, M, D*T]
 
-        # Mamba layers for temporal aggregation
-        for i in range(self.num_m_layers):
-            x_emb = self.mamba_preprocess[i](x_emb)  # [B, T, M*D]
+        # Aggregate over the sensor dimension and apply classification head
+        x_emb = x_emb.mean(dim=1)  # [B*N, M, D*T] -> [B*N, D*T] 64*5,D*T
+        x_emb = x_emb.reshape(inputs.shape[0],inputs.shape[1],-1) # B,N,D*T (64,5,D*T)
 
-        # Global pooling over time dimension
-        x = x_emb.mean(dim=1)  # [B, T, M*D] -> [B, M*D]
+        # Reshape to B,T,N*D (64, T, 5*D)
+        x_emb = x_emb.reshape(inputs.shape[0],inputs.shape[1],self.D,self.T) # B,N,D,T (64,5,D,T)
+        x_emb = x_emb.permute(0,3,1,2)
+        x_emb = x_emb.reshape(inputs.shape[0],x_emb.shape[1],-1) # B,T,N*D (64,T,5*D)
+
+        # Mamba Input
+        for i in range(0,self.num_m_layers):
+            x_emb = self.mamba_preprocess[i](x_emb)  # B,T,N*D
+
+        # Reshape to B, N, D*T
+        x_emb = x_emb.reshape(inputs.shape[0], x_emb.shape[1], inputs.shape[1], self.D)  # B,T,N,D
+        x_emb = x_emb.permute(0, 2, 3, 1)  # B,N,D,T
+        x_emb = x_emb.reshape(inputs.shape[0], x_emb.shape[1], -1)  # B,N,D*T
+
+        x = x_emb
+
+        x = x.reshape(inputs.shape[0],-1)      
 
         # Dropout and classification
         x = F.dropout(x, p=self.dropout_prob, training=self.training)
-        pred = self.fc_out(x)  # [B, M*D] -> [B, num_classes]
+        pred = self.fc_out(x)  # [B, D*T] -> [B, num_classes]
 
         return x, pred  # output: [B, num_classes]
