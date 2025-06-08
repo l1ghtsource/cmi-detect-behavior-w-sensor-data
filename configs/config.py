@@ -40,9 +40,8 @@ cfg.seed = 42
 # --- im ds cfg ---
 cfg.im_size = 160
 cfg.transform_type = 'cwt'
-cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
-cfg.encoder_hidden_dim = 64
-cfg.im_pretrained = True
+cfg.use_grads = True
+cfg.window_tof = True
 
 # --- ts ds cfg ---
 cfg.norm_ts = True
@@ -70,6 +69,11 @@ cfg.tof_num_sensor = 5
 cfg.imu_vars = 7
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
+
+# --- im model ---
+cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
+cfg.encoder_hidden_dim = 64
+cfg.im_pretrained = True
 
 # --- train params ---
 cfg.bs = 256

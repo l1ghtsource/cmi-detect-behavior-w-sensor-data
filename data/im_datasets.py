@@ -59,20 +59,32 @@ class IM_CMIDataset(TS_CMIDataset):
     def _create_tof_image(self, tof_data):
         # (seq_len, 320) -> (seq_len, 5, 64) -> 5 8x8 cards
         tof_reshaped = tof_data.reshape(tof_data.shape[0], 5, 64)
-        
-        heatmaps = []
-        for sensor_idx in range(5):
-            sensor_data = tof_reshaped[:, sensor_idx, :] # (seq_len, 64)
-            avg_data = np.mean(sensor_data, axis=0) # (64,)
-            heatmap = avg_data.reshape(8, 8)
-            
-            if heatmap.max() > heatmap.min():
-                heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-            
-            heatmaps.append(heatmap)
-        
-        combined_image = np.hstack(heatmaps)  # (8, 40)
-        
+
+        if not cfg.window_tof:
+            heatmaps = []
+            for sensor_idx in range(5):
+                sensor_data = tof_reshaped[:, sensor_idx, :] # (seq_len, 64)
+                avg_data = np.mean(sensor_data, axis=0) # (64,)
+                heatmap = avg_data.reshape(8, 8)
+                if heatmap.max() > heatmap.min():
+                    heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
+                heatmaps.append(heatmap)
+            combined_image = np.hstack(heatmaps) # (8, 40)
+        else:
+            sensor_images = []
+            for sensor_idx in range(5):
+                sensor_data = tof_reshaped[:, sensor_idx, :] # (seq_len, 64)
+                temporal_frames = [] # temporal-spatial representation
+                window_size = len(sensor_data) // 4 # 4 temporal windows
+                for i in range(4):
+                    start_idx = i * window_size
+                    end_idx = (i + 1) * window_size if i < 3 else len(sensor_data)
+                    window_data = np.mean(sensor_data[start_idx:end_idx], axis=0)
+                    temporal_frames.append(window_data.reshape(8, 8))
+                sensor_image = np.vstack(temporal_frames) # (32, 8)
+                sensor_images.append(sensor_image)
+            combined_image = np.hstack(sensor_images) # (32, 40)
+ 
         return combined_image
     
     def _resize_to_target(self, image):
