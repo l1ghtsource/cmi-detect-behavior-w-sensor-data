@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from configs.config import cfg
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
 
+# classic ts dataset
 class TS_CMIDataset(Dataset):
     def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         self.df = dataframe.copy().reset_index(drop=True)
@@ -118,7 +119,8 @@ class TS_CMIDataset(Dataset):
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
         
         return features
-    
+
+# compatitable w/ timemil and decomposewhar !!
 class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
     def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
@@ -142,7 +144,8 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             result['aux_target'] = features['aux_target']
             
         return result
-    
+
+# ebaniy kal, prosto zalupa
 class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
     def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
@@ -164,7 +167,8 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
             result['aux_target'] = features['aux_target']
             
         return result
-    
+
+# classic ds but w/ demography
 class TS_Demo_CMIDataset(Dataset):
     def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         self.df = dataframe.copy().reset_index(drop=True)
