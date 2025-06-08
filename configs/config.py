@@ -66,8 +66,8 @@ cfg.tof_num_sensor = 5
 
 # --- train params ---
 cfg.bs = 256
-cfg.n_epochs = 100
-cfg.patience = 15
+cfg.n_epochs = 50
+cfg.patience = 5
 cfg.lr = 1e-3
 cfg.weight_decay = 1e-2
 cfg.num_warmup_steps_ratio = 0.03

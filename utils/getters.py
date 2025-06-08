@@ -5,7 +5,10 @@ from data.ts_datasets import (
     TS_CMIDataset_DecomposeWHAR_Megasensor
 )
 from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
-from models.decompose_whar import MultiSensorDecomposeWHAR, OneSensorDecomposeWHAR
+from models.decompose_whar import (
+    MultiSensor_DecomposeWHAR_v1, DecomposeWHAR_SingleSensor_v1, 
+    MultiSensor_DecomposeWHAR_v2, DecomposeWHAR_SingleSensor_v2
+)
 from configs.config import cfg
 
 def get_ts_dataset():
@@ -16,7 +19,7 @@ def get_ts_dataset():
 def get_ts_model_and_params(imu_only):
     if cfg.use_dwhar:
         if cfg.use_megasensor or imu_only:
-            return OneSensorDecomposeWHAR, {
+            return MultiSensor_DecomposeWHAR_v2, {
                 'M': len(cfg.imu_cols) + len(cfg.thm_cols) + len(cfg.tof_cols) if cfg.use_megasensor else len(cfg.imu_cols),
                 'L': cfg.seq_len,
                 'num_classes': cfg.num_classes,
@@ -24,18 +27,18 @@ def get_ts_model_and_params(imu_only):
                 'S': cfg.stride
             }
         else:
-            return MultiSensorDecomposeWHAR, {
-                'imu_num_sensor': cfg.imu_num_sensor,
-                'thm_num_sensor': cfg.thm_num_sensor,
-                'tof_num_sensor': cfg.tof_num_sensor,
-                'imu_M': len(cfg.imu_cols),
-                'thm_M': len(cfg.thm_cols),
-                'tof_M': len(cfg.tof_cols),
+            return DecomposeWHAR_SingleSensor_v2, {
+                'num_imu': cfg.imu_num_sensor,
+                'num_thm': cfg.thm_num_sensor,
+                'num_tof': cfg.tof_num_sensor,
+                'imu_vars': len(cfg.imu_cols),
+                'thm_vars': len(cfg.thm_cols),
+                'tof_vars': len(cfg.tof_cols),
                 'L': cfg.seq_len,
                 'num_classes': cfg.num_classes,
                 'D': cfg.ddim,
                 'S': cfg.stride,
-                'use_cross_sensor': cfg.use_cross_sensor
+                # 'use_cross_sensor': cfg.use_cross_sensor
             }
 
     if imu_only:

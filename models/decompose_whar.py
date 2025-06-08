@@ -123,7 +123,7 @@ class DecomposeWHAR_Extractor(nn.Module):
         return x #, pred # output: [B, num_classes]
 
 # just DecomposeWHAR for each sensor lol
-class MultiSensorDecomposeWHAR(nn.Module):
+class MultiSensor_DecomposeWHAR_v1(nn.Module):
     def __init__(self, 
                  imu_num_sensor=cfg.imu_num_sensor, imu_M=7,
                  thm_num_sensor=cfg.thm_num_sensor, thm_M=1,
@@ -194,7 +194,8 @@ class MultiSensorDecomposeWHAR(nn.Module):
             pred = self.classifier(comb_x)
             return pred
 
-class OneSensorDecomposeWHAR(nn.Module):
+# stupid 1-sensor dwhar
+class DecomposeWHAR_SingleSensor_v1(nn.Module):
     def __init__(
             self, 
             M=len(cfg.imu_cols),
@@ -219,8 +220,9 @@ class OneSensorDecomposeWHAR(nn.Module):
         x = self.model(data)
         pred = self.classifier(x)
         return pred
-    
-class CMI_DecomposeWHARv2(nn.Module):
+
+# multi-sensor w/ diff embedding layers and backbones
+class MultiSensor_DecomposeWHAR_v2(nn.Module):
     def __init__(self,
                  num_imu=cfg.imu_num_sensor, 
                  num_tof=cfg.tof_num_sensor,
@@ -238,7 +240,7 @@ class CMI_DecomposeWHARv2(nn.Module):
                  num_m_layers=cfg.num_m_layers, 
                  num_a_layers=cfg.num_a_layers,
                  num_classes=cfg.num_classes):
-        super(CMI_DecomposeWHARv2, self).__init__()
+        super(MultiSensor_DecomposeWHAR_v2, self).__init__()
         
         self.num_imu = num_imu
         self.num_tof = num_tof  
@@ -293,16 +295,15 @@ class CMI_DecomposeWHARv2(nn.Module):
         self.fc_out = nn.Linear(total_sensors * D * T, num_classes)
         self.dropout_prob = 0.6
 
-    def forward(self, inputs):
-        # inputs: dict w/ 'imu', 'tof', 'thm'
+    def forward(self, imu_data, thm_data, tof_data):
+        # inputs: 'imu', 'tof', 'thm'
         # imu: [B, 1, L, 7]
         # tof: [B, 5, L, 64] 
         # thm: [B, 5, L, 1]
         
-        B = inputs['imu'].shape[0]
+        B = imu_data.shape[0]
         processed_sensors = []
         
-        imu_data = inputs['imu']  # [B, 1, L, 7]
         imu_x = imu_data.reshape(B * self.num_imu, imu_data.shape[2], imu_data.shape[3])
         imu_x = imu_x.permute(0, 2, 1)  # [B*1, 7, L]
         imu_emb = self.imu_embed(imu_x)  # [B*1, 7, D, T]
@@ -315,7 +316,7 @@ class CMI_DecomposeWHARv2(nn.Module):
         imu_emb = imu_emb.reshape(B, self.num_imu, -1)  # [B, 1, D*T]
         processed_sensors.append(imu_emb)
         
-        tof_data = inputs['tof']  # [B, 5, L, 64]
+        tof_data = tof_data  # [B, 5, L, 64]
         tof_x = tof_data.reshape(B * self.num_tof, tof_data.shape[2], tof_data.shape[3])
         tof_x = tof_x.permute(0, 2, 1)  # [B*5, 64, L]
         tof_emb = self.tof_embed(tof_x)  # [B*5, 16, D, T] после 2D обработки
@@ -328,7 +329,7 @@ class CMI_DecomposeWHARv2(nn.Module):
         tof_emb = tof_emb.reshape(B, self.num_tof, -1)  # [B, 5, D*T]
         processed_sensors.append(tof_emb)
         
-        thm_data = inputs['thm']  # [B, 5, L, 1]
+        thm_data = thm_data  # [B, 5, L, 1]
         thm_x = thm_data.reshape(B * self.num_thm, thm_data.shape[2], thm_data.shape[3])
         thm_x = thm_x.permute(0, 2, 1)  # [B*5, 1, L]
         thm_emb = self.thm_embed(thm_x)  # [B*5, 1, D, T]
@@ -362,3 +363,78 @@ class CMI_DecomposeWHARv2(nn.Module):
         pred = self.fc_out(x)
         
         return x, pred
+
+# simplified dwhar for 1-sensor input
+class DecomposeWHAR_SingleSensor_v2(nn.Module):
+    def __init__(self,
+                 M,  # Number of variables in the multivariate sequence
+                 L,  # Length of the input sequence (time steps)
+                 D=cfg.ddim,  # Number of channels per variable
+                 P=cfg.emb_kernel_size,  # Kernel size of the embedding layer
+                 S=cfg.stride,  # Stride of the embedding layer
+                 kernel_size=cfg.kernel_size,  # Kernel size for convolutional layers
+                 r=cfg.reduction_ratio,  # A hyperparameter for decomposition (e.g., reduction ratio)
+                 num_layers=cfg.num_layers,  # Number of decomposition layers
+                 num_m_layers=cfg.num_m_layers,  # Number of mamba layers
+                 num_classes=cfg.num_classes):   
+        super(DecomposeWHAR_SingleSensor_v2, self).__init__()
+
+        self.num_layers = num_layers
+        self.num_m_layers = num_m_layers
+        T = L // S  # Calculate the number of patches after embedding
+        self.T = T
+        self.D = D
+        self.M = M
+        
+        # Embedding layer to transform input sequences into higher dimensional representations
+        self.embed_layer = Embedding(P, S, D)
+        
+        # Backbone consisting of multiple decomposition convolutional blocks
+        self.backbone = nn.ModuleList([DecomposeConvBlock(M, D, kernel_size, r) for _ in range(num_layers)])
+        
+        self.dropout_prob = 0.6  # Dropout probability
+
+        d_model_mamba = D  # Model dimension for Mamba (single sensor)
+        d_state = 16  # State dimension for Mamba
+        d_conv = 4  # Convolutional dimension for Mamba
+
+        # Mamba Block for Global Temporal Aggregation (GTA)
+        self.mamba_preprocess = nn.ModuleList([
+            Mamba_Layer(Mamba(d_model=d_model_mamba, d_state=d_state, d_conv=d_conv), d_model_mamba)
+            for _ in range(num_m_layers)
+        ])
+
+        # Final classification layer
+        self.fc_out = nn.Linear(M * D * T, num_classes)
+
+    def forward(self, inputs):  # inputs: (B, 1, L, M) - Batch size, 1 sensor, Sequence length, Number of variables
+        B, N, L, M = inputs.shape[0], inputs.shape[1], inputs.shape[2], inputs.shape[3]  # bs, 1, seq_len, n_vars
+        
+        # Remove sensor dimension since we have only 1 sensor
+        x = inputs.squeeze(1)  # (B, 1, L, M) -> (B, L, M)
+        x = x.permute(0, 2, 1)  # (B, M, L)
+
+        # Embedding
+        x_emb = self.embed_layer(x)  # [B, M, L] -> [B, M, D, T]
+
+        # Backbone decomposition blocks
+        for i in range(self.num_layers):
+            x_emb = self.backbone[i](x_emb)  # [B, M, D, T] -> [B, M, D, T]
+
+        # Reshape for temporal processing
+        # [B, M, D, T] -> [B, T, M*D]
+        x_emb = x_emb.permute(0, 3, 1, 2)  # [B, T, M, D]
+        x_emb = x_emb.reshape(B, self.T, -1)  # [B, T, M*D]
+
+        # Mamba layers for temporal aggregation
+        for i in range(self.num_m_layers):
+            x_emb = self.mamba_preprocess[i](x_emb)  # [B, T, M*D]
+
+        # Global pooling over time dimension
+        x = x_emb.mean(dim=1)  # [B, T, M*D] -> [B, M*D]
+
+        # Dropout and classification
+        x = F.dropout(x, p=self.dropout_prob, training=self.training)
+        pred = self.fc_out(x)  # [B, M*D] -> [B, num_classes]
+
+        return x, pred  # output: [B, num_classes]
