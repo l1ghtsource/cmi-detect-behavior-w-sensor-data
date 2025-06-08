@@ -20,7 +20,7 @@ def get_ts_model_and_params(imu_only):
     if cfg.use_dwhar:
         if cfg.use_megasensor or imu_only:
             return DecomposeWHAR_SingleSensor_v2, {
-                'M': len(cfg.imu_cols) + len(cfg.thm_cols) + len(cfg.tof_cols) if cfg.use_megasensor else len(cfg.imu_cols),
+                'M': cfg.imu_vars + cfg.thm_vars + cfg.tof_vars if cfg.use_megasensor else cfg.imu_vars,
                 'L': cfg.seq_len,
                 'num_classes': cfg.num_classes,
                 'D': cfg.ddim,
@@ -31,9 +31,9 @@ def get_ts_model_and_params(imu_only):
                 'num_imu': cfg.imu_num_sensor,
                 'num_thm': cfg.thm_num_sensor,
                 'num_tof': cfg.tof_num_sensor,
-                'imu_vars': len(cfg.imu_cols),
-                'thm_vars': len(cfg.thm_cols),
-                'tof_vars': len(cfg.tof_cols),
+                'imu_vars': cfg.imu_vars,
+                'thm_vars': cfg.thm_vars,
+                'tof_vars': cfg.tof_vars,
                 'L': cfg.seq_len,
                 'num_classes': cfg.num_classes,
                 'D': cfg.ddim,

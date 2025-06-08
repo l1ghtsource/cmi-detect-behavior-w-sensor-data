@@ -40,7 +40,7 @@ cfg.seed = 42
 # --- ts ds cfg ---
 cfg.norm_ts = True
 cfg.use_demo = False
-cfg.imu_only = True
+cfg.imu_only = False
 
 # --- im ds cfg ---
 cfg.morlet_sd_spread = 6
@@ -64,6 +64,9 @@ cfg.num_m_layers = 1
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
+cfg.imu_vars = 7
+cfg.thm_vars = 1
+cfg.tof_vars = 8 * 8
 
 # --- train params ---
 cfg.bs = 256

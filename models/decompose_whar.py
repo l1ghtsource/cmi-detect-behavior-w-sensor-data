@@ -125,9 +125,9 @@ class DecomposeWHAR_Extractor(nn.Module):
 # just DecomposeWHAR for each sensor lol
 class MultiSensor_DecomposeWHAR_v1(nn.Module):
     def __init__(self, 
-                 imu_num_sensor=cfg.imu_num_sensor, imu_M=7,
-                 thm_num_sensor=cfg.thm_num_sensor, thm_M=1,
-                 tof_num_sensor=cfg.tof_num_sensor, tof_M=64,
+                 imu_num_sensor=cfg.imu_num_sensor, imu_M=cfg.imu_vars,
+                 thm_num_sensor=cfg.thm_num_sensor, thm_M=cfg.thm_vars,
+                 tof_num_sensor=cfg.tof_num_sensor, tof_M=cfg.tof_vars,
                  L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.num_classes, 
                  S=4, use_cross_sensor=True):
         super().__init__()
@@ -227,9 +227,9 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
                  num_imu=cfg.imu_num_sensor, 
                  num_tof=cfg.tof_num_sensor,
                  num_thm=cfg.thm_num_sensor, 
-                 imu_vars=7, 
-                 tof_vars=64,  
-                 thm_vars=1,   
+                 imu_vars=cfg.imu_vars, 
+                 tof_vars=cfg.tof_vars,  
+                 thm_vars=cfg.thm_vars,   
                  L=cfg.seq_len,  
                  D=cfg.ddim,   
                  P=cfg.emb_kernel_size, 
@@ -300,7 +300,7 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
         # imu: [B, 1, L, 7]
         # tof: [B, 5, L, 64] 
         # thm: [B, 5, L, 1]
-        
+
         B = imu_data.shape[0]
         processed_sensors = []
         
