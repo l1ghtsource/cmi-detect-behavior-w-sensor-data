@@ -32,7 +32,7 @@ test_demographics = pd.read_csv(cfg.test_demographics_path)
 # --- join demographics stats ---
 
 train = train.merge(train_demographics, how='left', on='subject')
-test = train.merge(test_demographics, how='left', on='subject')
+test = test.merge(test_demographics, how='left', on='subject')
 
 # -- convert to seq ---
 
