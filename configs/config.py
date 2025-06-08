@@ -50,6 +50,7 @@ cfg.imu_only = False
 
 # --- save dir ---
 cfg.model_dir = 'weights'
+cfg.oof_dir = 'oofs'
 
 # --- decomposewhar !! ---
 cfg.use_dwhar = True

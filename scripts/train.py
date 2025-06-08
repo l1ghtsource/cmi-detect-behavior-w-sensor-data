@@ -1,5 +1,6 @@
 import os
 import gc
+import json
 
 import pandas as pd
 import numpy as np
@@ -146,7 +147,8 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
 
 def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
-    
+    os.makedirs(cfg.oof_dir, exist_ok=True)
+
     sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
     targets = train_seq[cfg.target].values
     groups = train_seq[cfg.group].values
@@ -267,4 +269,23 @@ def run_training_with_stratified_group_kfold():
     oof_m = just_stupid_macro_f1_haha(oof_targets, oof_pred_labels)
     print(f'{oof_m=}')
     
+    oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_preds.npy')
+    oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_targets.npy')
+    oof_pred_labels_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_pred_labels.npy')
+
+    np.save(oof_preds_path, oof_preds)
+    np.save(oof_targets_path, oof_targets)
+    np.save(oof_pred_labels_path, oof_pred_labels)
+
+    oof_info = {
+        'oof_macro_f1': oof_m,
+        'best_f1_scores_per_fold': best_f1_scores,
+        'mean_cv_f1': np.mean(best_f1_scores),
+        'std_cv_f1': np.std(best_f1_scores)
+    }
+    
+    oof_info_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_info.json')
+    with open(oof_info_path, 'w') as f:
+        json.dump(oof_info, f, indent=2)
+
     return best_models, oof_preds
