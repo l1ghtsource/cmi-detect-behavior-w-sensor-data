@@ -10,11 +10,12 @@ from torch.utils.data import DataLoader
 from configs.config import cfg
 from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
 from utils.data_preproc import fast_seq_agg, le
+from utils.tta import apply_tta
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 train = pd.read_csv(cfg.train_path)
-train, label_encoder = le(train)
+train, label_encoder, label_encoder_aux = le(train)
 del train
 gc.collect()
 
@@ -43,6 +44,8 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         train=False
     )
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
+
+    use_tta = len(cfg.tta_strategies) > 0 # strats != {}
     
     all_fold_predicted_indices = [] 
     all_fold_logits = []
@@ -69,8 +72,17 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         current_fold_batch_logits = []
         with torch.no_grad():
             for batch in test_loader:
-                outputs = forward_model(model, batch, imu_only=use_imu_only)   
-                current_fold_batch_logits.append(outputs.cpu().numpy())
+                if not use_tta:
+                    outputs = forward_model(model, batch, imu_only=use_imu_only)   
+                    current_fold_batch_logits.append(outputs.cpu().numpy())
+                else:
+                    augmented_batches = apply_tta(batch, cfg.tta_strategies)
+                    batch_tta_logits = []
+                    for aug_batch in augmented_batches:
+                        outputs = forward_model(model, aug_batch, imu_only=use_imu_only)
+                        batch_tta_logits.append(outputs.cpu().numpy())
+                    avg_tta_logits = np.mean(batch_tta_logits, axis=0)
+                    current_fold_batch_logits.append(avg_tta_logits)
         
         concatenated_fold_logits = np.concatenate(current_fold_batch_logits, axis=0)
         

@@ -67,7 +67,7 @@ cfg.tof_num_sensor = 5
 
 # --- train params ---
 cfg.bs = 256
-cfg.n_epochs = 50
+cfg.n_epochs = 30
 cfg.patience = 5
 cfg.lr = 1e-3
 cfg.weight_decay = 1e-2
@@ -91,12 +91,22 @@ cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 
 # --- ema ---
-cfg.use_ema = False
-cfg.ema_decay = 0.998
+cfg.use_ema = True
+cfg.ema_decay = 0.999
 
 # --- inference params ---
 cfg.weights_path = None
 cfg.is_soft = True
 cfg.use_entmax = False
+cfg.tta_strategies = {
+    'jitter': {
+        'sigma': 0.01,
+        'sensors': ['imu', 'thm']
+    },
+    'scaling': {
+        'sigma': 0.03,
+        'sensors': ['imu', 'thm']
+    }
+}
 
 pprint.pprint(vars(cfg))
