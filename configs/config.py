@@ -29,6 +29,7 @@ cfg.is_infer = False
 
 # --- important vars ---
 cfg.target = 'gesture'
+cfg.aux_target = 'sequence_type'
 cfg.group = 'subject'
 cfg.seq_len = 110
 cfg.num_classes = 18

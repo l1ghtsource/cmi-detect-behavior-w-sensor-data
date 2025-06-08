@@ -7,11 +7,13 @@ from configs.config import cfg
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
 
 class TS_CMIDataset(Dataset):
-    def __init__(self, dataframe, seq_len=100, target_col='gesture', train=True):
-        self.df = dataframe.reset_index(drop=True)
+    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+        self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
+        self.aux_target_col = aux_target_col
         self.target_col = target_col
         self.train = train
+        self.has_target = self.target_col in self.df.columns and self.aux_target_col in self.df.columns
         
         self.imu_cols = cfg.imu_cols
         self.thm_cols = cfg.thm_cols
@@ -111,14 +113,15 @@ class TS_CMIDataset(Dataset):
             'tof': torch.tensor(tof_data, dtype=torch.float32)
         }
         
-        if self.target_col and self.target_col in self.df.columns and self.target_col in row:
+        if self.has_target:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
+            features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
         
         return features
     
 class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
-    def __init__(self, dataframe, seq_len=100, target_col='gesture', train=True):
-        super().__init__(dataframe, seq_len, target_col, train)
+    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+        super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
     
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -136,12 +139,13 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         
         if 'target' in features:
             result['target'] = features['target']
+            result['aux_target'] = features['aux_target']
             
         return result
     
 class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
-    def __init__(self, dataframe, seq_len=100, target_col='gesture', train=True):
-        super().__init__(dataframe, seq_len, target_col, train)
+    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
+        super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
     
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -157,15 +161,18 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         result = {'megasensor': model_input}
         if 'target' in features:
             result['target'] = features['target']
+            result['aux_target'] = features['aux_target']
             
         return result
     
 class TS_Demo_CMIDataset(Dataset):
-    def __init__(self, dataframe, seq_len=100, target_col='gesture', train=True):
+    def __init__(self, dataframe, seq_len=100, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True):
         self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
         self.target_col = target_col
+        self.aux_target_col = aux_target_col
         self.train = train
+        self.has_target = self.target_col in self.df.columns and self.aux_target_col in self.df.columns
        
         self.imu_cols = cfg.imu_cols
         self.thm_cols = cfg.thm_cols
@@ -294,7 +301,8 @@ class TS_Demo_CMIDataset(Dataset):
             'demographics': torch.tensor(demographics, dtype=torch.float32)
         }
        
-        if self.target_col and self.target_col in row.index:
+        if self.has_target:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
+            features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
        
         return features

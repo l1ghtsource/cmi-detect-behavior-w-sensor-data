@@ -171,12 +171,14 @@ def run_training_with_stratified_group_kfold():
             dataframe=train_subset,
             seq_len=cfg.seq_len,
             target_col=cfg.target,
+            aux_target_col=cfg.aux_target,
             train=True
         )
         val_dataset = TSDataset(
             dataframe=val_subset,
             seq_len=cfg.seq_len,
             target_col=cfg.target,
+            aux_target_col=cfg.aux_target,
             train=False
         )
         
