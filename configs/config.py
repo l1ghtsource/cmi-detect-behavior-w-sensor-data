@@ -71,6 +71,11 @@ cfg.imu_vars = 7
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
 
+# --- timemil ---
+cfg.use_timemil = False
+cfg.timemil_dim = 64
+cfg.timemil_dropout = 0.0
+
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
 cfg.encoder_hidden_dim = 64
