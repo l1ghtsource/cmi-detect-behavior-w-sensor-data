@@ -84,6 +84,7 @@ cfg.lr = 1e-3
 cfg.weight_decay = 1e-2
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
+cfg.max_norm = 1.0
 cfg.use_lookahead = False
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad']
 

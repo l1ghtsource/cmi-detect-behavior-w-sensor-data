@@ -94,7 +94,7 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
 
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=cfg.max_norm)
 
         optimizer.step()
         scheduler.step()
