@@ -90,7 +90,7 @@ class TS_CMIDataset(Dataset):
                 data_stacked[:, i] = 0.0
             elif np.any(np.isnan(column_data)):
                 s = pd.Series(column_data)
-                s_filled = s.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill').fillna(0.0)
+                s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
                 data_stacked[:, i] = s_filled.values
         
         data_stacked = self._apply_augmentations(data_stacked, sensor_type)
@@ -256,7 +256,7 @@ class TS_Demo_CMIDataset(Dataset):
                 data_stacked[:, i] = 0.0
             elif np.any(np.isnan(column_data)):
                 s = pd.Series(column_data)
-                s_filled = s.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill').fillna(0.0)
+                s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
                 data_stacked[:, i] = s_filled.values
         
         data_stacked = self._apply_augmentations(data_stacked, sensor_type)
