@@ -23,6 +23,7 @@ from utils.metrics import just_stupid_macro_f1_haha
 from utils.seed import seed_everything
 
 # --- set seed ---
+
 seed_everything(cfg.seed)
 
 # --- load data ---
