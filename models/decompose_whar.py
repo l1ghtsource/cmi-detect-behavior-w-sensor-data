@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from modules.decompose import Embedding, DecomposeConvBlock
+from modules.decompose import Embedding, ToFEmbedding, DecomposeConvBlock
 from modules.mamba import Mamba_Layer, Att_Layer
 from modules.selfattn import FullAttention, AttentionLayer
 from mamba_ssm import Mamba
@@ -17,7 +17,7 @@ from configs.config import cfg
 # D: number of channels per variable
 # P: kernel size of the embedding layer
 # S: stride of the embedding layer
-class DecomposeWHAR(nn.Module):
+class DecomposeWHAR_Extractor(nn.Module):
     def __init__(self,
                  num_sensor,  # Number of sensors (N)
                  M,  # Number of variables in the multivariate sequence
@@ -30,7 +30,7 @@ class DecomposeWHAR(nn.Module):
                  num_layers=cfg.num_layers,  # Number of decomposition layers
                  num_m_layers=cfg.num_m_layers,   # Number of mamba layers
                  num_a_layers=cfg.num_a_layers):   # Number of attention layers
-        super(DecomposeWHAR, self).__init__()
+        super(DecomposeWHAR_Extractor, self).__init__()
 
         self.num_layers = num_layers
         self.num_a_layers = num_a_layers
@@ -135,13 +135,13 @@ class MultiSensorDecomposeWHAR(nn.Module):
         self.S = S
         self.use_cross_sensor = use_cross_sensor
         
-        self.imu_dwhar = DecomposeWHAR(
+        self.imu_dwhar = DecomposeWHAR_Extractor(
             num_sensor=imu_num_sensor, M=imu_M, L=L, D=D, S=S
         )
-        self.thm_dwhar = DecomposeWHAR(
+        self.thm_dwhar = DecomposeWHAR_Extractor(
             num_sensor=thm_num_sensor, M=thm_M, L=L, D=D, S=S
         )
-        self.tof_dwhar = DecomposeWHAR(
+        self.tof_dwhar = DecomposeWHAR_Extractor(
             num_sensor=tof_num_sensor, M=tof_M, L=L, D=D, S=S
         )
         
@@ -205,7 +205,7 @@ class OneSensorDecomposeWHAR(nn.Module):
         ):
         super().__init__()
 
-        self.model = DecomposeWHAR(
+        self.model = DecomposeWHAR_Extractor(
             num_sensor=1,
             M=M,
             L=L,
@@ -219,3 +219,146 @@ class OneSensorDecomposeWHAR(nn.Module):
         x = self.model(data)
         pred = self.classifier(x)
         return pred
+    
+class CMI_DecomposeWHARv2(nn.Module):
+    def __init__(self,
+                 num_imu=cfg.imu_num_sensor, 
+                 num_tof=cfg.tof_num_sensor,
+                 num_thm=cfg.thm_num_sensor, 
+                 imu_vars=7, 
+                 tof_vars=64,  
+                 thm_vars=1,   
+                 L=cfg.seq_len,  
+                 D=cfg.ddim,   
+                 P=cfg.emb_kernel_size, 
+                 S=cfg.stride,  
+                 kernel_size=cfg.kernel_size,
+                 r=cfg.reduction_ratio,
+                 num_layers=cfg.num_layers, 
+                 num_m_layers=cfg.num_m_layers, 
+                 num_a_layers=cfg.num_a_layers,
+                 num_classes=cfg.num_classes):
+        super(CMI_DecomposeWHARv2, self).__init__()
+        
+        self.num_imu = num_imu
+        self.num_tof = num_tof  
+        self.num_thm = num_thm
+        self.imu_vars = imu_vars
+        self.tof_vars = tof_vars
+        self.thm_vars = thm_vars
+        self.D = D
+        self.num_layers = num_layers
+        self.num_m_layers = num_m_layers
+        self.num_a_layers = num_a_layers
+        
+        T = L // S
+        self.T = T
+        
+        self.imu_embed = Embedding(P, S, D)
+        self.tof_embed = ToFEmbedding(P, S, D)
+        self.thm_embed = Embedding(P, S, D)
+        
+        self.imu_backbone = nn.ModuleList([
+            DecomposeConvBlock(imu_vars, D, kernel_size, r) 
+            for _ in range(num_layers)
+        ])
+        
+        self.tof_backbone = nn.ModuleList([
+            DecomposeConvBlock(16, D, kernel_size, r) # 16 after 2d-conv
+            for _ in range(num_layers)
+        ])
+        
+        self.thm_backbone = nn.ModuleList([
+            DecomposeConvBlock(thm_vars, D, kernel_size, r)
+            for _ in range(num_layers)
+        ])
+        
+        total_sensors = num_imu + num_tof + num_thm # 11
+        d_model_mamba = total_sensors * D
+        
+        self.mamba_preprocess = nn.ModuleList([
+            Mamba_Layer(Mamba(d_model=d_model_mamba, d_state=16, d_conv=4), d_model_mamba)
+            for _ in range(num_m_layers)
+        ])
+        
+        self.AM_layers = nn.ModuleList([
+            Att_Layer(
+                AttentionLayer(
+                    FullAttention(False, 1, attention_dropout=0.05, output_attention=True),
+                    D * T, 8),
+                D * T, 0.05
+            ) for _ in range(num_a_layers)
+        ])
+        
+        self.fc_out = nn.Linear(total_sensors * D * T, num_classes)
+        self.dropout_prob = 0.6
+
+    def forward(self, inputs):
+        # inputs: dict w/ 'imu', 'tof', 'thm'
+        # imu: [B, 1, L, 7]
+        # tof: [B, 5, L, 64] 
+        # thm: [B, 5, L, 1]
+        
+        B = inputs['imu'].shape[0]
+        processed_sensors = []
+        
+        imu_data = inputs['imu']  # [B, 1, L, 7]
+        imu_x = imu_data.reshape(B * self.num_imu, imu_data.shape[2], imu_data.shape[3])
+        imu_x = imu_x.permute(0, 2, 1)  # [B*1, 7, L]
+        imu_emb = self.imu_embed(imu_x)  # [B*1, 7, D, T]
+        
+        for layer in self.imu_backbone:
+            imu_emb = layer(imu_emb)
+        
+        imu_emb = rearrange(imu_emb, 'b m d t -> b m (d t)', b=B*self.num_imu)
+        imu_emb = imu_emb.mean(dim=1)  # [B*1, D*T]
+        imu_emb = imu_emb.reshape(B, self.num_imu, -1)  # [B, 1, D*T]
+        processed_sensors.append(imu_emb)
+        
+        tof_data = inputs['tof']  # [B, 5, L, 64]
+        tof_x = tof_data.reshape(B * self.num_tof, tof_data.shape[2], tof_data.shape[3])
+        tof_x = tof_x.permute(0, 2, 1)  # [B*5, 64, L]
+        tof_emb = self.tof_embed(tof_x)  # [B*5, 16, D, T] после 2D обработки
+        
+        for layer in self.tof_backbone:
+            tof_emb = layer(tof_emb)
+            
+        tof_emb = rearrange(tof_emb, 'b m d t -> b m (d t)', b=B*self.num_tof)
+        tof_emb = tof_emb.mean(dim=1)  # [B*5, D*T]
+        tof_emb = tof_emb.reshape(B, self.num_tof, -1)  # [B, 5, D*T]
+        processed_sensors.append(tof_emb)
+        
+        thm_data = inputs['thm']  # [B, 5, L, 1]
+        thm_x = thm_data.reshape(B * self.num_thm, thm_data.shape[2], thm_data.shape[3])
+        thm_x = thm_x.permute(0, 2, 1)  # [B*5, 1, L]
+        thm_emb = self.thm_embed(thm_x)  # [B*5, 1, D, T]
+        
+        for layer in self.thm_backbone:
+            thm_emb = layer(thm_emb)
+            
+        thm_emb = rearrange(thm_emb, 'b m d t -> b m (d t)', b=B*self.num_thm)
+        thm_emb = thm_emb.mean(dim=1)  # [B*5, D*T]
+        thm_emb = thm_emb.reshape(B, self.num_thm, -1)  # [B, 5, D*T]
+        processed_sensors.append(thm_emb)
+        
+        x_emb = torch.cat(processed_sensors, dim=1)  # [B, 11, D*T]
+        
+        x_emb = x_emb.reshape(B, x_emb.shape[1], self.D, self.T)  # [B, 11, D, T]
+        x_emb = x_emb.permute(0, 3, 1, 2)  # [B, T, 11, D]
+        x_emb = x_emb.reshape(B, x_emb.shape[1], -1)  # [B, T, 11*D]
+        
+        for layer in self.mamba_preprocess:
+            x_emb = layer(x_emb)
+            
+        x_emb = x_emb.reshape(B, x_emb.shape[1], 11, self.D)  # [B, T, 11, D]
+        x_emb = x_emb.permute(0, 2, 3, 1)  # [B, 11, D, T]
+        x_emb = x_emb.reshape(B, x_emb.shape[1], -1)  # [B, 11, D*T]
+        
+        for layer in self.AM_layers:
+            x_emb, _ = layer(x_emb, None)
+            
+        x = x_emb.reshape(B, -1)
+        x = F.dropout(x, p=self.dropout_prob, training=self.training)
+        pred = self.fc_out(x)
+        
+        return x, pred

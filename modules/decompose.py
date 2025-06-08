@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
@@ -41,6 +42,54 @@ class Embedding(nn.Module):
         x_emb = rearrange(x_emb, '(b m) d t -> b m d t', b=B)  # Reshape back to [B, M, D, T]
 
         return x_emb  # Output: [B, M, D, T]
+
+# custom emb for tof sensor (2d -> 1d) 
+class ToFEmbedding(nn.Module):
+    def __init__(self, P=8, S=4, D=64):
+        super(ToFEmbedding, self).__init__()
+        self.P = P
+        self.S = S
+        self.spatial_conv = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),   # 8x8 -> 8x8
+            nn.ReLU(),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),  # 8x8 -> 8x8  
+            nn.AdaptiveAvgPool2d(4)                      # 8x8 -> 4x4 = 16 features
+        )
+        self.temporal_conv = nn.Conv1d(
+            in_channels=1,
+            out_channels=D,
+            kernel_size=P,
+            stride=S
+        )
+        
+    def forward(self, x):
+        # x: [B*5, 64, L] где 64 = 8*8
+        B = x.shape[0]
+        L = x.shape[2]
+        
+        x_2d = x.reshape(B, L, 8, 8)  # [B*5, L, 8, 8]
+        x_2d = x_2d.permute(0, 1, 3, 2)  # [B*5, L, 8, 8]
+        
+        spatial_features = []
+        for t in range(L):
+            frame = x_2d[:, t:t+1, :, :]  # [B*5, 1, 8, 8]
+            spatial_feat = self.spatial_conv(frame)  # [B*5, 16, 4, 4]
+            spatial_feat = spatial_feat.flatten(2)   # [B*5, 16, 16]
+            spatial_feat = spatial_feat.mean(dim=2)  # [B*5, 16]
+            spatial_features.append(spatial_feat)
+            
+        x_temporal = torch.stack(spatial_features, dim=2)  # [B*5, 16, L]
+        
+        x_emb_list = []
+        for ch in range(16):
+            ch_data = x_temporal[:, ch:ch+1, :]  # [B*5, 1, L]
+            ch_pad = F.pad(ch_data, pad=(0, self.P - self.S), mode='replicate')
+            ch_emb = self.temporal_conv(ch_pad)  # [B*5, D, T]
+            x_emb_list.append(ch_emb)
+            
+        x_emb = torch.stack(x_emb_list, dim=1)  # [B*5, 16, D, T]
+        
+        return x_emb
 
 # Cross-Channel Fusion (CCF) and Cross-Variable Fusion (CVF) via Point-Wise Convolution
 class PWConv(nn.Module):
