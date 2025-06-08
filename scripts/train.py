@@ -20,6 +20,10 @@ from modules.mixup import MixupLoss, mixup_batch
 from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
+from utils.seed import seed_everything
+
+# --- set seed ---
+seed_everything(cfg.seed)
 
 # --- load data ---
 
@@ -142,7 +146,7 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
 def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
     
-    sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=False)
+    sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
     targets = train_seq[cfg.target].values
     groups = train_seq[cfg.group].values
     
