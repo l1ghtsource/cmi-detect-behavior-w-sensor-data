@@ -22,6 +22,7 @@ from modules.ema import EMA
 from modules.mixup import MixupLoss, mixup_batch
 from modules.lookahead import Lookahead
 from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
+from utils.get_optimizer import get_optimizer
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
 from utils.seed import seed_everything
@@ -200,7 +201,9 @@ def run_training_with_stratified_group_kfold():
                     'seed': cfg.seed,
                     'weight_decay': cfg.weight_decay,
                     'label_smoothing': cfg.label_smoothing,
-                    'patience': cfg.patience
+                    'patience': cfg.patience,
+                    'use_lookahead': cfg.use_lookahead,
+                    'optimizer': cfg.optim_type,
                 },
                 tags=[f'fold_{fold}', prefix1.rstrip('_'), prefix2.rstrip('_')] if prefix1 or prefix2 else [f'fold_{fold}']
             )
@@ -236,7 +239,7 @@ def run_training_with_stratified_group_kfold():
 
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
-        optimizer = optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        optimizer = get_optimizer(params=model.parameters())
         if cfg.use_lookahead:
             optimizer = Lookahead(optimizer)    
 

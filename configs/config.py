@@ -85,6 +85,7 @@ cfg.weight_decay = 1e-2
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
 cfg.use_lookahead = False
+cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad']
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 2
