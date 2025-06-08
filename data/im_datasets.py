@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from configs.config import cfg
 from data.ts_datasets import TS_CMIDataset
 
-class IMG_CMIDataset(TS_CMIDataset):
+class IM_CMIDataset(TS_CMIDataset):
     def __init__(
             self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, 
             train=True, im_size=cfg.im_size, transform_type=cfg.transform_type
@@ -112,9 +112,9 @@ class IMG_CMIDataset(TS_CMIDataset):
         tof_rgb = self._to_rgb_format(tof_image)
         
         features = {
-            'img_imu': torch.tensor(imu_rgb, dtype=torch.float32),
-            'img_thm': torch.tensor(thm_rgb, dtype=torch.float32),
-            'img_tof': torch.tensor(tof_rgb, dtype=torch.float32)
+            'im_imu': torch.tensor(imu_rgb, dtype=torch.float32),
+            'im_thm': torch.tensor(thm_rgb, dtype=torch.float32),
+            'im_tof': torch.tensor(tof_rgb, dtype=torch.float32)
         }
         
         if self.has_target:
@@ -133,9 +133,9 @@ class IMG_CMIDataset(TS_CMIDataset):
         for i, idx in enumerate(random_indices):
             sample = self[idx]
             
-            img_imu = sample['img_imu'].permute(1, 2, 0).numpy()
-            img_thm = sample['img_thm'].permute(1, 2, 0).numpy()
-            img_tof = sample['img_tof'].permute(1, 2, 0).numpy()
+            img_imu = sample['im_imu'].permute(1, 2, 0).numpy()
+            img_thm = sample['im_thm'].permute(1, 2, 0).numpy()
+            img_tof = sample['im_tof'].permute(1, 2, 0).numpy()
             
             target = sample.get('target', 'N/A')
             aux_target = sample.get('aux_target', 'N/A')

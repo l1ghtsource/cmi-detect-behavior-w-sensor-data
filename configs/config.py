@@ -37,9 +37,12 @@ cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
 
-# --- img ds cfg ---
-cfg.im_size = 224
+# --- im ds cfg ---
+cfg.im_size = 160
 cfg.transform_type = 'cwt'
+cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
+cfg.encoder_hidden_dim = 64
+cfg.im_pretrained = True
 
 # --- ts ds cfg ---
 cfg.norm_ts = True
