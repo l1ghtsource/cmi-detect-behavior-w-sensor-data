@@ -20,6 +20,7 @@ import wandb
 from configs.config import cfg
 from modules.ema import EMA
 from modules.mixup import MixupLoss, mixup_batch
+from modules.lookahead import Lookahead
 from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha
@@ -236,6 +237,9 @@ def run_training_with_stratified_group_kfold():
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
         optimizer = optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        if cfg.use_lookahead:
+            optimizer = Lookahead(optimizer)    
+
         criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
 
         num_training_steps = cfg.n_epochs * len(train_loader)
@@ -329,7 +333,7 @@ def run_training_with_stratified_group_kfold():
 
         all_preds = np.concatenate(all_preds, axis=0)
         oof_preds[val_idx] = all_preds
-        
+
         if cfg.do_wandb_log:
             wandb.finish()
     
