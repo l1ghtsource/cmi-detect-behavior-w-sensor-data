@@ -42,10 +42,6 @@ cfg.norm_ts = True
 cfg.use_demo = False
 cfg.imu_only = False
 
-# --- im ds cfg ---
-cfg.morlet_sd_spread = 6
-cfg.morlet_sd_factor = 2.5
-
 # --- save dir ---
 cfg.model_dir = 'weights'
 
@@ -94,7 +90,7 @@ cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 
 # --- ema ---
-cfg.use_ema = True
+cfg.use_ema = False
 cfg.ema_decay = 0.999
 
 # --- inference params ---
