@@ -21,10 +21,11 @@ class TS_CMIDataset(Dataset):
         series_data = np.asarray(series_data, dtype=np.float64)
         current_len = len(series_data)
         if current_len > target_len:
-            return series_data[:target_len]
+            # left truncation (keep the last target_len elements)
+            return series_data[-target_len:]
         elif current_len < target_len:
             padding = np.zeros(target_len - current_len, dtype=series_data.dtype)
-            return np.concatenate((series_data, padding))
+            return np.concatenate((padding, series_data))  # padding on the left
         return series_data
 
     def _normalize_sensor_data(self, data):
@@ -49,6 +50,10 @@ class TS_CMIDataset(Dataset):
         processed_series_list = []
         for col_name in sensor_cols:
             series = row[col_name]
+            # replace -1 with 255 for tof columns
+            if col_name in self.tof_cols:
+                series = np.array(series)
+                series[series == -1] = 255
             padded_truncated_series = self._pad_or_truncate(series, self.seq_len)
             processed_series_list.append(padded_truncated_series)
         
@@ -170,21 +175,26 @@ class TS_Demo_CMIDataset(Dataset):
         series_data = np.asarray(series_data, dtype=np.float64)
         current_len = len(series_data)
         if current_len > target_len:
-            return series_data[:target_len]
+            # left truncation (keep the last target_len elements)
+            return series_data[-target_len:]
         elif current_len < target_len:
             padding = np.zeros(target_len - current_len, dtype=series_data.dtype)
-            return np.concatenate((series_data, padding))
+            return np.concatenate((padding, series_data))  # padding on the left
         return series_data
    
     def _prepare_sensor_data(self, row, sensor_cols):
         processed_series_list = []
         for col_name in sensor_cols:
             series = row[col_name]
+            # replace -1 with 255 for tof columns
+            if col_name in self.tof_cols:
+                series = np.array(series)
+                series[series == -1] = 255
             padded_truncated_series = self._pad_or_truncate(series, self.seq_len)
             processed_series_list.append(padded_truncated_series)
-       
+        
         data_stacked = np.stack(processed_series_list, axis=1)
-       
+        
         for i in range(data_stacked.shape[1]):
             column_data = data_stacked[:, i]
             if np.all(np.isnan(column_data)):
@@ -193,10 +203,10 @@ class TS_Demo_CMIDataset(Dataset):
                 s = pd.Series(column_data)
                 s_filled = s.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill').fillna(0.0)
                 data_stacked[:, i] = s_filled.values
-       
+        
         data_stacked = self._normalize_sensor_data(data_stacked)
-       
-        return data_stacked  # shape: (seq_len, len(sensor_cols))
+
+        return data_stacked # shape: (seq_len, len(sensor_cols))
    
     def _get_demographics(self, row):
         demo_features = []
