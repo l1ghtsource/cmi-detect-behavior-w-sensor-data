@@ -19,7 +19,7 @@ def get_ts_dataset():
 def get_ts_model_and_params(imu_only):
     if cfg.use_dwhar:
         if cfg.use_megasensor or imu_only:
-            return MultiSensor_DecomposeWHAR_v2, {
+            return DecomposeWHAR_SingleSensor_v2, {
                 'M': len(cfg.imu_cols) + len(cfg.thm_cols) + len(cfg.tof_cols) if cfg.use_megasensor else len(cfg.imu_cols),
                 'L': cfg.seq_len,
                 'num_classes': cfg.num_classes,
@@ -27,7 +27,7 @@ def get_ts_model_and_params(imu_only):
                 'S': cfg.stride
             }
         else:
-            return DecomposeWHAR_SingleSensor_v2, {
+            return MultiSensor_DecomposeWHAR_v2, {
                 'num_imu': cfg.imu_num_sensor,
                 'num_thm': cfg.thm_num_sensor,
                 'num_tof': cfg.tof_num_sensor,
