@@ -89,7 +89,24 @@ class IM_CMIDataset(TS_CMIDataset):
         return resized_image
     
     def _to_rgb_format(self, image):
-        rgb_image = np.stack([image, image, image], axis=0)
+        if not cfg.use_grads:
+            rgb_image = np.stack([image, image, image], axis=0)
+        else:
+            channel1 = image # orig
+            channel2 = np.gradient(image, axis=0) # time grad
+            channel3 = np.gradient(image, axis=1) # freq grad
+            
+            channels = [channel1, channel2, channel3]
+            normalized_channels = []
+            
+            for ch in channels:
+                if ch.max() > ch.min():
+                    ch_norm = (ch - ch.min()) / (ch.max() - ch.min())
+                else:
+                    ch_norm = np.zeros_like(ch)
+                normalized_channels.append(ch_norm)
+            
+            rgb_image = np.stack(normalized_channels, axis=0)
         return rgb_image
     
     def __getitem__(self, idx):
