@@ -121,4 +121,9 @@ cfg.tta_strategies = {
     }
 }
 
+# --- logging ---
+cfg.do_wandb_log = True
+cfg.wandb_project = 'cmi-kaggle-comp-2025'
+cfg.wandb_api_key = '...'
+
 pprint.pprint(vars(cfg))

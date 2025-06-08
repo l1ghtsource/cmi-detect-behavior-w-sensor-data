@@ -15,6 +15,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
+import wandb
+
 from configs.config import cfg
 from modules.ema import EMA
 from modules.mixup import MixupLoss, mixup_batch
@@ -26,6 +28,11 @@ from utils.seed import seed_everything
 # --- set seed ---
 
 seed_everything(cfg.seed)
+
+# --- wandb ---
+
+if cfg.do_wandb_log:
+    os.environ['WANDB_API_KEY'] = cfg.wandb_api_key
 
 # --- load data ---
 
@@ -52,7 +59,7 @@ train_seq, label_encoder, label_encoder_aux = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0):
+def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
     model.train()
         
     total_loss = 0
@@ -64,7 +71,7 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         mixup_criterion = MixupLoss(criterion, cfg.num_classes, cfg.mixup_alpha)
     
     loop = tqdm(train_loader, desc='train', leave=False)
-    
+
     for batch in loop:
         optimizer.zero_grad()
         
@@ -100,11 +107,18 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         all_targets.extend(targets.cpu().numpy())
         all_preds.extend(preds.cpu().numpy())
         
+        if cfg.do_wandb_log: # every batch
+            wandb.log({
+                f'fold_{fold}/train_batch_loss': loss.item(),
+                f'fold_{fold}/learning_rate': scheduler.get_last_lr()[0],
+                f'fold_{fold}/current_step': current_step
+            })
+        
         loop.set_postfix(loss=loss.item())
+        current_step += 1
     
     avg_loss = total_loss / total_samples
     m = just_stupid_macro_f1_haha(all_targets, all_preds)
-    current_step += 1
 
     return avg_loss, m, current_step
 
@@ -164,6 +178,32 @@ def run_training_with_stratified_group_kfold():
         # if fold != cfg.curr_fold:
         #     continue
         
+        if cfg.do_wandb_log:
+            prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
+            prefix2 = 'imu_only_' if cfg.imu_only else ''
+            run_name = f'{prefix1}{prefix2}fold_{fold}'
+            
+            wandb.init(
+                project=cfg.wandb_project,
+                name=run_name,
+                config={
+                    'fold': fold,
+                    'seq_len': cfg.seq_len,
+                    'batch_size': cfg.bs,
+                    'learning_rate': cfg.lr,
+                    'n_epochs': cfg.n_epochs,
+                    'num_classes': cfg.num_classes,
+                    'use_mixup': cfg.use_mixup,
+                    'use_ema': cfg.use_ema,
+                    'imu_only': cfg.imu_only,
+                    'seed': cfg.seed,
+                    'weight_decay': cfg.weight_decay,
+                    'label_smoothing': cfg.label_smoothing,
+                    'patience': cfg.patience
+                },
+                tags=[f'fold_{fold}', prefix1.rstrip('_'), prefix2.rstrip('_')] if prefix1 or prefix2 else [f'fold_{fold}']
+            )
+        
         train_subset = train_seq.iloc[train_idx].reset_index(drop=True)
         val_subset = train_seq.iloc[val_idx].reset_index(drop=True)
         
@@ -189,6 +229,9 @@ def run_training_with_stratified_group_kfold():
 
         TSModel, m_params = get_ts_model_and_params(imu_only=cfg.imu_only)
         model = TSModel(**m_params).to(device)
+
+        if cfg.do_wandb_log:
+            wandb.watch(model, log='all', log_freq=10)
 
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
@@ -217,12 +260,23 @@ def run_training_with_stratified_group_kfold():
             
             train_loss, train_f1, current_step = train_epoch(
                 train_loader, model, optimizer, criterion, device, scheduler, 
-                ema, current_step, num_warmup_steps
+                ema, current_step, num_warmup_steps, fold
             )
             val_loss, val_f1, _, _ = valid_epoch(val_loader, model, criterion, device, ema)
             
             print(f'{train_loss=}, {train_f1=}')
             print(f'{val_loss=}, {val_f1=}')
+            
+            if cfg.do_wandb_log:
+                wandb.log({
+                    f'fold_{fold}/epoch': epoch,
+                    f'fold_{fold}/train_loss': train_loss,
+                    f'fold_{fold}/train_f1': train_f1,
+                    f'fold_{fold}/val_loss': val_loss,
+                    f'fold_{fold}/val_f1': val_f1,
+                    f'fold_{fold}/best_val_f1': best_val_score,
+                    f'fold_{fold}/patience_counter': patience_counter
+                })
             
             if val_f1 > best_val_score:
                 best_val_score = val_f1
@@ -233,11 +287,16 @@ def run_training_with_stratified_group_kfold():
                     for name in ema.shadow:
                         ema_state_dict[name] = ema.shadow[name]
                     torch.save(ema_state_dict, best_ema_path)
+                
+                if cfg.do_wandb_log:
+                    wandb.log({f'fold_{fold}/new_best_val_f1': best_val_score})
             else:
                 patience_counter += 1
             
             if patience_counter >= cfg.patience:
                 print('early stopping')
+                if cfg.do_wandb_log:
+                    wandb.log({f'fold_{fold}/early_stopped_epoch': epoch})
                 break
 
         model.load_state_dict(torch.load(best_model_path))
@@ -250,6 +309,12 @@ def run_training_with_stratified_group_kfold():
 
         best_models.append(model)
         best_f1_scores.append(best_val_score)
+        
+        if cfg.do_wandb_log:
+            wandb.log({
+                f'fold_{fold}/final_val_f1': best_val_score,
+                f'fold_{fold}/fold_completed': True
+            })
         
         model.eval()
         all_preds = []
@@ -264,10 +329,29 @@ def run_training_with_stratified_group_kfold():
 
         all_preds = np.concatenate(all_preds, axis=0)
         oof_preds[val_idx] = all_preds
+        
+        if cfg.do_wandb_log:
+            wandb.finish()
     
     oof_pred_labels = np.argmax(oof_preds, axis=1)
     oof_m = just_stupid_macro_f1_haha(oof_targets, oof_pred_labels)
     print(f'{oof_m=}')
+    
+    if cfg.do_wandb_log:
+        wandb.init(
+            project=cfg.wandb_project,
+            name=f'{prefix1}{prefix2}final_results',
+            config={'final_results': True}
+        )
+        
+        wandb.log({
+            'oof_macro_f1': oof_m,
+            'mean_cv_f1': np.mean(best_f1_scores),
+            'std_cv_f1': np.std(best_f1_scores),
+            'fold_f1_scores': {f'fold_{i}': score for i, score in enumerate(best_f1_scores)}
+        })
+        
+        wandb.finish()
     
     oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_preds.npy')
     oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_targets.npy')
