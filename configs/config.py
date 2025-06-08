@@ -108,7 +108,7 @@ cfg.ema_decay = 0.999
 cfg.weights_path = None
 cfg.is_soft = True
 cfg.use_entmax = False
-cfg.entmax_alpha = 1.25
+cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..
 cfg.tta_strategies = {
     'jitter': {
         'sigma': 0.01,
