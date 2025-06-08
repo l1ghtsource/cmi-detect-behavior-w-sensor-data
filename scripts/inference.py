@@ -6,6 +6,7 @@ import gc
 
 import torch
 from torch.utils.data import DataLoader
+from entmax import entmax_bisect
 
 from configs.config import cfg
 from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
@@ -89,13 +90,24 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         if cfg.is_soft:
             all_fold_logits.append(concatenated_fold_logits)
         else:
-            predicted_indices_for_fold = np.argmax(concatenated_fold_logits, axis=1)
+            if cfg.use_entmax:
+                logits_tensor = torch.tensor(concatenated_fold_logits, device=device)
+                entmax_probs = entmax_bisect(logits_tensor, alpha=cfg.entmax_alpha, dim=1)
+                predicted_indices_for_fold = torch.argmax(entmax_probs, dim=1).cpu().numpy()
+            else:
+                predicted_indices_for_fold = np.argmax(concatenated_fold_logits, axis=1)
             all_fold_predicted_indices.append(predicted_indices_for_fold)
     
     if cfg.is_soft:
-        # soft voting: average the logits and then take the argmax
+        # soft voting: average the logits and then apply entmax or argmax
         averaged_logits = np.mean(np.array(all_fold_logits), axis=0)
-        majority_vote_indices = np.argmax(averaged_logits, axis=1)
+        
+        if cfg.use_entmax:
+            averaged_logits_tensor = torch.tensor(averaged_logits, device=device)
+            entmax_probs = entmax_bisect(averaged_logits_tensor, alpha=cfg.entmax_alpha, dim=1)
+            majority_vote_indices = torch.argmax(entmax_probs, dim=1).cpu().numpy()
+        else:
+            majority_vote_indices = np.argmax(averaged_logits, axis=1)
     else:
         # hard voting: take the mode of the predicted indices
         predictions_from_all_folds_array = np.array(all_fold_predicted_indices)
