@@ -51,7 +51,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         model = TSModel(**m_params).to(device)
 
         prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
-        prefix2 = 'imu_only_' if cfg.imu_only else ''
+        prefix2 = 'imu_only_' if use_imu_only else ''
 
         model_path = f'{cfg.weights_path}/{prefix1}{prefix2}model_fold{i}.pt'
         model.load_state_dict(torch.load(model_path, map_location=device))
