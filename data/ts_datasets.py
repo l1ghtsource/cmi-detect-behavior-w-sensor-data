@@ -29,7 +29,7 @@ class TS_CMIDataset(Dataset):
                 self.norm_stats = None
         else:
             self.norm_stats = None
-    
+
     def _compute_normalization_stats(self):
         stats = {}
         
@@ -50,11 +50,12 @@ class TS_CMIDataset(Dataset):
             stats[sensor_type] = {'mean': means, 'std': stds}
         
         return stats
-    
+
     def _prepare_sensor_data_raw(self, row, sensor_cols, sensor_type):
         processed_series_list = []
         for col_name in sensor_cols:
             series = row[col_name]
+            # replace -1 with 255 for tof columns
             if col_name in self.tof_cols:
                 series = np.array(series)
                 series[series == -1] = 255
@@ -83,33 +84,66 @@ class TS_CMIDataset(Dataset):
         
         return normalized_data
 
+    def __len__(self):
+        return len(self.df)
+
+    def _pad_or_truncate(self, series_data, target_len):
+        series_data = np.asarray(series_data, dtype=np.float64)
+        current_len = len(series_data)
+        if current_len > target_len:
+            # left truncation (keep the last target_len elements)
+            return series_data[-target_len:]
+        elif current_len < target_len:
+            padding = np.zeros(target_len - current_len, dtype=series_data.dtype)
+            return np.concatenate((padding, series_data))  # padding on the left
+        return series_data
+
+    def _apply_augmentations(self, data, sensor_type):
+        if not self.train:
+            return data
+            
+        augmentations = []
+        if random.random() < cfg.jitter_proba and sensor_type in cfg.jitter_sensors:
+            augmentations.append(('jitter', lambda x: jitter(x, sigma=0.03)))
+        if random.random() < cfg.magnitude_warp_proba and sensor_type in cfg.magnitude_warp_sensors:
+            augmentations.append(('magnitude_warp', lambda x: magnitude_warp(x, sigma=0.15, knot=3)))
+        if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
+            augmentations.append(('time_warp', lambda x: time_warp(x, sigma=0.1, knot=3)))
+        if random.random() < cfg.scaling_proba and sensor_type in cfg.scaling_sensors:
+            augmentations.append(('scaling', lambda x: scaling(x, sigma=0.08)))
+        
+        selected_augmentations = random.sample(augmentations, 
+                                            min(len(augmentations), cfg.max_augmentations_per_sample))
+        
+        for _, aug_func in selected_augmentations:
+            data = aug_func(data)
+            
+        return data
+
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
         data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
-        
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
-        
         data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
-
-        return data_stacked
+        return data_stacked  # shape: (seq_len, len(sensor_cols))
     
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-       
+        
         imu_data = self._prepare_sensor_data(row, self.imu_cols, 'imu')
         thm_data = self._prepare_sensor_data(row, self.thm_cols, 'thm')
         tof_data = self._prepare_sensor_data(row, self.tof_cols, 'tof')
-       
+        
         features = {
             'imu': torch.tensor(imu_data, dtype=torch.float32),
             'thm': torch.tensor(thm_data, dtype=torch.float32),
-            'tof': torch.tensor(tof_data, dtype=torch.float32),
+            'tof': torch.tensor(tof_data, dtype=torch.float32)
         }
-       
+        
         if self.has_target:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
-       
+        
         return features
 
 # compatitable w/ timemil and decomposewhar !!
