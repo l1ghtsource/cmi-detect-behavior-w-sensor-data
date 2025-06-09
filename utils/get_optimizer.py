@@ -1,5 +1,5 @@
 from torch.optim import AdamW
-from timm.optim.adamp import AdamP
+# from timm.optim.adamp import AdamP
 from modules.adan import Adan
 from modules.madgrad import MADGRAD
 from configs.config import cfg
@@ -9,8 +9,8 @@ def get_optimizer(params):
         return AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
     elif cfg.optim_type == 'adan':
         return Adan(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
-    elif cfg.optim_type == 'adamp':
-        return AdamP(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+    # elif cfg.optim_type == 'adamp':
+    #     return AdamP(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'madgrad':
         return MADGRAD(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
     else:

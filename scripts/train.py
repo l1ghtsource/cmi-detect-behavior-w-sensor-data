@@ -225,7 +225,8 @@ def run_training_with_stratified_group_kfold():
             seq_len=cfg.seq_len,
             target_col=cfg.target,
             aux_target_col=cfg.aux_target,
-            train=False
+            train=False,
+            norm_stats=train_dataset.norm_stats
         )
         
         train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4)

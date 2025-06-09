@@ -2,7 +2,6 @@ import pandas as pd
 import polars as pl
 import numpy as np
 from scipy.stats import mode
-import gc
 
 import torch
 from torch.utils.data import DataLoader
@@ -17,8 +16,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 train = pd.read_csv(cfg.train_path)
 train, label_encoder, label_encoder_aux = le(train)
-del train
-gc.collect()
+train_seq = fast_seq_agg(train)
 
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
@@ -39,10 +37,19 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     TSDataset = get_ts_dataset()
 
+    train_dataset = TSDataset(
+        dataframe=train_seq,
+        seq_len=cfg.seq_len,
+        target_col=cfg.target,
+        aux_target_col=cfg.aux_target,
+        train=True
+    )
+
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
         seq_len=cfg.seq_len,
-        train=False
+        train=False,
+        norm_stats=train_dataset.norm_stats
     )
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
 
