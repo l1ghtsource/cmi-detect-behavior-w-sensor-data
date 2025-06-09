@@ -202,7 +202,7 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         self.thm_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars) 
 
         # 128 cuz InceptionModule do x4 for out_dim !!
-        total_features = (cfg.imu_vars + cfg.tof_vars + cfg.thm_vars) * 128  # 1408 total features
+        total_features = (cfg.imu_num_sensor + cfg.tof_num_sensor + cfg.thm_num_sensor) * 128  # 1408 total features
         
         # Projection layer to map concatenated features to target dimension
         self.feature_proj = nn.Linear(total_features, mDim)
