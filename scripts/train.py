@@ -181,7 +181,7 @@ def run_training_with_stratified_group_kfold():
         #     continue
         
         if cfg.do_wandb_log:
-            prefix0 = 'decomposewhar_' if cfg.use_dwhar else ''
+            prefix0 = 'timemil_' if cfg.use_timemil else ''
             prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
             prefix2 = 'imu_only_' if cfg.imu_only else ''
             run_name = f'{prefix0}{prefix1}{prefix2}fold_{fold}'
@@ -350,7 +350,7 @@ def run_training_with_stratified_group_kfold():
     if cfg.do_wandb_log:
         wandb.init(
             project=cfg.wandb_project,
-            name=f'{prefix1}{prefix2}final_results',
+            name=f'{prefix0}{prefix1}{prefix2}final_results',
             config={'final_results': True}
         )
         
@@ -363,9 +363,9 @@ def run_training_with_stratified_group_kfold():
         
         wandb.finish()
     
-    oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_preds.npy')
-    oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_targets.npy')
-    oof_pred_labels_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_pred_labels.npy')
+    oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_preds.npy')
+    oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_targets.npy')
+    oof_pred_labels_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_pred_labels.npy')
 
     np.save(oof_preds_path, oof_preds)
     np.save(oof_targets_path, oof_targets)
@@ -378,7 +378,7 @@ def run_training_with_stratified_group_kfold():
         'std_cv_f1': np.std(best_f1_scores)
     }
     
-    oof_info_path = os.path.join(cfg.oof_dir, f'{prefix1}{prefix2}oof_info.json')
+    oof_info_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_info.json')
     with open(oof_info_path, 'w') as f:
         json.dump(oof_info, f, indent=2)
 
