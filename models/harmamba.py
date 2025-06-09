@@ -9,8 +9,9 @@ from functools import partial
 from torch import Tensor
 from typing import Optional
 
-from timm.models.layers import trunc_normal_, lecun_normal_
-from timm.models.layers import DropPath, to_2tuple
+from modules.weight_init import trunc_normal_, lecun_normal_
+from modules.drop import DropPath
+from modules.helpers import to_2tuple
 
 import math
 
