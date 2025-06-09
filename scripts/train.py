@@ -181,9 +181,10 @@ def run_training_with_stratified_group_kfold():
         #     continue
         
         if cfg.do_wandb_log:
+            prefix0 = 'decomposewhar_' if cfg.use_dwhar else ''
             prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
             prefix2 = 'imu_only_' if cfg.imu_only else ''
-            run_name = f'{prefix1}{prefix2}fold_{fold}'
+            run_name = f'{prefix0}{prefix1}{prefix2}fold_{fold}'
             
             wandb.init(
                 project=cfg.wandb_project,
@@ -205,7 +206,7 @@ def run_training_with_stratified_group_kfold():
                     'use_lookahead': cfg.use_lookahead,
                     'optimizer': cfg.optim_type,
                 },
-                tags=[f'fold_{fold}', prefix1.rstrip('_'), prefix2.rstrip('_')] if prefix1 or prefix2 else [f'fold_{fold}']
+                tags=[f'fold_{fold}']
             )
         
         train_subset = train_seq.iloc[train_idx].reset_index(drop=True)
