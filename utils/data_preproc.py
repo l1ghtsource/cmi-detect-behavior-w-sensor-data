@@ -31,12 +31,3 @@ def le(train_seq):
     train_seq[cfg.aux_target] = label_encoder_aux.fit_transform(train_seq[cfg.aux_target])
 
     return train_seq, label_encoder, label_encoder_aux
-
-def get_means(train_seq):
-    feature_means = {}
-
-    for col in cfg.imu_cols + cfg.thm_cols + cfg.tof_cols:
-        all_values = np.concatenate(train_seq[col].values)
-        feature_means[col] = np.nanmean(all_values)
-
-    return feature_means

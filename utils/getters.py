@@ -1,3 +1,8 @@
+from torch.optim import AdamW
+from optimizers.adan import Adan
+from optimizers.adamp import AdamP
+from optimizers.madgrad import MADGRAD
+
 from data.ts_datasets import (
     TS_CMIDataset,
     TS_Demo_CMIDataset,
@@ -11,6 +16,18 @@ from models.decompose_whar import (
 )
 from models.timemil import MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_v1
 from configs.config import cfg
+
+def get_optimizer(params):
+    if cfg.optim_type == 'adamw':
+        return AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    elif cfg.optim_type == 'adan':
+        return Adan(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    elif cfg.optim_type == 'adamp':
+        return AdamP(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+    elif cfg.optim_type == 'madgrad':
+        return MADGRAD(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+    else:
+        raise Exception('stick your finger in your ass !!')
 
 def get_ts_dataset():
     if cfg.use_dwhar or cfg.use_timemil: # datasex is compatitable for decopmosewhar and timemil !! so i'm happy today
