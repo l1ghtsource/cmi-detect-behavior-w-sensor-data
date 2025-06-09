@@ -73,6 +73,8 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         current_fold_batch_logits = []
         with torch.no_grad():
             for batch in test_loader:
+                for key in batch.keys():
+                    batch[key] = batch[key].to(device)
                 if not use_tta:
                     outputs = forward_model(model, batch, imu_only=use_imu_only)   
                     current_fold_batch_logits.append(outputs.cpu().numpy())
