@@ -55,14 +55,15 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         TSModel, m_params = get_ts_model_and_params(imu_only=use_imu_only)
         model = TSModel(**m_params).to(device)
 
+        prefix0 = 'timemil_' if cfg.use_timemil else ''
         prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
         prefix2 = 'imu_only_' if use_imu_only else ''
 
-        model_path = f'{cfg.weights_path}/{prefix1}{prefix2}model_fold{i}.pt'
+        model_path = f'{cfg.weights_path}/{prefix0}{prefix1}{prefix2}model_fold{i}.pt'
         model.load_state_dict(torch.load(model_path, map_location=device))
 
         if cfg.use_ema:
-            model_path = f'{cfg.weights_path}/{prefix1}{prefix2}model_ema_fold{i}.pt'
+            model_path = f'{cfg.weights_path}/{prefix0}{prefix1}{prefix2}model_ema_fold{i}.pt'
             ema_state_dict = torch.load(model_path, map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:

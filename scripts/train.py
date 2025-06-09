@@ -257,10 +257,11 @@ def run_training_with_stratified_group_kfold():
         
         best_val_score = -np.inf
         patience_counter = 0
+        prefix0 = 'timemil_' if cfg.use_timemil else ''
         prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
         prefix2 = 'imu_only_' if cfg.imu_only else ''
-        best_model_path = os.path.join(cfg.model_dir, f'{prefix1}{prefix2}model_fold{fold}.pt')
-        best_ema_path = os.path.join(cfg.model_dir, f'{prefix1}{prefix2}model_ema_fold{fold}.pt') if cfg.use_ema else None
+        best_model_path = os.path.join(cfg.model_dir, f'{prefix0}{prefix1}{prefix2}model_fold{fold}.pt')
+        best_ema_path = os.path.join(cfg.model_dir, f'{prefix0}{prefix1}{prefix2}model_ema_fold{fold}.pt') if cfg.use_ema else None
         
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
