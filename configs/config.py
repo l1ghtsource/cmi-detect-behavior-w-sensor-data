@@ -31,7 +31,7 @@ cfg.is_infer = False
 cfg.target = 'gesture'
 cfg.aux_target = 'sequence_type'
 cfg.group = 'subject'
-cfg.seq_len = 110
+cfg.seq_len = 120
 cfg.num_classes = 18
 cfg.n_splits = 5
 cfg.curr_fold = 0
@@ -46,14 +46,14 @@ cfg.window_tof = True
 # --- ts ds cfg ---
 cfg.norm_ts = True
 cfg.use_demo = False
-cfg.imu_only = False
+cfg.imu_only = True
 
 # --- save dir ---
 cfg.model_dir = 'weights'
 cfg.oof_dir = 'oofs'
 
 # --- decomposewhar !! ---
-cfg.use_dwhar = True
+cfg.use_dwhar = False
 cfg.use_cross_sensor = False
 cfg.use_megasensor = False # can't be used w/ imu_only=True
 cfg.kernel_size = 3
@@ -72,7 +72,7 @@ cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
 
 # --- timemil ---
-cfg.use_timemil = False
+cfg.use_timemil = True
 cfg.timemil_dim = 64
 cfg.timemil_dropout = 0.0
 
@@ -82,15 +82,15 @@ cfg.encoder_hidden_dim = 64
 cfg.im_pretrained = True
 
 # --- train params ---
-cfg.bs = 256
-cfg.n_epochs = 30
+cfg.bs = 128
+cfg.n_epochs = 50
 cfg.patience = 5
 cfg.lr = 1e-3
-cfg.weight_decay = 1e-2
+cfg.weight_decay = 3e-4
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
-cfg.max_norm = 1.0
-cfg.use_lookahead = False
+cfg.max_norm = 2.0
+cfg.use_lookahead = True
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad']
 
 # --- ts augs ---
@@ -114,20 +114,21 @@ cfg.use_ema = False
 cfg.ema_decay = 0.999
 
 # --- inference params ---
-cfg.weights_path = None
+cfg.weights_path = '/kaggle/input/dwhar-models'
 cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..
-cfg.tta_strategies = {
-    'jitter': {
-        'sigma': 0.01,
-        'sensors': ['imu', 'thm']
-    },
-    'scaling': {
-        'sigma': 0.03,
-        'sensors': ['imu', 'thm']
-    }
-}
+cfg.tta_strategies = {}
+# cfg.tta_strategies = {
+#     'jitter': {
+#         'sigma': 0.01,
+#         'sensors': ['imu', 'thm']
+#     },
+#     'scaling': {
+#         'sigma': 0.03,
+#         'sensors': ['imu', 'thm']
+#     }
+# }
 
 # --- logging ---
 cfg.do_wandb_log = True
