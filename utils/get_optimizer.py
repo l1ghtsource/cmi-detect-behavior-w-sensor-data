@@ -1,7 +1,7 @@
 from torch.optim import AdamW
-from modules.adan import Adan
-from modules.adamp import AdamP
-from modules.madgrad import MADGRAD
+from optimizers.adan import Adan
+from optimizers.adamp import AdamP
+from optimizers.madgrad import MADGRAD
 from configs.config import cfg
 
 def get_optimizer(params):
