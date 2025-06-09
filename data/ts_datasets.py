@@ -92,6 +92,25 @@ class TS_CMIDataset(Dataset):
         data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
 
         return data_stacked
+    
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+       
+        imu_data = self._prepare_sensor_data(row, self.imu_cols, 'imu')
+        thm_data = self._prepare_sensor_data(row, self.thm_cols, 'thm')
+        tof_data = self._prepare_sensor_data(row, self.tof_cols, 'tof')
+       
+        features = {
+            'imu': torch.tensor(imu_data, dtype=torch.float32),
+            'thm': torch.tensor(thm_data, dtype=torch.float32),
+            'tof': torch.tensor(tof_data, dtype=torch.float32),
+        }
+       
+        if self.has_target:
+            features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
+            features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
+       
+        return features
 
 # compatitable w/ timemil and decomposewhar !!
 class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
@@ -186,7 +205,6 @@ class TS_Demo_CMIDataset(Dataset):
         return demo_stats
     
     def _compute_sensor_normalization_stats(self):
-        """Вычисляем статистики для сенсорных данных"""
         sensor_stats = {}
         
         for sensor_type, sensor_cols in [('imu', self.imu_cols), ('thm', self.thm_cols), ('tof', self.tof_cols)]:
@@ -197,7 +215,6 @@ class TS_Demo_CMIDataset(Dataset):
                 sensor_data = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
                 all_data.append(sensor_data)
             
-            # Объединяем все данные для вычисления глобальных статистик
             combined_data = np.concatenate(all_data, axis=0)
             
             means = np.nanmean(combined_data, axis=0)
