@@ -28,7 +28,7 @@ from utils.getters import (
     forward_model
 )
 from utils.data_preproc import fast_seq_agg, le
-from utils.metrics import just_stupid_macro_f1_haha
+from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
 
 # --- set seed ---
@@ -124,9 +124,9 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         current_step += 1
     
     avg_loss = total_loss / total_samples
-    m = just_stupid_macro_f1_haha(all_targets, all_preds)
+    avg_m, bm, mm = comp_metric(all_targets, all_preds)
 
-    return avg_loss, m, current_step
+    return avg_loss, avg_m, bm, mm, current_step
 
 def valid_epoch(val_loader, model, criterion, device, ema=None):
     model.eval()
@@ -162,8 +162,8 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
         ema.restore()
     
     avg_loss = total_loss / total_samples
-    f1_score_val = just_stupid_macro_f1_haha(all_targets, all_preds)
-    return avg_loss, f1_score_val, all_targets, all_preds
+    avg_m, bm, mm = comp_metric(all_targets, all_preds)
+    return avg_loss, avg_m, bm, mm, all_targets, all_preds
 
 def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
@@ -272,28 +272,28 @@ def run_training_with_stratified_group_kfold():
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
             
-            train_loss, train_f1, current_step = train_epoch(
+            train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
                 train_loader, model, optimizer, criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, val_f1, _, _ = valid_epoch(val_loader, model, criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, criterion, device, ema)
             
-            print(f'{train_loss=}, {train_f1=}')
-            print(f'{val_loss=}, {val_f1=}')
+            print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
+            print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
             
             if cfg.do_wandb_log:
                 wandb.log({
                     f'fold_{fold}/epoch': epoch,
                     f'fold_{fold}/train_loss': train_loss,
-                    f'fold_{fold}/train_f1': train_f1,
+                    f'fold_{fold}/train_f1': avg_m_train,
                     f'fold_{fold}/val_loss': val_loss,
-                    f'fold_{fold}/val_f1': val_f1,
+                    f'fold_{fold}/val_f1': avg_m_val,
                     f'fold_{fold}/best_val_f1': best_val_score,
                     f'fold_{fold}/patience_counter': patience_counter
                 })
             
-            if val_f1 > best_val_score:
-                best_val_score = val_f1
+            if avg_m_val > best_val_score:
+                best_val_score = avg_m_val
                 patience_counter = 0
                 torch.save(model.state_dict(), best_model_path)
                 if cfg.use_ema and ema is not None:
@@ -348,8 +348,8 @@ def run_training_with_stratified_group_kfold():
             wandb.finish()
     
     oof_pred_labels = np.argmax(oof_preds, axis=1)
-    oof_m = just_stupid_macro_f1_haha(oof_targets, oof_pred_labels)
-    print(f'{oof_m=}')
+    oof_m, oof_bm, oof_mm = comp_metric(oof_targets, oof_pred_labels)
+    print(f'{oof_m=}, {oof_bm=}, {oof_mm=}, ')
     
     if cfg.do_wandb_log:
         wandb.init(
