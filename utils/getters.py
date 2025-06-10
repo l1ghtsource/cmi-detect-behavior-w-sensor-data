@@ -2,6 +2,7 @@ from torch.optim import AdamW
 from optimizers.adan import Adan
 from optimizers.adamp import AdamP
 from optimizers.madgrad import MADGRAD
+from optimizers.adafisher import AdaFisherW
 
 from data.ts_datasets import (
     TS_CMIDataset,
@@ -26,6 +27,8 @@ def get_optimizer(params):
         return AdamP(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'madgrad':
         return MADGRAD(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+    elif cfg.optim_type == 'adafisherw':
+        return AdaFisherW(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
     else:
         raise Exception('stick your finger in your ass !!')
 

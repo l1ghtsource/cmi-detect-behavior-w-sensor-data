@@ -91,7 +91,7 @@ cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
 cfg.max_norm = 2.0
 cfg.use_lookahead = True
-cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad']
+cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw']
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 2
