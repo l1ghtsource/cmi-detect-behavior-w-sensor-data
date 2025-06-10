@@ -5,6 +5,9 @@ def just_stupid_macro_f1_haha(y_true, y_pred):
     return f1_score(y_true, y_pred, average='macro')
 
 def comp_metric(y_true, y_pred):
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    
     bscore = f1_score(
         np.where(y_true <= 7, 1, 0),
         np.where(y_pred <= 7, 1, 0),
