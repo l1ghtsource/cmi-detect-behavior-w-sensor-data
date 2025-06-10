@@ -32,8 +32,8 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
 
     use_imu_only = False
-    if 'tof_5_v64' in test_df.columns:
-        tof_values = test_df['tof_5_v64']
+    if 'tof_5_v63' in test_df.columns:
+        tof_values = test_df['tof_5_v63']
         if tof_values.isna().all() or (tof_values == None).all():
             use_imu_only = True
     else:
