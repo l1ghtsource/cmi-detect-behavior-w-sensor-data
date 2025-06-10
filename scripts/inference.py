@@ -87,9 +87,15 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
                     outputs = forward_model(model, batch, imu_only=use_imu_only)   
                     current_fold_batch_logits.append(outputs.cpu().numpy())
                 else:
+                    for key in batch.keys():
+                        batch[key] = batch[key].cpu()
                     augmented_batches = apply_tta(batch, cfg.tta_strategies)
+                    for key in batch.keys():
+                        batch[key] = batch[key].to(device)
                     batch_tta_logits = []
                     for aug_batch in augmented_batches:
+                        for key in aug_batch.keys():
+                            aug_batch[key] = aug_batch[key].to(device)
                         outputs = forward_model(model, aug_batch, imu_only=use_imu_only)
                         batch_tta_logits.append(outputs.cpu().numpy())
                     avg_tta_logits = np.mean(batch_tta_logits, axis=0)
