@@ -18,6 +18,16 @@ train = pd.read_csv(cfg.train_path)
 train, label_encoder, label_encoder_aux = le(train)
 train_seq = fast_seq_agg(train)
 
+TSDataset = get_ts_dataset()
+
+train_dataset = TSDataset(
+    dataframe=train_seq,
+    seq_len=cfg.seq_len,
+    target_col=cfg.target,
+    aux_target_col=cfg.aux_target,
+    train=True
+)
+
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
 
@@ -34,16 +44,6 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         test_df = test_df.merge(test_demographics, how='left', on='subject')
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
-
-    TSDataset = get_ts_dataset()
-
-    train_dataset = TSDataset(
-        dataframe=train_seq,
-        seq_len=cfg.seq_len,
-        target_col=cfg.target,
-        aux_target_col=cfg.aux_target,
-        train=True
-    )
 
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
