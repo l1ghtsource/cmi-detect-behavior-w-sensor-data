@@ -54,3 +54,27 @@ def le(df):
     df[cfg.aux_target] = df[cfg.aux_target].map(mapper_aux)
 
     return df
+
+def get_rev_mapping():
+    ae_zhok = {
+        "Above ear - pull hair": 0,
+        "Cheek - pinch skin": 1,
+        "Eyebrow - pull hair": 2,
+        "Eyelash - pull hair": 3, 
+        "Forehead - pull hairline": 4,
+        "Forehead - scratch": 5,
+        "Neck - pinch skin": 6, 
+        "Neck - scratch": 7,
+        "Drink from bottle/cup": 8,
+        "Feel around in tray and pull out an object": 9,
+        "Glasses on/off": 10,
+        "Pinch knee/leg skin": 11, 
+        "Pull air toward your face": 12,
+        "Scratch knee/leg skin": 13,
+        "Text on phone": 14,
+        "Wave hello": 15,
+        "Write name in air": 16,
+        "Write name on leg": 17,
+    }
+
+    return {y: x for x, y in ae_zhok.items()}

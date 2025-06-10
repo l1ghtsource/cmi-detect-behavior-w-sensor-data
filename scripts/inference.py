@@ -9,7 +9,7 @@ from entmax import entmax_bisect
 
 from configs.config import cfg
 from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
-from utils.data_preproc import fast_seq_agg, le
+from utils.data_preproc import fast_seq_agg, le, get_rev_mapping
 from utils.tta import apply_tta
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -17,6 +17,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 train = pd.read_csv(cfg.train_path)
 train = le(train)
 train_seq = fast_seq_agg(train)
+
+reverse_mapping = get_rev_mapping()
 
 TSDataset = get_ts_dataset()
 
@@ -128,7 +130,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         # hard voting: take the mode of the predicted indices
         predictions_from_all_folds_array = np.array(all_fold_predicted_indices)
         majority_vote_indices, _ = mode(predictions_from_all_folds_array, axis=0, keepdims=False)
-    
-    final_predicted_labels_orig = label_encoder.inverse_transform(majority_vote_indices)
+
+    final_predicted_labels_orig = [reverse_mapping[class_idx] for class_idx in majority_vote_indices]
 
     return final_predicted_labels_orig[0]
