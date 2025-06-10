@@ -23,11 +23,34 @@ def fast_seq_agg(df):
 
     return pd.DataFrame(res)
 
-def le(train_seq):
-    label_encoder = LabelEncoder()
-    label_encoder_aux = LabelEncoder()
+def le(df):
+    mapper_target = {
+        "Above ear - pull hair": 0,
+        "Cheek - pinch skin": 1,
+        "Eyebrow - pull hair": 2,
+        "Eyelash - pull hair": 3, 
+        "Forehead - pull hairline": 4,
+        "Forehead - scratch": 5,
+        "Neck - pinch skin": 6, 
+        "Neck - scratch": 7,
+        "Drink from bottle/cup": 8,
+        "Feel around in tray and pull out an object": 9,
+        "Glasses on/off": 10,
+        "Pinch knee/leg skin": 11, 
+        "Pull air toward your face": 12,
+        "Scratch knee/leg skin": 13,
+        "Text on phone": 14,
+        "Wave hello": 15,
+        "Write name in air": 16,
+        "Write name on leg": 17,
+    }
 
-    train_seq[cfg.target] = label_encoder.fit_transform(train_seq[cfg.target])
-    train_seq[cfg.aux_target] = label_encoder_aux.fit_transform(train_seq[cfg.aux_target])
+    mapper_aux = {
+        'Non-Target': 0,
+        'Target': 1
+    }
 
-    return train_seq, label_encoder, label_encoder_aux
+    df[cfg.target] = df[cfg.target].map(mapper_target)
+    df[cfg.aux_target] = df[cfg.aux_target].map(mapper_aux)
+
+    return df

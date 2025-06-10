@@ -15,7 +15,7 @@ from utils.tta import apply_tta
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 train = pd.read_csv(cfg.train_path)
-train, label_encoder, label_encoder_aux = le(train)
+train = le(train)
 train_seq = fast_seq_agg(train)
 
 TSDataset = get_ts_dataset()
