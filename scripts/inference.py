@@ -27,6 +27,7 @@ train_dataset = TSDataset(
     seq_len=cfg.seq_len,
     target_col=cfg.target,
     aux_target_col=cfg.aux_target,
+    aux2_target_col=cfg.aux2_target,
     train=True
 )
 

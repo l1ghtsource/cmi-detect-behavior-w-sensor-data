@@ -47,57 +47,50 @@ class TS_CMIDataset(Dataset):
 
     def _compute_normalization_stats(self):
         stats = {}
-        
         for sensor_type, sensor_cols in [('imu', self.imu_cols), ('thm', self.thm_cols), ('tof', self.tof_cols)]:
-            all_data = []
+            all_sensor_data = []
+            for col in sensor_cols:
+                col_data = np.concatenate([np.asarray(row, dtype=np.float64) 
+                                         for row in self.df[col] if len(row) > 0])
+                all_sensor_data.append(col_data)
+    
+            means = [np.nanmean(data) for data in all_sensor_data]
+            stds = [np.nanstd(data) for data in all_sensor_data]
+            stds = [std if std > 1e-8 else 1.0 for std in stds]
             
-            for idx in range(len(self.df)):
-                row = self.df.iloc[idx]
-                sensor_data = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
-                all_data.append(sensor_data)
+            stats[sensor_type] = {'mean': np.array(means), 'std': np.array(stds)}
             
-            combined_data = np.concatenate(all_data, axis=0)  # (total_samples, n_features)
-            
-            means = np.nanmean(combined_data, axis=0)
-            stds = np.nanstd(combined_data, axis=0)
-            stds[stds < 1e-8] = 1.0
-            
-            stats[sensor_type] = {'mean': means, 'std': stds}
-        
         return stats
 
     def _prepare_sensor_data_raw(self, row, sensor_cols, sensor_type):
         processed_series_list = []
         for col_name in sensor_cols:
             series = row[col_name]
-            # replace -1 with 255 for tof columns
-            if col_name in self.tof_cols:
-                series = np.array(series)
-                series[series == -1] = 255
-            padded_truncated_series = self._pad_or_truncate(series, self.seq_len)
-            processed_series_list.append(padded_truncated_series)
-        
-        data_stacked = np.stack(processed_series_list, axis=1)
-        
-        for i in range(data_stacked.shape[1]):
-            column_data = data_stacked[:, i]
-            if np.all(np.isnan(column_data)):
-                data_stacked[:, i] = 0.0
-            elif np.any(np.isnan(column_data)):
-                s = pd.Series(column_data)
+            series = np.asarray(series, dtype=np.float64)
+            
+            if np.all(np.isnan(series)):
+                series[:] = 0.0
+            elif np.any(np.isnan(series)):
+                s = pd.Series(series)
                 s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
-                data_stacked[:, i] = s_filled.values
+                series = s_filled.values
+                
+            processed_series_list.append(series)
         
-        return data_stacked
+        return processed_series_list  # list of arrays, potentially different lengths
 
-    def _normalize_sensor_data(self, data, sensor_type):
+    def _normalize_sensor_data(self, series_list, sensor_type):
         if self.norm_stats is None or sensor_type not in self.norm_stats:
-            return data
+            return series_list
             
         stats = self.norm_stats[sensor_type]
-        normalized_data = (data - stats['mean']) / stats['std']
+        normalized_series_list = []
         
-        return normalized_data
+        for i, series in enumerate(series_list):
+            normalized_series = (series - stats['mean'][i]) / stats['std'][i]
+            normalized_series_list.append(normalized_series)
+        
+        return normalized_series_list
 
     def __len__(self):
         return len(self.df)
@@ -136,10 +129,19 @@ class TS_CMIDataset(Dataset):
         return data
 
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
-        data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+        raw_series_list = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+        normalized_series_list = self._normalize_sensor_data(raw_series_list, sensor_type)
+        
+        padded_series_list = []
+        for series in normalized_series_list:
+            padded_series = self._pad_or_truncate(series, self.seq_len)
+            padded_series_list.append(padded_series)
+        
+        data_stacked = np.stack(padded_series_list, axis=1)
+        
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
-        data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
+        
         return data_stacked  # shape: (seq_len, len(sensor_cols))
     
     def __getitem__(self, idx):
@@ -300,26 +302,22 @@ class TS_Demo_CMIDataset(Dataset):
         
         return demo_stats
     
-    def _compute_sensor_normalization_stats(self):
-        sensor_stats = {}
-        
+    def _compute_normalization_stats(self):
+        stats = {}
         for sensor_type, sensor_cols in [('imu', self.imu_cols), ('thm', self.thm_cols), ('tof', self.tof_cols)]:
-            all_data = []
+            all_sensor_data = []
+            for col in sensor_cols:
+                col_data = np.concatenate([np.asarray(row, dtype=np.float64) 
+                                         for row in self.df[col] if len(row) > 0])
+                all_sensor_data.append(col_data)
+    
+            means = [np.nanmean(data) for data in all_sensor_data]
+            stds = [np.nanstd(data) for data in all_sensor_data]
+            stds = [std if std > 1e-8 else 1.0 for std in stds]
             
-            for idx in range(len(self.df)):
-                row = self.df.iloc[idx]
-                sensor_data = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
-                all_data.append(sensor_data)
+            stats[sensor_type] = {'mean': np.array(means), 'std': np.array(stds)}
             
-            combined_data = np.concatenate(all_data, axis=0)
-            
-            means = np.nanmean(combined_data, axis=0)
-            stds = np.nanstd(combined_data, axis=0)
-            stds[stds < 1e-8] = 1.0
-            
-            sensor_stats[sensor_type] = {'mean': means, 'std': stds}
-        
-        return sensor_stats
+        return stats
 
     def _normalize_demographics(self):
         if self.norm_stats is None or 'demographics' not in self.norm_stats:
@@ -329,6 +327,23 @@ class TS_Demo_CMIDataset(Dataset):
         for col, stats in demo_stats.items():
             if col in self.df.columns:
                 self.df[col] = (self.df[col] - stats['mean']) / stats['std']
+    
+    def _prepare_sensor_data_raw_no_padding(self, row, sensor_cols, sensor_type):
+        processed_series_list = []
+        for col_name in sensor_cols:
+            series = row[col_name]
+            series = np.asarray(series, dtype=np.float64)
+            
+            if np.all(np.isnan(series)):
+                series[:] = 0.0
+            elif np.any(np.isnan(series)):
+                s = pd.Series(series)
+                s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
+                series = s_filled.values
+                
+            processed_series_list.append(series)
+        
+        return processed_series_list
     
     def _prepare_sensor_data_raw(self, row, sensor_cols, sensor_type):
         processed_series_list = []
@@ -353,17 +368,21 @@ class TS_Demo_CMIDataset(Dataset):
         
         return data_stacked
 
-    def _normalize_sensor_data(self, data, sensor_type):
+    def _normalize_sensor_data(self, series_list, sensor_type):
         if (self.norm_stats is None or 
             'sensors' not in self.norm_stats or 
             sensor_type not in self.norm_stats['sensors'] or 
             not cfg.norm_ts):
-            return data
+            return series_list
             
         stats = self.norm_stats['sensors'][sensor_type]
-        normalized_data = (data - stats['mean']) / stats['std']
+        normalized_series_list = []
         
-        return normalized_data
+        for i, series in enumerate(series_list):
+            normalized_series = (series - stats['mean'][i]) / stats['std'][i]
+            normalized_series_list.append(normalized_series)
+        
+        return normalized_series_list
 
     def _apply_augmentations(self, data, sensor_type):
         if not self.train:
@@ -401,9 +420,19 @@ class TS_Demo_CMIDataset(Dataset):
         return series_data
    
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
-        data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
-        data_stacked = self._apply_augmentations(data_stacked, sensor_type)
-        data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
+        raw_series_list = self._prepare_sensor_data_raw_no_padding(row, sensor_cols, sensor_type)
+        normalized_series_list = self._normalize_sensor_data(raw_series_list, sensor_type)
+        
+        padded_series_list = []
+        for series in normalized_series_list:
+            padded_series = self._pad_or_truncate(series, self.seq_len)
+            padded_series_list.append(padded_series)
+        
+        data_stacked = np.stack(padded_series_list, axis=1)
+
+        if self.train:
+            data_stacked = self._apply_augmentations(data_stacked, sensor_type)
+        
         return data_stacked
    
     def _get_demographics(self, row):
