@@ -253,7 +253,7 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(mDim, 4),
+            nn.Linear(mDim, 2),
         )
         
         self.alpha = nn.Parameter(torch.ones(1))
@@ -391,7 +391,7 @@ class TimeMIL_SingleSensor_v1(nn.Module):
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(mDim, 4),
+            nn.Linear(mDim, 2),
         )
         
         self.alpha = nn.Parameter(torch.ones(1))
