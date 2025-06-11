@@ -8,19 +8,26 @@ from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
 
 # classic ts dataset
 class TS_CMIDataset(Dataset):
-    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True, norm_stats=None):
+    def __init__(
+        self, 
+        dataframe, 
+        seq_len=cfg.seq_len, 
+        target_col=cfg.target, 
+        aux_target_col=cfg.aux_target, 
+        aux2_target_col=cfg.aux2_target, 
+        train=True, 
+        norm_stats=None
+    ):
         self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
-        self.aux_target_col = aux_target_col
         self.target_col = target_col
+        self.aux_target_col = aux_target_col
+        self.aux2_target_col = aux2_target_col
         self.train = train
-        self.has_target = self.target_col in self.df.columns and self.aux_target_col in self.df.columns
         
         self.imu_cols = cfg.imu_cols
         self.thm_cols = cfg.thm_cols
         self.tof_cols = cfg.tof_cols
-        
-        self.has_behavior = 'behavior' in self.df.columns
         
         if cfg.norm_ts:
             if norm_stats is None and train:
@@ -32,16 +39,11 @@ class TS_CMIDataset(Dataset):
         else:
             self.norm_stats = None
 
-    def _compute_phase_moments(self, behavior_sequence):
-        behavior_array = np.array(behavior_sequence)
-        
-        pause_indices = np.where(behavior_array == 'Pause')[0]
-        gesture_indices = np.where(behavior_array == 'Gesture')[0]
-        
-        pause_start = pause_indices[0] / len(behavior_array) if len(pause_indices) > 0 else -1.0
-        gesture_start = gesture_indices[0] / len(behavior_array) if len(gesture_indices) > 0 else -1.0
-        
-        return pause_start, gesture_start
+    def _compute_phase_moments(self, phase_sequence):
+        phase_array = np.array(phase_sequence)
+        gesture_indices = np.where(phase_array == 'Gesture')[0]
+        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0
+        return gesture_start
 
     def _compute_normalization_stats(self):
         stats = {}
@@ -153,21 +155,30 @@ class TS_CMIDataset(Dataset):
             'tof': torch.tensor(tof_data, dtype=torch.float32)
         }
         
-        if self.has_behavior:
-            pause_start, gesture_start = self._compute_phase_moments(row['behavior'])
-            features['pause_start'] = torch.tensor(pause_start, dtype=torch.float32)
+        if self.train:
+            gesture_start = self._compute_phase_moments(row['phase'])
             features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
         
-        if self.has_target:
+        if self.train:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
+            features['aux2_target'] = torch.tensor(row[self.aux2_target_col], dtype=torch.long)
         
         return features
 
 # compatitable w/ timemil and decomposewhar !!
 class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
-    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True, norm_stats=None):
-        super().__init__(dataframe, seq_len, target_col, aux_target_col, train, norm_stats)
+    def __init__(
+        self, 
+        dataframe, 
+        seq_len=cfg.seq_len, 
+        target_col=cfg.target, 
+        aux_target_col=cfg.aux_target, 
+        aux2_target_col=cfg.aux2_target, 
+        train=True, 
+        norm_stats=None
+    ):
+        super().__init__(dataframe, seq_len, target_col, aux_target_col, aux2_target_col, train, norm_stats)
     
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -183,20 +194,29 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             'tof': tof_reshaped
         }
 
-        if 'pause_start' in features:
-            result['pause_start'] = features['pause_start']
+        if self.train:
             result['gesture_start'] = features['gesture_start']
         
-        if 'target' in features:
+        if self.train:
             result['target'] = features['target']
             result['aux_target'] = features['aux_target']
+            result['aux2_target'] = features['aux2_target']
             
         return result
 
 # ebaniy kal, prosto zalupa
 class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
-    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True, norm_stats=None):
-        super().__init__(dataframe, seq_len, target_col, aux_target_col, train, norm_stats)
+    def __init__(
+        self, 
+        dataframe, 
+        seq_len=cfg.seq_len, 
+        target_col=cfg.target, 
+        aux_target_col=cfg.aux_target, 
+        aux2_target_col=cfg.aux2_target, 
+        train=True, 
+        norm_stats=None
+    ):
+        super().__init__(dataframe, seq_len, target_col, aux_target_col, aux2_target_col, train, norm_stats)
     
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -211,33 +231,40 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
          
         result = {'megasensor': model_input}
 
-        if 'pause_start' in features:
-            result['pause_start'] = features['pause_start']
+        if self.train:
             result['gesture_start'] = features['gesture_start']
 
-        if 'target' in features:
+        if self.train:
             result['target'] = features['target']
             result['aux_target'] = features['aux_target']
+            result['aux2_target'] = features['aux2_target']
             
         return result
 
 # classic ds but w/ demography
 class TS_Demo_CMIDataset(Dataset):
-    def __init__(self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, train=True, norm_stats=None):
+    def __init__(
+        self, 
+        dataframe, 
+        seq_len=cfg.seq_len, 
+        target_col=cfg.target, 
+        aux_target_col=cfg.aux_target, 
+        aux2_target_col=cfg.aux2_target, 
+        train=True, 
+        norm_stats=None
+    ):
         self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
         self.target_col = target_col
         self.aux_target_col = aux_target_col
+        self.aux2_target_col = aux2_target_col
         self.train = train
-        self.has_target = self.target_col in self.df.columns and self.aux_target_col in self.df.columns
        
         self.imu_cols = cfg.imu_cols
         self.thm_cols = cfg.thm_cols
         self.tof_cols = cfg.tof_cols
         self.demo_cols = cfg.demo_cols
         
-        self.has_behavior = 'behavior' in self.df.columns
-       
         if norm_stats is None and train:
             self.norm_stats = self._compute_all_normalization_stats()
         elif norm_stats is not None:
@@ -247,16 +274,11 @@ class TS_Demo_CMIDataset(Dataset):
 
         self._normalize_demographics()
 
-    def _compute_phase_moments(self, behavior_sequence):
-        behavior_array = np.array(behavior_sequence)
-        
-        pause_indices = np.where(behavior_array == 'Pause')[0]
-        gesture_indices = np.where(behavior_array == 'Gesture')[0]
-        
-        pause_start = pause_indices[0] / len(behavior_array) if len(pause_indices) > 0 else -1.0
-        gesture_start = gesture_indices[0] / len(behavior_array) if len(gesture_indices) > 0 else -1.0
-        
-        return pause_start, gesture_start
+    def _compute_phase_moments(self, phase_sequence):
+        phase_array = np.array(phase_sequence)
+        gesture_indices = np.where(phase_array == 'Gesture')[0]
+        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0
+        return gesture_start
    
     def _compute_all_normalization_stats(self):
         stats = {}
@@ -414,13 +436,13 @@ class TS_Demo_CMIDataset(Dataset):
             'demographics': torch.tensor(demographics, dtype=torch.float32)
         }
         
-        if self.has_behavior:
-            pause_start, gesture_start = self._compute_phase_moments(row['behavior'])
-            features['pause_start'] = torch.tensor(pause_start, dtype=torch.float32)
+        if self.train:
+            gesture_start = self._compute_phase_moments(row['phase'])
             features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
        
-        if self.has_target:
+        if self.train:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
+            features['aux2_target'] = torch.tensor(row[self.aux2_target_col], dtype=torch.long)
        
         return features
