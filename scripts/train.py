@@ -11,7 +11,6 @@ from sklearn.model_selection import StratifiedGroupKFold
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
@@ -65,7 +64,7 @@ train_seq = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
+def train_epoch(train_loader, model, optimizer, criterion, aux_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
     model.train()
         
     total_loss = 0
@@ -74,7 +73,7 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
     all_preds = []
     
     if cfg.use_mixup:
-        mixup_criterion = MixupLoss(criterion, cfg.num_classes, cfg.mixup_alpha)
+        mixup_criterion = MixupLoss(criterion, aux_criterion, cfg.aux2_weight, cfg.num_classes, cfg.aux2_num_classes, cfg.mixup_alpha)
     
     loop = tqdm(train_loader, desc='train', leave=False)
 
@@ -87,14 +86,18 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
         curr_proba = np.random.random()
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
-            mixed_batch, targets_a, targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
-            loss = mixup_criterion(outputs, targets_a, targets_b, lam)
+            mixed_batch, targets_a, targets_b, targets_aux_a, targets_aux_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
+            outputs, aux_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
+            loss, comp_loss, aux_loss = mixup_criterion(outputs, aux_outputs, targets_a, targets_b, targets_aux_a, targets_aux_b, lam)
             targets = batch['target']
+            aux_targets = batch['aux2_target']
         else:
-            outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, aux_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['target']
-            loss = criterion(outputs, targets)
+            aux_targets = batch['aux2_target']
+            comp_loss = criterion(outputs, targets)
+            aux_loss = aux_criterion(aux_outputs, aux_targets)
+            loss = comp_loss + cfg.aux2_weight * aux_loss
 
         loss.backward()
 
@@ -128,7 +131,7 @@ def train_epoch(train_loader, model, optimizer, criterion, device, scheduler, em
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, criterion, device, ema=None):
+def valid_epoch(val_loader, model, criterion, aux_criterion, device, ema=None):
     model.eval()
 
     if cfg.use_ema and ema is not None:
@@ -145,9 +148,12 @@ def valid_epoch(val_loader, model, criterion, device, ema=None):
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, aux_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['target']
-            loss = criterion(outputs, targets)
+            aux_targets = batch['aux2_target']
+            comp_loss = criterion(outputs, targets)
+            aux_loss = aux_criterion(aux_outputs, aux_targets)
+            loss = comp_loss + cfg.aux2_weight * aux_loss
             
             total_loss += loss.item() * targets.size(0)
             total_samples += targets.size(0)
@@ -250,6 +256,7 @@ def run_training_with_stratified_group_kfold():
             optimizer = Lookahead(optimizer)    
 
         criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
+        aux_criterion = nn.CrossEntropyLoss()
 
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
@@ -273,10 +280,10 @@ def run_training_with_stratified_group_kfold():
             print(f'{epoch=}')
             
             train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
-                train_loader, model, optimizer, criterion, device, scheduler, 
+                train_loader, model, optimizer, criterion, aux_criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, criterion, aux_criterion, device, ema)
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
@@ -338,7 +345,7 @@ def run_training_with_stratified_group_kfold():
                 for key in batch.keys():
                     batch[key] = batch[key].to(device)
 
-                outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+                outputs, _ = forward_model(model, batch, imu_only=cfg.imu_only)
                 all_preds.append(outputs.cpu().numpy())
 
         all_preds = np.concatenate(all_preds, axis=0)

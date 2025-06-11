@@ -248,6 +248,13 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(mDim, n_classes)
         ) 
+
+        self._fc2_aux = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 4),
+        )
         
         self.alpha = nn.Parameter(torch.ones(1))
         
@@ -319,9 +326,10 @@ class MultiSensor_TimeMIL_v1(nn.Module):
  
         # Final classification
         logits = self._fc2(x)
+        logits_aux = self._fc2_aux(x)
             
-        return logits
-
+        return logits, logits_aux
+            
 # ya ebal eto govnishe
 class TimeMIL_SingleSensor_v1(nn.Module):
     def __init__(self, n_classes=cfg.num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
@@ -378,6 +386,13 @@ class TimeMIL_SingleSensor_v1(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(mDim, n_classes)
         ) 
+
+        self._fc2_aux = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 4),
+        )
         
         self.alpha = nn.Parameter(torch.ones(1))
         
@@ -427,5 +442,6 @@ class TimeMIL_SingleSensor_v1(nn.Module):
  
         # Final classification
         logits = self._fc2(x)
+        logits_aux = self._fc2_aux(x)
             
-        return logits
+        return logits, logits_aux

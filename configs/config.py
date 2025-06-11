@@ -32,8 +32,12 @@ cfg.target = 'gesture'
 cfg.aux_target = 'orientation'
 cfg.aux2_target = 'sequence_type'
 cfg.group = 'subject'
-cfg.seq_len = 150 # ~ 0.97 quantile
+cfg.seq_len = 120
 cfg.num_classes = 18
+cfg.aux_num_classes = 2
+cfg.aux2_num_classes = 4
+cfg.aux_weight = 0.5
+cfg.aux2_weight = 0.5
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
@@ -93,7 +97,6 @@ cfg.label_smoothing = 0.05
 cfg.max_norm = 2.0
 cfg.use_lookahead = True
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw']
-cfg.gesture_weight = 4
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 2
@@ -123,13 +126,25 @@ cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..
 cfg.tta_strategies = {}
 # cfg.tta_strategies = {
 #     'jitter': {
-#         'sigma': 0.01,
-#         'sensors': ['imu', 'thm']
+#         'sigma': 0.03,
+#         'sensors': ['imu', 'thm', 'tof']
+#     },
+#     'jitter': {
+#         'sigma': 0.02,
+#         'sensors': ['imu', 'thm', 'tof']
+#     },
+#     'jitter': {
+#         'sigma': 0.05,
+#         'sensors': ['imu', 'thm', 'tof']
 #     },
 #     'scaling': {
 #         'sigma': 0.03,
 #         'sensors': ['imu', 'thm']
-#     }
+#     },
+#     'scaling': {
+#         'sigma': 0.05,
+#         'sensors': ['imu', 'thm']
+#     },
 # }
 
 # --- logging ---
