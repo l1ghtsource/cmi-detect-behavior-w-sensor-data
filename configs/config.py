@@ -57,13 +57,13 @@ cfg.use_dwhar = False
 cfg.use_cross_sensor = False
 cfg.use_megasensor = False # can't be used w/ imu_only=True
 cfg.kernel_size = 3
-cfg.emb_kernel_size = (cfg.seq_len // (cfg.kernel_size * 2)) * 2
+cfg.emb_kernel_size = cfg.seq_len // cfg.kernel_size
 cfg.stride = cfg.emb_kernel_size // 2
-cfg.ddim = 64
+cfg.ddim = 128
 cfg.reduction_ratio = 1
-cfg.num_layers = 2
-cfg.num_a_layers = 1
-cfg.num_m_layers = 1
+cfg.num_layers = 4
+cfg.num_a_layers = 2
+cfg.num_m_layers = 2
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
@@ -73,7 +73,7 @@ cfg.tof_vars = 8 * 8
 
 # --- timemil ---
 cfg.use_timemil = True
-cfg.timemil_dim = 64
+cfg.timemil_dim = 256
 cfg.timemil_dropout = 0.0
 
 # --- im model ---
