@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
 from configs.config import cfg
 
 def fast_seq_agg(df):
@@ -21,7 +20,13 @@ def fast_seq_agg(df):
     for c in seq_cols:
         res[c] = np.split(df[c].values, seq_start_idxs[1:])
 
-    return pd.DataFrame(res)
+    res_df = pd.DataFrame(res)
+    
+    for col in cfg.tof_cols:
+        if col in res_df.columns:
+            res_df[col] = res_df[col].apply(lambda x: np.where(x == -1, 255, x))
+
+    return res_df
 
 def le(df):
     mapper_target = {
@@ -46,12 +51,20 @@ def le(df):
     }
 
     mapper_aux = {
+        'Seated Straight': 0,
+        'Seated Lean Non Dom - FACE DOWN': 1,
+        'Lie on Back': 2,
+        'Lie on Side - Non Dominant': 3
+    }
+
+    mapper_aux2 = {
         'Non-Target': 0,
-        'Target': 1
+        'Target': 1,
     }
 
     df[cfg.target] = df[cfg.target].map(mapper_target)
     df[cfg.aux_target] = df[cfg.aux_target].map(mapper_aux)
+    df[cfg.aux2_target] = df[cfg.aux2_target].map(mapper_aux2)
 
     return df
 
