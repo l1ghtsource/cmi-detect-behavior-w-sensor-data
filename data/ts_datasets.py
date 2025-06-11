@@ -69,7 +69,7 @@ class TS_CMIDataset(Dataset):
             series = np.asarray(series, dtype=np.float64)
             
             if np.all(np.isnan(series)):
-                series[:] = 0.0
+                series = np.zeros_like(series)
             elif np.any(np.isnan(series)):
                 s = pd.Series(series)
                 s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
@@ -157,11 +157,11 @@ class TS_CMIDataset(Dataset):
             'tof': torch.tensor(tof_data, dtype=torch.float32)
         }
         
-        if self.train:
+        if 'phase' in self.df.columns:
             gesture_start = self._compute_phase_moments(row['phase'])
             features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
         
-        if self.train:
+        if 'gesture' in self.df.columns:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
             features['aux2_target'] = torch.tensor(row[self.aux2_target_col], dtype=torch.long)
@@ -196,10 +196,10 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             'tof': tof_reshaped
         }
 
-        if self.train:
+        if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
         
-        if self.train:
+        if 'gesture' in self.df.columns:
             result['target'] = features['target']
             result['aux_target'] = features['aux_target']
             result['aux2_target'] = features['aux2_target']
@@ -233,10 +233,10 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
          
         result = {'megasensor': model_input}
 
-        if self.train:
+        if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
 
-        if self.train:
+        if 'gesture' in self.df.columns:
             result['target'] = features['target']
             result['aux_target'] = features['aux_target']
             result['aux2_target'] = features['aux2_target']
@@ -465,11 +465,11 @@ class TS_Demo_CMIDataset(Dataset):
             'demographics': torch.tensor(demographics, dtype=torch.float32)
         }
         
-        if self.train:
+        if 'phase' in self.df.columns:
             gesture_start = self._compute_phase_moments(row['phase'])
             features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
        
-        if self.train:
+        if 'gesture' in self.df.columns:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
             features['aux2_target'] = torch.tensor(row[self.aux2_target_col], dtype=torch.long)
