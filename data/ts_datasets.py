@@ -20,6 +20,8 @@ class TS_CMIDataset(Dataset):
         self.thm_cols = cfg.thm_cols
         self.tof_cols = cfg.tof_cols
         
+        self.has_behavior = 'behavior' in self.df.columns
+        
         if cfg.norm_ts:
             if norm_stats is None and train:
                 self.norm_stats = self._compute_normalization_stats()
@@ -29,6 +31,17 @@ class TS_CMIDataset(Dataset):
                 self.norm_stats = None
         else:
             self.norm_stats = None
+
+    def _compute_phase_moments(self, behavior_sequence):
+        behavior_array = np.array(behavior_sequence)
+        
+        pause_indices = np.where(behavior_array == 'Pause')[0]
+        gesture_indices = np.where(behavior_array == 'Gesture')[0]
+        
+        pause_start = pause_indices[0] / len(behavior_array) if len(pause_indices) > 0 else -1.0
+        gesture_start = gesture_indices[0] / len(behavior_array) if len(gesture_indices) > 0 else -1.0
+        
+        return pause_start, gesture_start
 
     def _compute_normalization_stats(self):
         stats = {}
@@ -140,6 +153,11 @@ class TS_CMIDataset(Dataset):
             'tof': torch.tensor(tof_data, dtype=torch.float32)
         }
         
+        if self.has_behavior:
+            pause_start, gesture_start = self._compute_phase_moments(row['behavior'])
+            features['pause_start'] = torch.tensor(pause_start, dtype=torch.float32)
+            features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
+        
         if self.has_target:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
             features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
@@ -164,6 +182,10 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             'thm': thm_data, 
             'tof': tof_reshaped
         }
+
+        if 'pause_start' in features:
+            result['pause_start'] = features['pause_start']
+            result['gesture_start'] = features['gesture_start']
         
         if 'target' in features:
             result['target'] = features['target']
@@ -188,6 +210,11 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
          
         result = {'megasensor': model_input}
+
+        if 'pause_start' in features:
+            result['pause_start'] = features['pause_start']
+            result['gesture_start'] = features['gesture_start']
+
         if 'target' in features:
             result['target'] = features['target']
             result['aux_target'] = features['aux_target']
@@ -208,6 +235,8 @@ class TS_Demo_CMIDataset(Dataset):
         self.thm_cols = cfg.thm_cols
         self.tof_cols = cfg.tof_cols
         self.demo_cols = cfg.demo_cols
+        
+        self.has_behavior = 'behavior' in self.df.columns
        
         if norm_stats is None and train:
             self.norm_stats = self._compute_all_normalization_stats()
@@ -217,6 +246,17 @@ class TS_Demo_CMIDataset(Dataset):
             self.norm_stats = None
 
         self._normalize_demographics()
+
+    def _compute_phase_moments(self, behavior_sequence):
+        behavior_array = np.array(behavior_sequence)
+        
+        pause_indices = np.where(behavior_array == 'Pause')[0]
+        gesture_indices = np.where(behavior_array == 'Gesture')[0]
+        
+        pause_start = pause_indices[0] / len(behavior_array) if len(pause_indices) > 0 else -1.0
+        gesture_start = gesture_indices[0] / len(behavior_array) if len(gesture_indices) > 0 else -1.0
+        
+        return pause_start, gesture_start
    
     def _compute_all_normalization_stats(self):
         stats = {}
@@ -373,6 +413,11 @@ class TS_Demo_CMIDataset(Dataset):
             'tof': torch.tensor(tof_data, dtype=torch.float32),
             'demographics': torch.tensor(demographics, dtype=torch.float32)
         }
+        
+        if self.has_behavior:
+            pause_start, gesture_start = self._compute_phase_moments(row['behavior'])
+            features['pause_start'] = torch.tensor(pause_start, dtype=torch.float32)
+            features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
        
         if self.has_target:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
