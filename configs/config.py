@@ -18,7 +18,7 @@ cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
 cfg.num_tof_sensors = 5
 cfg.tof_vector_length = 64
 cfg.static_cols = [
-    'sequence_id', 'sequence_type', 'gesture', 'orientation', 'behavior', 'subject',
+    'sequence_id', 'sequence_type', 'gesture', 'orientation', 'subject',
     'adult_child', 'age', 'sex', 'handedness',
     'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm'
 ]
@@ -29,9 +29,10 @@ cfg.is_infer = False
 
 # --- important vars ---
 cfg.target = 'gesture'
-cfg.aux_target = 'sequence_type'
+cfg.aux_target = 'orientation'
+cfg.aux2_target = 'sequence_type'
 cfg.group = 'subject'
-cfg.seq_len = 120
+cfg.seq_len = 150 # ~ 0.97 quantile
 cfg.num_classes = 18
 cfg.n_splits = 5
 cfg.curr_fold = 0
@@ -84,7 +85,7 @@ cfg.im_pretrained = True
 # --- train params ---
 cfg.bs = 128
 cfg.n_epochs = 50
-cfg.patience = 5
+cfg.patience = 7
 cfg.lr = 1e-3
 cfg.weight_decay = 3e-4
 cfg.num_warmup_steps_ratio = 0.03
@@ -92,6 +93,7 @@ cfg.label_smoothing = 0.05
 cfg.max_norm = 2.0
 cfg.use_lookahead = True
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw']
+cfg.gesture_weight = 4
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 2
