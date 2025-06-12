@@ -85,36 +85,10 @@ class TS_CMIDataset(Dataset):
             energy = np.sum(clean_series ** 2)
             rms = np.sqrt(np.mean(clean_series ** 2))
             
-            if len(clean_series) > 1:
-                zero_crossings = np.sum(np.diff(np.sign(clean_series)) != 0)
-                zcr = zero_crossings / (len(clean_series) - 1)
-            else:
-                zcr = 0.0
-            
-            if len(clean_series) > 3:
-                peaks, _ = find_peaks(clean_series, distance=2)
-                peak_count = len(peaks) / len(clean_series)
-            else:
-                peak_count = 0.0
-            
-            if len(clean_series) > 2:
-                autocorr = np.corrcoef(clean_series[:-1], clean_series[1:])[0, 1]
-                autocorr = autocorr if not np.isnan(autocorr) else 0.0
-            else:
-                autocorr = 0.0
-            
-            if len(clean_series) > 1:
-                x = np.arange(len(clean_series))
-                slope, _, _, _, _ = stats.linregress(x, clean_series)
-                slope = slope if not np.isnan(slope) else 0.0
-            else:
-                slope = 0.0
-            
             feature_stats = [
                 mean_val, std_val, max_val, min_val, q25, q75,
                 diff_mean, diff_std,
-                energy, rms,
-                zcr, peak_count, autocorr, slope
+                energy, rms
             ]
             
             feature_stats = [x if np.isfinite(x) else 0.0 for x in feature_stats]
@@ -344,9 +318,9 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             result['demography_cont'] = features['demography_cont'] # (4)
 
         if cfg.use_stats_vectors:
-            result['imu_stats'] = features['imu_stats'] # (14 * 7)
-            result['thm_stats'] = features['thm_stats'] # (14 * 5)
-            result['tof_stats'] = features['tof_stats'] # (14 * 320)
+            result['imu_stats'] = features['imu_stats'] # (10 * 7)
+            result['thm_stats'] = features['thm_stats'] # (10 * 5)
+            result['tof_stats'] = features['tof_stats'] # (10 * 320)
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
@@ -394,9 +368,9 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
             result['demography_cont'] = features['demography_cont'] # (4)
 
         if cfg.use_stats_vectors:
-            result['imu_stats'] = features['imu_stats'] # (14 * 7)
-            result['thm_stats'] = features['thm_stats'] # (14 * 5)
-            result['tof_stats'] = features['tof_stats'] # (14 * 320)
+            result['imu_stats'] = features['imu_stats'] # (10 * 7)
+            result['thm_stats'] = features['thm_stats'] # (10 * 5)
+            result['tof_stats'] = features['tof_stats'] # (10 * 320)
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']

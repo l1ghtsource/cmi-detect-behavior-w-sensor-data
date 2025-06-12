@@ -372,21 +372,21 @@ class Stats_MultiSensor_TimeMIL_v1(nn.Module):
         self.thm_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars) 
 
         self.imu_stats_processor = nn.Sequential(
-            nn.Linear(14 * 7, 128),  # IMU stats: 14 * 7 = 98 features
+            nn.Linear(10 * 7, 128),  # IMU stats: 10 * 7 = 98 features
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, 64)
         )
         
         self.tof_stats_processor = nn.Sequential(
-            nn.Linear(14 * 320, 512),  # ToF stats: 14 * 320 = 4480 features
+            nn.Linear(10 * 320, 512),  # ToF stats: 10 * 320 = 4480 features
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(512, 64)
         )
         
         self.thm_stats_processor = nn.Sequential(
-            nn.Linear(14 * 5, 128),  # Thermal stats: 14 * 5 = 70 features
+            nn.Linear(10 * 5, 128),  # Thermal stats: 10 * 5 = 70 features
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, 64)
@@ -465,9 +465,9 @@ class Stats_MultiSensor_TimeMIL_v1(nn.Module):
             imu_data: [B, 1, L, 7] - IMU sensor data
             tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
             thm_data: [B, 5, L, 1] - Thermal sensor data
-            imu_stats: [B, 98] - IMU statistics features (14 * 7)
-            thm_stats: [B, 70] - Thermal statistics features (14 * 5)
-            tof_stats: [B, 4480] - ToF statistics features (14 * 320)
+            imu_stats: [B, 70] - IMU statistics features (10 * 7)
+            thm_stats: [B, 50] - Thermal statistics features (10 * 5)
+            tof_stats: [B, 3200] - ToF statistics features (10 * 320)
             pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
             warmup: bool - whether to use warmup strategy [optional!]
         """
@@ -741,7 +741,7 @@ class Stats_TimeMIL_SingleSensor_v1(nn.Module):
         self.imu_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
         
         self.imu_stats_processor = nn.Sequential(
-            nn.Linear(14 * 7, 128),
+            nn.Linear(10 * 7, 128),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, 64)
@@ -814,7 +814,7 @@ class Stats_TimeMIL_SingleSensor_v1(nn.Module):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
-            imu_stats: [B, 98] - IMU statistics features (14 * 7)
+            imu_stats: [B, 70] - IMU statistics features (10 * 7)
             pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
             warmup: bool - whether to use warmup strategy [optional!]
         """
@@ -1084,21 +1084,21 @@ class Stats_MultiSensor_TimeMIL_v2(nn.Module):
         super().__init__()
         
         self.imu_stats_processor = nn.Sequential(
-            nn.Linear(14 * 7, 128),  # IMU stats: 98 features
+            nn.Linear(10 * 7, 128),  # IMU stats: 70 features
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, 64)
         )
         
         self.tof_stats_processor = nn.Sequential(
-            nn.Linear(14 * 320, 512),  # ToF stats: 4480 features
+            nn.Linear(10 * 320, 512),  # ToF stats: 3200 features
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(512, 64)
         )
         
         self.thm_stats_processor = nn.Sequential(
-            nn.Linear(14 * 5, 128),  # Thermal stats: 70 features
+            nn.Linear(10 * 5, 128),  # Thermal stats: 50 features
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(128, 64)
@@ -1181,9 +1181,9 @@ class Stats_MultiSensor_TimeMIL_v2(nn.Module):
             imu_data: [B, 1, L, 7] - IMU sensor data
             tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
             thm_data: [B, 5, L, 1] - Thermal sensor data
-            imu_stats: [B, 98] - IMU statistics features (14 * 7)
-            thm_stats: [B, 70] - Thermal statistics features (14 * 5)
-            tof_stats: [B, 4480] - ToF statistics features (14 * 320)
+            imu_stats: [B, 70] - IMU statistics features (10 * 7)
+            thm_stats: [B, 50] - Thermal statistics features (10 * 5)
+            tof_stats: [B, 3200] - ToF statistics features (10 * 320)
             pad_mask: [B, L] - padding mask (1=valid, 0=padding)
             warmup: bool - whether to use warmup strategy
         """
