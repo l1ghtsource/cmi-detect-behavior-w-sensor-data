@@ -8,7 +8,12 @@ from torch.utils.data import DataLoader
 from entmax import entmax_bisect
 
 from configs.config import cfg
-from utils.getters import get_ts_dataset, get_ts_model_and_params, forward_model
+from utils.getters import (
+    get_ts_dataset, 
+    get_ts_model_and_params, 
+    forward_model, 
+    get_prefix
+)
 from utils.data_preproc import fast_seq_agg, le, get_rev_mapping
 from utils.tta import apply_tta
 
@@ -48,6 +53,8 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 
+    prefix = get_prefix()
+
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,
         seq_len=cfg.seq_len,
@@ -65,15 +72,11 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         TSModel, m_params = get_ts_model_and_params(imu_only=use_imu_only)
         model = TSModel(**m_params).to(device)
 
-        prefix0 = 'timemil_' if cfg.use_timemil else ''
-        prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
-        prefix2 = 'imu_only_' if use_imu_only else ''
-
-        model_path = f'{cfg.weights_path}/{prefix0}{prefix1}{prefix2}model_fold{i}.pt'
+        model_path = f'{cfg.weights_path}/{prefix}model_fold{i}.pt'
         model.load_state_dict(torch.load(model_path, map_location=device))
 
         if cfg.use_ema:
-            model_path = f'{cfg.weights_path}/{prefix0}{prefix1}{prefix2}model_ema_fold{i}.pt'
+            model_path = f'{cfg.weights_path}/{prefix}model_ema_fold{i}.pt'
             ema_state_dict = torch.load(model_path, map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:

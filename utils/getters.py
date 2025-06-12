@@ -121,3 +121,32 @@ def forward_model(model, batch, imu_only):
                 return model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
             else:
                 return model(batch['imu'], batch['thm'], batch['tof'])
+
+# haha what a shit
+def get_prefix():
+    prefix_parts = []
+    
+    if cfg.use_timemil:
+        prefix_parts.append('timemil')
+    elif cfg.use_dwhar:
+        prefix_parts.append('decomposewhar')
+    else:
+        prefix_parts.append('baseline')
+    
+    if cfg.imu_only:
+        prefix_parts.append('imu_only')
+    
+    prefix_parts.append(f'seq_len={cfg.seq_len}')
+    
+    if cfg.use_demo:
+        prefix_parts.append('use_demo')
+    
+    if cfg.use_lookahead:
+        prefix_parts.append('lookahead')
+    
+    prefix_parts.append(cfg.optim_type)
+    
+    if cfg.use_ema:
+        prefix_parts.append(f'ema_{cfg.ema_decay}')
+    
+    return '_'.join(prefix_parts) + '_'

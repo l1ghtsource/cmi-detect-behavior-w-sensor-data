@@ -24,7 +24,8 @@ from utils.getters import (
     get_optimizer, 
     get_ts_dataset, 
     get_ts_model_and_params,
-    forward_model
+    forward_model,
+    get_prefix
 )
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
@@ -177,6 +178,8 @@ def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
     os.makedirs(cfg.oof_dir, exist_ok=True)
 
+    prefix = get_prefix()
+
     sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
     targets = train_seq[cfg.target].values
     groups = train_seq[cfg.group].values
@@ -193,10 +196,7 @@ def run_training_with_stratified_group_kfold():
         #     continue
         
         if cfg.do_wandb_log:
-            prefix0 = 'timemil_' if cfg.use_timemil else ''
-            prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
-            prefix2 = 'imu_only_' if cfg.imu_only else ''
-            run_name = f'{prefix0}{prefix1}{prefix2}fold_{fold}'
+            run_name = f'{prefix}fold_{fold}'
             
             wandb.init(
                 project=cfg.wandb_project,
@@ -274,11 +274,8 @@ def run_training_with_stratified_group_kfold():
         
         best_val_score = -np.inf
         patience_counter = 0
-        prefix0 = 'timemil_' if cfg.use_timemil else ''
-        prefix1 = 'decomposewhar_' if cfg.use_dwhar else ''
-        prefix2 = 'imu_only_' if cfg.imu_only else ''
-        best_model_path = os.path.join(cfg.model_dir, f'{prefix0}{prefix1}{prefix2}model_fold{fold}.pt')
-        best_ema_path = os.path.join(cfg.model_dir, f'{prefix0}{prefix1}{prefix2}model_ema_fold{fold}.pt') if cfg.use_ema else None
+        best_model_path = os.path.join(cfg.model_dir, f'{prefix}model_fold{fold}.pt')
+        best_ema_path = os.path.join(cfg.model_dir, f'{prefix}model_ema_fold{fold}.pt') if cfg.use_ema else None
         
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
@@ -369,7 +366,7 @@ def run_training_with_stratified_group_kfold():
     if cfg.do_wandb_log:
         wandb.init(
             project=cfg.wandb_project,
-            name=f'{prefix0}{prefix1}{prefix2}final_results',
+            name=f'{prefix}final_results',
             config={'final_results': True}
         )
         
@@ -384,9 +381,9 @@ def run_training_with_stratified_group_kfold():
         
         wandb.finish()
     
-    oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_preds.npy')
-    oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_targets.npy')
-    oof_pred_labels_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_pred_labels.npy')
+    oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix}oof_preds.npy')
+    oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix}oof_targets.npy')
+    oof_pred_labels_path = os.path.join(cfg.oof_dir, f'{prefix}oof_pred_labels.npy')
 
     np.save(oof_preds_path, oof_preds)
     np.save(oof_targets_path, oof_targets)
@@ -401,7 +398,7 @@ def run_training_with_stratified_group_kfold():
         'std_cv_avg_f1': np.std(best_f1_scores)
     }
     
-    oof_info_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_info.json')
+    oof_info_path = os.path.join(cfg.oof_dir, f'{prefix}oof_info.json')
     with open(oof_info_path, 'w') as f:
         json.dump(oof_info, f, indent=2)
 
