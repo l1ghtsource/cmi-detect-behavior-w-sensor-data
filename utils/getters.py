@@ -9,7 +9,7 @@ from data.ts_datasets import (
     TS_CMIDataset_DecomposeWHAR,
     TS_CMIDataset_DecomposeWHAR_Megasensor
 )
-from models.ts_models import TS_MSModel, TS_IMUModel, TS_Demo_MSModel, TS_Demo_IMUModel
+from models.ts_models import TS_MSModel, TS_IMUModel
 from models.decompose_whar import (
     MultiSensor_DecomposeWHAR_v1, DecomposeWHAR_SingleSensor_v1, 
     MultiSensor_DecomposeWHAR_v2, DecomposeWHAR_SingleSensor_v2
@@ -77,7 +77,7 @@ def get_ts_model_and_params(imu_only):
             }
     else: # classic cnn-lstm model
         if imu_only: # only imu sensor
-            model_cls = TS_Demo_IMUModel if cfg.use_demo else TS_IMUModel
+            model_cls = ... if cfg.use_demo else TS_IMUModel
             params = {
                 'imu_features': len(cfg.imu_cols),
                 'num_classes': cfg.num_classes,
@@ -87,7 +87,7 @@ def get_ts_model_and_params(imu_only):
                 params['demo_features'] = len(cfg.demo_cols)
             return model_cls, params
         else: # multi sensor model
-            model_cls = TS_Demo_MSModel if cfg.use_demo else TS_MSModel
+            model_cls = ... if cfg.use_demo else TS_MSModel
             params = {
                 'imu_features': len(cfg.imu_cols),
                 'thm_features': len(cfg.thm_cols),
@@ -114,10 +114,10 @@ def forward_model(model, batch, imu_only):
             return model(batch['imu'], batch['thm'], batch['tof'])
     else:
         if imu_only:
-            return model(batch['imu'], batch['demographics']) if cfg.use_demo else model(batch['imu'])
+            return model(batch['imu'], batch['demography_bin'], batch['demography_cont']) if cfg.use_demo else model(batch['imu'])
         else:
             if cfg.use_demo:
-                return model(batch['imu'], batch['thm'], batch['tof'], batch['demographics'])
+                return model(batch['imu'], batch['thm'], batch['tof'], batch['demography_bin'], batch['demography_cont'])
             else:
                 return model(batch['imu'], batch['thm'], batch['tof'])
 
