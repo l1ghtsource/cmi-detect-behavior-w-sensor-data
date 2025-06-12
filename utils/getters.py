@@ -142,7 +142,13 @@ def get_prefix():
     
     if cfg.use_demo:
         prefix_parts.append('use_demo')
-    
+
+    if cfg.use_stats_vectors:
+        prefix_parts.append('use_stats_vectors')
+
+    if cfg.use_pad_mask:
+        prefix_parts.append('use_pad_mask')
+
     if cfg.use_lookahead:
         prefix_parts.append('lookahead')
     
