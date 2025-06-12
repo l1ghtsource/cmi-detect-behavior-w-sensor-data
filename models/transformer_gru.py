@@ -169,7 +169,7 @@ class IMU_Backbone(nn.Module):
             
         return x, xt, attn_mask
 
-class CMI_IMU_WalkNetwork(nn.Module):
+class WalkNetwork_SingleSensor_v1(nn.Module):
     def __init__(self,
                  seq_len,
                  input_channels=7,
@@ -544,7 +544,7 @@ class CrossSensorAttention(nn.Module):
             
         return enhanced_features
 
-class CMI_MultiSensor_WalkNetwork(nn.Module):
+class MultiSensor_WalkNetwork_v1(nn.Module):
     def __init__(self,
                  seq_len,
                  dims=256,
