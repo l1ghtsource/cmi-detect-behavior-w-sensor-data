@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from scipy.signal import find_peaks
+import scipy.stats as stats
 from configs.config import cfg
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
 
@@ -45,8 +47,78 @@ class TS_CMIDataset(Dataset):
     def _compute_phase_moments(self, phase_sequence):
         phase_array = np.array(phase_sequence)
         gesture_indices = np.where(phase_array == 'Gesture')[0]
-        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0
+        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0 # TODO: recalc it when use time_warp
         return gesture_start
+    
+    def _compute_statistics_features(self, data, sensor_type):
+        n_features = data.shape[1]
+        stats_list = []
+        
+        for feature_idx in range(n_features):
+            series = data[:, feature_idx]
+            
+            clean_series = series[~np.isnan(series)]
+            clean_series = clean_series[clean_series != 0.0]
+            
+            if len(clean_series) == 0:
+                feature_stats = [0.0] * 14
+                stats_list.extend(feature_stats)
+                continue
+            
+            mean_val = np.mean(clean_series)
+            std_val = np.std(clean_series)
+            max_val = np.max(clean_series)
+            min_val = np.min(clean_series)
+            q25 = np.percentile(clean_series, 25)
+            q75 = np.percentile(clean_series, 75)
+            
+            if len(clean_series) > 1:
+                diff_series = np.diff(clean_series)
+                diff_mean = np.mean(diff_series)
+                diff_std = np.std(diff_series)
+            else:
+                diff_mean = 0.0
+                diff_std = 0.0
+            
+            energy = np.sum(clean_series ** 2)
+            rms = np.sqrt(np.mean(clean_series ** 2))
+            
+            if len(clean_series) > 1:
+                zero_crossings = np.sum(np.diff(np.sign(clean_series)) != 0)
+                zcr = zero_crossings / (len(clean_series) - 1)
+            else:
+                zcr = 0.0
+            
+            if len(clean_series) > 3:
+                peaks, _ = find_peaks(clean_series, distance=2)
+                peak_count = len(peaks) / len(clean_series)
+            else:
+                peak_count = 0.0
+            
+            if len(clean_series) > 2:
+                autocorr = np.corrcoef(clean_series[:-1], clean_series[1:])[0, 1]
+                autocorr = autocorr if not np.isnan(autocorr) else 0.0
+            else:
+                autocorr = 0.0
+            
+            if len(clean_series) > 1:
+                x = np.arange(len(clean_series))
+                slope, _, _, _, _ = stats.linregress(x, clean_series)
+                slope = slope if not np.isnan(slope) else 0.0
+            else:
+                slope = 0.0
+            
+            feature_stats = [
+                mean_val, std_val, max_val, min_val, q25, q75,
+                diff_mean, diff_std,
+                energy, rms,
+                zcr, peak_count, autocorr, slope
+            ]
+            
+            feature_stats = [x if np.isfinite(x) else 0.0 for x in feature_stats]
+            stats_list.extend(feature_stats)
+        
+        return np.array(stats_list, dtype=np.float32)
 
     def _compute_normalization_stats(self):
         stats = {}
@@ -71,21 +143,22 @@ class TS_CMIDataset(Dataset):
             means[np.isnan(means)] = 0.0
             
             stats[sensor_type] = {'mean': means, 'std': stds}
-        
-        demo_stats = {}
-        for col in self.demo_cont_cols:
-            if col in self.df.columns:
-                values = self.df[col].values
-                clean_values = values[~np.isnan(values)]
-                if len(clean_values) > 0:
-                    mean_val = np.mean(clean_values)
-                    std_val = np.std(clean_values)
-                    std_val = std_val if std_val > 1e-8 else 1.0
-                else:
-                    mean_val, std_val = 0.0, 1.0
-                demo_stats[col] = {'mean': mean_val, 'std': std_val}
-        
-        stats['demography'] = demo_stats
+
+        if cfg.use_demo:
+            demo_stats = {}
+            for col in self.demo_cont_cols:
+                if col in self.df.columns:
+                    values = self.df[col].values
+                    clean_values = values[~np.isnan(values)]
+                    if len(clean_values) > 0:
+                        mean_val = np.mean(clean_values)
+                        std_val = np.std(clean_values)
+                        std_val = std_val if std_val > 1e-8 else 1.0
+                    else:
+                        mean_val, std_val = 0.0, 1.0
+                    demo_stats[col] = {'mean': mean_val, 'std': std_val}
+            stats['demography'] = demo_stats
+
         return stats
     
     def _prepare_sensor_data_raw(self, row, sensor_cols, sensor_type):
@@ -155,10 +228,14 @@ class TS_CMIDataset(Dataset):
 
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
         data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+        if cfg.use_stats_vectors: 
+            stats_features = self._compute_statistics_features(data_stacked, sensor_type)
+        else:
+            stats_features = None
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
         data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
-        return data_stacked  # shape: (seq_len, len(sensor_cols))
+        return data_stacked, stats_features # shape: (seq_len, len(sensor_cols)); (len(sensor_cols) * 14)
     
     def _prepare_demographic_data(self, row):
         demo_bin = []
@@ -189,19 +266,25 @@ class TS_CMIDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         
-        imu_data = self._prepare_sensor_data(row, self.imu_cols, 'imu')
-        thm_data = self._prepare_sensor_data(row, self.thm_cols, 'thm')
-        tof_data = self._prepare_sensor_data(row, self.tof_cols, 'tof')
-        
-        demo_bin, demo_cont = self._prepare_demographic_data(row)
-        
+        imu_data, imu_stats = self._prepare_sensor_data(row, self.imu_cols, 'imu')
+        thm_data, thm_stats = self._prepare_sensor_data(row, self.thm_cols, 'thm')
+        tof_data, tof_stats = self._prepare_sensor_data(row, self.tof_cols, 'tof')
+
         features = {
             'imu': torch.tensor(imu_data, dtype=torch.float32),
             'thm': torch.tensor(thm_data, dtype=torch.float32),
-            'tof': torch.tensor(tof_data, dtype=torch.float32),
-            'demography_bin': torch.tensor(demo_bin, dtype=torch.float32), # [3]
-            'demography_cont': torch.tensor(demo_cont, dtype=torch.float32) # [4]
+            'tof': torch.tensor(tof_data, dtype=torch.float32)
         }
+
+        if cfg.use_demo:
+            demo_bin, demo_cont = self._prepare_demographic_data(row)
+            features['demography_bin'] = torch.tensor(demo_bin, dtype=torch.float32)
+            features['demography_cont'] = torch.tensor(demo_cont, dtype=torch.float32)
+
+        if cfg.use_stats_vectors:
+            features['imu_stats'] = torch.tensor(imu_stats, dtype=torch.float32)
+            features['thm_stats'] = torch.tensor(thm_stats, dtype=torch.float32)
+            features['tof_stats'] = torch.tensor(tof_stats, dtype=torch.float32)
         
         if 'phase' in self.df.columns:
             gesture_start = self._compute_phase_moments(row['phase'])
@@ -236,16 +319,20 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         tof_tensor = features['tof'] # (seq_len, 320)
         tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
 
-        demography_bin = features['demography_bin']
-        demography_cont = features['demography_cont']
-        
         result = {
             'imu': imu_data,
             'thm': thm_data, 
-            'tof': tof_reshaped,
-            'demography_bin': demography_bin,
-            'demography_cont': demography_cont
+            'tof': tof_reshaped 
         }
+
+        if cfg.use_demo:
+            result['demography_bin'] = features['demography_bin']
+            result['demography_cont'] = features['demography_cont']
+
+        if cfg.use_stats_vectors:
+            result['imu_stats'] = features['imu_stats']
+            result['thm_stats'] = features['thm_stats']
+            result['tof_stats'] = features['tof_stats']
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
@@ -282,14 +369,16 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         
         model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
 
-        demography_bin = features['demography_bin']
-        demography_cont = features['demography_cont']
-         
-        result = {
-            'megasensor': model_input,
-            'demography_bin': demography_bin,
-            'demography_cont': demography_cont
-        }
+        result = {'megasensor': model_input}
+
+        if cfg.use_demo:
+            result['demography_bin'] = features['demography_bin']
+            result['demography_cont'] = features['demography_cont']
+
+        if cfg.use_stats_vectors:
+            result['imu_stats'] = features['imu_stats']
+            result['thm_stats'] = features['thm_stats']
+            result['tof_stats'] = features['tof_stats']
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']

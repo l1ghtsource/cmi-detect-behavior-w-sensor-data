@@ -30,15 +30,15 @@ cfg.is_infer = False
 
 # --- important vars ---
 cfg.target = 'gesture'
+cfg.num_classes = 18
 cfg.aux_target = 'orientation'
+cfg.aux_num_classes = 4
+cfg.aux_weight = 0.5
 cfg.aux2_target = 'sequence_type'
+cfg.aux2_num_classes = 2
+cfg.aux2_weight = 0.5
 cfg.group = 'subject'
 cfg.seq_len = 120
-cfg.num_classes = 18
-cfg.aux_num_classes = 4
-cfg.aux2_num_classes = 2
-cfg.aux_weight = 0.5
-cfg.aux2_weight = 0.5
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
@@ -52,6 +52,7 @@ cfg.window_tof = True
 # --- ts ds cfg ---
 cfg.norm_ts = True
 cfg.use_demo = False
+cfg.use_stats_vectors = False
 cfg.imu_only = True
 
 # --- save dir ---
