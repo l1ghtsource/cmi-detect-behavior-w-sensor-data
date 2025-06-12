@@ -341,13 +341,13 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         }
 
         if cfg.use_demo:
-            result['demography_bin'] = features['demography_bin']
-            result['demography_cont'] = features['demography_cont']
+            result['demography_bin'] = features['demography_bin'] # (3)
+            result['demography_cont'] = features['demography_cont'] # (4)
 
         if cfg.use_stats_vectors:
-            result['imu_stats'] = features['imu_stats']
-            result['thm_stats'] = features['thm_stats']
-            result['tof_stats'] = features['tof_stats']
+            result['imu_stats'] = features['imu_stats'] # (14 * 7)
+            result['thm_stats'] = features['thm_stats'] # (14 * 5)
+            result['tof_stats'] = features['tof_stats'] # (14 * 320)
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
@@ -391,13 +391,13 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         }
 
         if cfg.use_demo:
-            result['demography_bin'] = features['demography_bin']
-            result['demography_cont'] = features['demography_cont']
+            result['demography_bin'] = features['demography_bin'] # (3)
+            result['demography_cont'] = features['demography_cont'] # (4)
 
         if cfg.use_stats_vectors:
-            result['imu_stats'] = features['imu_stats']
-            result['thm_stats'] = features['thm_stats']
-            result['tof_stats'] = features['tof_stats']
+            result['imu_stats'] = features['imu_stats'] # (14 * 7)
+            result['thm_stats'] = features['thm_stats'] # (14 * 5)
+            result['tof_stats'] = features['tof_stats'] # (14 * 320)
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
