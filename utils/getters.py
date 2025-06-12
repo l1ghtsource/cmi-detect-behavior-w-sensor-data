@@ -6,7 +6,6 @@ from optimizers.adafisher import AdaFisherW
 
 from data.ts_datasets import (
     TS_CMIDataset,
-    TS_Demo_CMIDataset,
     TS_CMIDataset_DecomposeWHAR,
     TS_CMIDataset_DecomposeWHAR_Megasensor
 )
@@ -35,7 +34,7 @@ def get_optimizer(params):
 def get_ts_dataset():
     if cfg.use_dwhar or cfg.use_timemil: # datasex is compatitable for decopmosewhar and timemil !! so i'm happy today
         return TS_CMIDataset_DecomposeWHAR_Megasensor if cfg.use_megasensor else TS_CMIDataset_DecomposeWHAR
-    return TS_Demo_CMIDataset if cfg.use_demo else TS_CMIDataset
+    return TS_CMIDataset
 
 def get_ts_model_and_params(imu_only):
     if cfg.use_dwhar: # decomposewhar
