@@ -180,7 +180,7 @@ class DropBlock2d(nn.Module):
         self.with_noise = with_noise
         self.inplace = inplace
         self.batchwise = batchwise
-        self.fast = fast  # FIXME finish comparisons of fast vs not
+        self.fast = fast
 
     def forward(self, x):
         if not self.training or not self.drop_prob:

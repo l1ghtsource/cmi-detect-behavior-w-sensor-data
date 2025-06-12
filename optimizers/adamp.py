@@ -27,7 +27,6 @@ def projection(p, grad, perturb, delta: float, wd_ratio: float, eps: float):
         grad_view = view_func(grad)
         cosine_sim = F.cosine_similarity(grad_view, param_view, dim=1, eps=eps).abs_()
 
-        # FIXME this is a problem for PyTorch XLA
         if cosine_sim.max() < delta / math.sqrt(param_view.size(1)):
             p_n = p / param_view.norm(p=2, dim=1).add_(eps).reshape(expand_size)
             perturb -= p_n * view_func(p_n * perturb).sum(dim=1).reshape(expand_size)
