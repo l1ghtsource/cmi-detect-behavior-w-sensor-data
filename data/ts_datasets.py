@@ -167,7 +167,7 @@ class TS_CMIDataset(Dataset):
         processed_series_list = []
         for col_name in sensor_cols:
             series = row[col_name]
-            padded_truncated_series = self._pad_or_truncate(series, self.seq_len)
+            padded_truncated_series, mask = self._pad_or_truncate(series, self.seq_len)
             processed_series_list.append(padded_truncated_series)
         
         data_stacked = np.stack(processed_series_list, axis=1)
@@ -181,7 +181,7 @@ class TS_CMIDataset(Dataset):
                 s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
                 data_stacked[:, i] = s_filled.values
         
-        return data_stacked
+        return data_stacked, mask
 
     def _normalize_sensor_data(self, data, sensor_type):
         if self.norm_stats is None or sensor_type not in self.norm_stats:
@@ -194,18 +194,22 @@ class TS_CMIDataset(Dataset):
 
     def __len__(self):
         return len(self.df)
-
-    # TODO: add mask for padding
+    
     def _pad_or_truncate(self, series_data, target_len):
         series_data = np.asarray(series_data, dtype=np.float64)
         current_len = len(series_data)
+        
         if current_len > target_len:
             # left truncation (keep the last target_len elements)
-            return series_data[-target_len:]
+            return series_data[-target_len:], np.ones(target_len, dtype=bool)
         elif current_len < target_len:
-            padding = np.zeros(target_len - current_len, dtype=series_data.dtype)
-            return np.concatenate((padding, series_data))  # padding on the left
-        return series_data
+            padding = np.zeros(target_len - current_len, dtype=series_data.dtype) # left padding
+            padded_series = np.concatenate((padding, series_data))
+            mask = np.concatenate((np.zeros(target_len - current_len, dtype=bool), 
+                                np.ones(current_len, dtype=bool)))
+            return padded_series, mask
+        
+        return series_data, np.ones(target_len, dtype=bool)
 
     def _apply_augmentations(self, data, sensor_type):
         if not self.train:
@@ -228,15 +232,9 @@ class TS_CMIDataset(Dataset):
             data = aug_func(data)
             
         return data
-    
-    def _create_padding_mask(self, data):
-        mask = (data != 0.0).astype(np.float32)
-        return mask
 
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
-        data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
-
-        padding_mask = self._create_padding_mask(data_stacked) # (seq_len, len(sensor_cols))
+        data_stacked, padding_mask = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
 
         if cfg.use_stats_vectors: 
             stats_features = self._compute_statistics_features(data_stacked, sensor_type) # (len(sensor_cols) * 14)
@@ -279,17 +277,15 @@ class TS_CMIDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         
-        imu_data, imu_stats, imu_mask = self._prepare_sensor_data(row, self.imu_cols, 'imu')
-        thm_data, thm_stats, thm_mask = self._prepare_sensor_data(row, self.thm_cols, 'thm')
-        tof_data, tof_stats, tof_mask = self._prepare_sensor_data(row, self.tof_cols, 'tof')
+        imu_data, imu_stats, pad_mask = self._prepare_sensor_data(row, self.imu_cols, 'imu')
+        thm_data, thm_stats, _ = self._prepare_sensor_data(row, self.thm_cols, 'thm')
+        tof_data, tof_stats, _ = self._prepare_sensor_data(row, self.tof_cols, 'tof')
 
         features = {
             'imu': torch.tensor(imu_data, dtype=torch.float32),
             'thm': torch.tensor(thm_data, dtype=torch.float32),
             'tof': torch.tensor(tof_data, dtype=torch.float32),
-            'imu_mask': torch.tensor(imu_mask, dtype=torch.float32),
-            'thm_mask': torch.tensor(thm_mask, dtype=torch.float32),
-            'tof_mask': torch.tensor(tof_mask, dtype=torch.float32)
+            'pad_mask': torch.tensor(pad_mask, dtype=torch.float32),
         }
 
         if cfg.use_demo:
@@ -334,19 +330,14 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         thm_data = features['thm'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
         tof_tensor = features['tof'] # (seq_len, 320)
         tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
+        pad_mask = features['pad_mask'] # (seq_len,)
 
-        imu_mask = features['imu_mask'].unsqueeze(0) # (1, seq_len, 7)
-        thm_mask = features['thm_mask'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
-        tof_mask_tensor = features['tof_mask'] # (seq_len, 320)
-        tof_mask_reshaped = tof_mask_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
 
         result = {
             'imu': imu_data,
             'thm': thm_data, 
             'tof': tof_reshaped,
-            'imu_mask': imu_mask,
-            'thm_mask': thm_mask,
-            'tof_mask': tof_mask_reshaped
+            'pad_mask': pad_mask,
         }
 
         if cfg.use_demo:
@@ -390,19 +381,13 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
             features['thm'], # (seq_len, 5) 
             features['tof']  # (seq_len, 320)
         ], dim=1) # (seq_len, 332)
-
-        all_masks = torch.cat([
-            features['imu_mask'], # (seq_len, 7)
-            features['thm_mask'], # (seq_len, 5)
-            features['tof_mask']  # (seq_len, 320)
-        ], dim=1) # (seq_len, 332)
         
         model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
-        mask_input = all_masks.unsqueeze(0) # (1, seq_len, 332)
+        mask_input = features['pad_mask'] # (seq_len)
 
         result = {
             'megasensor': model_input,
-            'megasensor_mask': mask_input
+            'pad_mask': mask_input
         }
 
         if cfg.use_demo:
