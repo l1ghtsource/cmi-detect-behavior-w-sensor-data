@@ -3,6 +3,8 @@ from mamba_ssm import Mamba
 import copy
 from einops.layers.torch import Rearrange
 
+# TODO: test it
+
 class Original_TSCMamba(torch.nn.Module):
     def __init__(self,configs):
         super(Original_TSCMamba, self).__init__()

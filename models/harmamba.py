@@ -26,6 +26,8 @@ except ImportError:
 
 from configs.config import cfg
 
+# TODO: test it
+
 class PatchEmbed(nn.Module):
     """ Patch Embedding
     """

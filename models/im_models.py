@@ -3,6 +3,8 @@ import torch.nn as nn
 import timm
 from configs.config import cfg
 
+# TODO: test it
+
 class IMG_CMIModel(nn.Module):
     def __init__(
         self,

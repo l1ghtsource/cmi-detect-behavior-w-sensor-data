@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 from modules.mpts_layers import DataEmbedding, clsWindowTransformer, Inception_CBAM, clsTransformer, DataEmbedding_v1, Transformer, WindowTransformer
 
+# TODO: test it
+
 def fft_find_each_amplitude(data, target_period):
     '''
     For each element in a batch

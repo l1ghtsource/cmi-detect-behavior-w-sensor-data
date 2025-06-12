@@ -3,6 +3,8 @@ from torch import nn
 import torch.nn.functional as F
 from modules.transformer import TransformerEncoder
 
+# TODO: test it
+
 class Original_HUSFORMERModel(nn.Module):
     def __init__(self, hyp_params):
         super(Original_HUSFORMERModel, self).__init__()

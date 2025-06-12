@@ -6,6 +6,8 @@ from modules.selfattn import MedformerLayer
 from modules.embed import ListPatchEmbedding
 from configs.config import cfg
 
+# TODO: test it
+
 class Original_Medformer(nn.Module):
     """
     Paper link: https://arxiv.org/pdf/2405.19363
