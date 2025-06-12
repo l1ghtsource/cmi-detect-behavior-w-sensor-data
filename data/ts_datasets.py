@@ -331,8 +331,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         tof_tensor = features['tof'] # (seq_len, 320)
         tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
         pad_mask = features['pad_mask'] # (seq_len,)
-
-
+        
         result = {
             'imu': imu_data,
             'thm': thm_data, 

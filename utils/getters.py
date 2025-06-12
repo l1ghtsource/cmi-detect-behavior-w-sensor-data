@@ -58,7 +58,7 @@ def get_ts_model_and_params(imu_only):
             }
         else:
             dwhar_model = MultiSensor_DecomposeWHAR_v1 if cfg.dwhar_ver == '1' else MultiSensor_DecomposeWHAR_v2
-            return MultiSensor_DecomposeWHAR_v2, { # multi sensor model
+            return dwhar_model, { # multi sensor model
                 'num_imu': cfg.imu_num_sensor,
                 'num_thm': cfg.thm_num_sensor,
                 'num_tof': cfg.tof_num_sensor,
@@ -74,7 +74,7 @@ def get_ts_model_and_params(imu_only):
     elif cfg.selected_model == 'timemil':
         if imu_only:
             timemil_model = Stats_TimeMIL_SingleSensor_v1 if cfg.use_stats_vectors else TimeMIL_SingleSensor_v1
-            return TimeMIL_SingleSensor_v1, { # only imu sensor
+            return timemil_model, { # only imu sensor
                 'n_classes': cfg.num_classes,
                 'mDim': cfg.timemil_dim, 
                 'max_seq_len': cfg.seq_len,
