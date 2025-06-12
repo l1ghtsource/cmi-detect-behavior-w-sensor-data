@@ -17,6 +17,8 @@ from utils.getters import (
 from utils.data_preproc import fast_seq_agg, le, get_rev_mapping
 from utils.tta import apply_tta
 
+# TODO: multigpu inference
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 train = pd.read_csv(cfg.train_path)

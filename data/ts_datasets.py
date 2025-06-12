@@ -8,6 +8,8 @@ import scipy.stats as stats
 from configs.config import cfg
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
 
+# TODO: all augmentations to gpu!
+
 # classic ts dataset
 class TS_CMIDataset(Dataset):
     def __init__(
@@ -47,7 +49,7 @@ class TS_CMIDataset(Dataset):
     def _compute_phase_moments(self, phase_sequence):
         phase_array = np.array(phase_sequence)
         gesture_indices = np.where(phase_array == 'Gesture')[0]
-        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0 # TODO: recalc it when use time_warp
+        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0 # FIXME: recalc it when use time_warp
         return gesture_start
     
     def _compute_statistics_features(self, data, sensor_type):
@@ -193,6 +195,7 @@ class TS_CMIDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
+    # TODO: add mask for padding
     def _pad_or_truncate(self, series_data, target_len):
         series_data = np.asarray(series_data, dtype=np.float64)
         current_len = len(series_data)
@@ -298,7 +301,7 @@ class TS_CMIDataset(Dataset):
         return features
 
 # compatitable w/ timemil and decomposewhar !!
-class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
+class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset): # TODO: update after main ds update
     def __init__(
         self, 
         dataframe, 
@@ -345,7 +348,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         return result
 
 # ebaniy kal, prosto zalupa
-class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
+class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset): # TODO: update after main ds update
     def __init__(
         self, 
         dataframe, 
