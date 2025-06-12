@@ -17,7 +17,9 @@ from models.decompose_whar import (
 )
 from models.timemil import (
     MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_v1,
-    MultiSensor_TimeMIL_v2
+    MultiSensor_TimeMIL_v2,
+    Stats_MultiSensor_TimeMIL_v1, Stats_TimeMIL_SingleSensor_v1,
+    Stats_MultiSensor_TimeMIL_v2
 )
 from configs.config import cfg
 
@@ -71,6 +73,7 @@ def get_ts_model_and_params(imu_only):
             }
     elif cfg.selected_model == 'timemil':
         if imu_only:
+            timemil_model = Stats_TimeMIL_SingleSensor_v1 if cfg.use_stats_vectors else TimeMIL_SingleSensor_v1
             return TimeMIL_SingleSensor_v1, { # only imu sensor
                 'n_classes': cfg.num_classes,
                 'mDim': cfg.timemil_dim, 
@@ -78,7 +81,10 @@ def get_ts_model_and_params(imu_only):
                 'dropout': cfg.timemil_dropout
             }
         else:
-            timemil_model = MultiSensor_TimeMIL_v1 if cfg.timemil_ver == '1' else MultiSensor_TimeMIL_v2
+            if cfg.timemil_ver == '1':
+                timemil_model = Stats_MultiSensor_TimeMIL_v1 if cfg.use_stats_vectors else MultiSensor_TimeMIL_v1
+            else:
+                timemil_model = Stats_MultiSensor_TimeMIL_v2 if cfg.use_stats_vectors else MultiSensor_TimeMIL_v2      
             return timemil_model, { # multi sensor model
                 'n_classes': cfg.num_classes,
                 'mDim': cfg.timemil_dim, 
