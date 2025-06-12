@@ -130,7 +130,7 @@ class TS_CMIDataset(Dataset):
             
             for idx in range(len(self.df)):
                 row = self.df.iloc[idx]
-                sensor_data = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+                sensor_data, _ = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
                 all_data.append(sensor_data)
             
             combined_data = np.concatenate(all_data, axis=0)  # (total_samples, n_features)
