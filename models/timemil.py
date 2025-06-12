@@ -337,7 +337,7 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         
         # Apply TransLayer 1
         if pad_mask is not None:
-            x = self.layer1(x, mask=extended_mask)
+            x = self.layer1(x, mask=extended_mask.bool())
         else:
             x = self.layer1(x)
         
@@ -346,7 +346,7 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         
         # Apply TransLayer 2
         if pad_mask is not None:
-            x = self.layer2(x, mask=extended_mask)
+            x = self.layer2(x, mask=extended_mask.bool())
         else:
             x = self.layer2(x)
         
@@ -483,7 +483,7 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         
         # Apply TransLayer 1
         if pad_mask is not None:
-            x = self.layer1(x, mask=extended_mask)
+            x = self.layer1(x, mask=extended_mask.bool())
         else:
             x = self.layer1(x)
         
@@ -492,7 +492,7 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         
         # Apply TransLayer 2
         if pad_mask is not None:
-            x = self.layer2(x, mask=extended_mask)
+            x = self.layer2(x, mask=extended_mask.bool())
         else:
             x = self.layer2(x)
         
