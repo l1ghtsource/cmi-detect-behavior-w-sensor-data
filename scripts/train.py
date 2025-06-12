@@ -64,7 +64,7 @@ train_seq = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, criterion, aux_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
+def train_epoch(train_loader, model, optimizer, criterion, aux2_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
     model.train()
         
     total_loss = 0
@@ -73,7 +73,7 @@ def train_epoch(train_loader, model, optimizer, criterion, aux_criterion, device
     all_preds = []
     
     if cfg.use_mixup:
-        mixup_criterion = MixupLoss(criterion, aux_criterion, cfg.aux2_weight, cfg.num_classes, cfg.aux2_num_classes, cfg.mixup_alpha)
+        mixup_criterion = MixupLoss(criterion, aux2_criterion, cfg.aux2_weight, cfg.num_classes, cfg.aux2_num_classes, cfg.mixup_alpha)
     
     loop = tqdm(train_loader, desc='train', leave=False)
 
@@ -86,18 +86,18 @@ def train_epoch(train_loader, model, optimizer, criterion, aux_criterion, device
         curr_proba = np.random.random()
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
-            mixed_batch, targets_a, targets_b, targets_aux_a, targets_aux_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs, aux_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
-            loss, comp_loss, aux_loss = mixup_criterion(outputs, aux_outputs, targets_a, targets_b, targets_aux_a, targets_aux_b, lam)
+            mixed_batch, targets_a, targets_b, targets_aux2_a, targets_aux2_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
+            outputs, aux2_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
+            loss, main_loss, aux2_loss = mixup_criterion(outputs, aux2_outputs, targets_a, targets_b, targets_aux2_a, targets_aux2_b, lam)
             targets = batch['target']
-            aux_targets = batch['aux2_target']
+            aux2_targets = batch['aux2_target']
         else:
-            outputs, aux_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, aux2_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['target']
-            aux_targets = batch['aux2_target']
-            comp_loss = criterion(outputs, targets)
-            aux_loss = aux_criterion(aux_outputs, aux_targets)
-            loss = comp_loss + cfg.aux2_weight * aux_loss
+            aux2_targets = batch['aux2_target']
+            main_loss = criterion(outputs, targets)
+            aux2_loss = aux2_criterion(aux2_outputs, aux2_targets)
+            loss = main_loss + cfg.aux2_weight * aux2_loss
 
         loss.backward()
 
@@ -119,6 +119,8 @@ def train_epoch(train_loader, model, optimizer, criterion, aux_criterion, device
         if cfg.do_wandb_log: # every batch
             wandb.log({
                 f'fold_{fold}/train_batch_loss': loss.item(),
+                f'fold_{fold}/train_main_loss': main_loss.item(),
+                f'fold_{fold}/train_aux2_loss': aux2_loss.item(),
                 f'fold_{fold}/learning_rate': scheduler.get_last_lr()[0],
                 f'fold_{fold}/current_step': current_step
             })
@@ -131,7 +133,7 @@ def train_epoch(train_loader, model, optimizer, criterion, aux_criterion, device
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, criterion, aux_criterion, device, ema=None):
+def valid_epoch(val_loader, model, criterion, aux2_criterion, device, ema=None):
     model.eval()
 
     if cfg.use_ema and ema is not None:
@@ -148,12 +150,12 @@ def valid_epoch(val_loader, model, criterion, aux_criterion, device, ema=None):
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, aux_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, aux2_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['target']
-            aux_targets = batch['aux2_target']
-            comp_loss = criterion(outputs, targets)
-            aux_loss = aux_criterion(aux_outputs, aux_targets)
-            loss = comp_loss + cfg.aux2_weight * aux_loss
+            aux2_targets = batch['aux2_target']
+            main_loss = criterion(outputs, targets)
+            aux2_loss = aux2_criterion(aux2_outputs, aux2_targets)
+            loss = main_loss + cfg.aux2_weight * aux2_loss
             
             total_loss += loss.item() * targets.size(0)
             total_samples += targets.size(0)
@@ -229,6 +231,7 @@ def run_training_with_stratified_group_kfold():
             seq_len=cfg.seq_len,
             target_col=cfg.target,
             aux_target_col=cfg.aux_target,
+            aux2_target_col=cfg.aux2_target,
             train=True
         )
         val_dataset = TSDataset(
@@ -236,6 +239,7 @@ def run_training_with_stratified_group_kfold():
             seq_len=cfg.seq_len,
             target_col=cfg.target,
             aux_target_col=cfg.aux_target,
+            aux2_target_col=cfg.aux2_target,
             train=False,
             norm_stats=train_dataset.norm_stats
         )
@@ -256,7 +260,7 @@ def run_training_with_stratified_group_kfold():
             optimizer = Lookahead(optimizer)    
 
         criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
-        aux_criterion = nn.CrossEntropyLoss()
+        aux2_criterion = nn.CrossEntropyLoss()
 
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
@@ -280,10 +284,10 @@ def run_training_with_stratified_group_kfold():
             print(f'{epoch=}')
             
             train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
-                train_loader, model, optimizer, criterion, aux_criterion, device, scheduler, 
+                train_loader, model, optimizer, criterion, aux2_criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, criterion, aux_criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, criterion, aux2_criterion, device, ema)
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
@@ -292,10 +296,14 @@ def run_training_with_stratified_group_kfold():
                 wandb.log({
                     f'fold_{fold}/epoch': epoch,
                     f'fold_{fold}/train_loss': train_loss,
-                    f'fold_{fold}/train_f1': avg_m_train,
+                    f'fold_{fold}/train_avg_f1': avg_m_train,
+                    f'fold_{fold}/train_binary_f1': bm_train,
+                    f'fold_{fold}/train_macro_f1': mm_train,
                     f'fold_{fold}/val_loss': val_loss,
-                    f'fold_{fold}/val_f1': avg_m_val,
-                    f'fold_{fold}/best_val_f1': best_val_score,
+                    f'fold_{fold}/val_avg_f1': avg_m_val,
+                    f'fold_{fold}/val_binary_f1': bm_val,
+                    f'fold_{fold}/val_macro_f1': mm_val,
+                    f'fold_{fold}/best_val_avg_f1': best_val_score,
                     f'fold_{fold}/patience_counter': patience_counter
                 })
             
@@ -310,7 +318,7 @@ def run_training_with_stratified_group_kfold():
                     torch.save(ema_state_dict, best_ema_path)
                 
                 if cfg.do_wandb_log:
-                    wandb.log({f'fold_{fold}/new_best_val_f1': best_val_score})
+                    wandb.log({f'fold_{fold}/new_best_val_avg_f1': best_val_score})
             else:
                 patience_counter += 1
             
@@ -333,7 +341,7 @@ def run_training_with_stratified_group_kfold():
         
         if cfg.do_wandb_log:
             wandb.log({
-                f'fold_{fold}/final_val_f1': best_val_score,
+                f'fold_{fold}/final_val_avg_f1': best_val_score,
                 f'fold_{fold}/fold_completed': True
             })
         
@@ -366,10 +374,12 @@ def run_training_with_stratified_group_kfold():
         )
         
         wandb.log({
-            'oof_macro_f1': oof_m,
-            'mean_cv_f1': np.mean(best_f1_scores),
-            'std_cv_f1': np.std(best_f1_scores),
-            'fold_f1_scores': {f'fold_{i}': score for i, score in enumerate(best_f1_scores)}
+            'oof_avg_f1': oof_m,
+            'oof_binary_f1': oof_bm,
+            'oof_macro_f1': oof_mm,
+            'mean_cv_avg_f1': np.mean(best_f1_scores),
+            'std_cv_avg_f1': np.std(best_f1_scores),
+            'fold_avg_f1_scores': {f'fold_{i}': score for i, score in enumerate(best_f1_scores)}
         })
         
         wandb.finish()
@@ -383,10 +393,12 @@ def run_training_with_stratified_group_kfold():
     np.save(oof_pred_labels_path, oof_pred_labels)
 
     oof_info = {
-        'oof_macro_f1': oof_m,
-        'best_f1_scores_per_fold': best_f1_scores,
-        'mean_cv_f1': np.mean(best_f1_scores),
-        'std_cv_f1': np.std(best_f1_scores)
+        'oof_avg_f1': oof_m,
+        'oof_binary_f1': oof_bm,
+        'oof_macro_f1': oof_mm,
+        'best_avg_f1_scores_per_fold': best_f1_scores,
+        'mean_cv_avg_f1': np.mean(best_f1_scores),
+        'std_cv_avg_f1': np.std(best_f1_scores)
     }
     
     oof_info_path = os.path.join(cfg.oof_dir, f'{prefix0}{prefix1}{prefix2}oof_info.json')
