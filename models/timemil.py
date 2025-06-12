@@ -508,3 +508,193 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         logits_aux2 = self._fc2_aux2(x)
             
         return logits, logits_aux2
+    
+class SensorProcessor(nn.Module):
+    def __init__(self, feature_extractor, mDim, max_seq_len, num_sensors):
+        super().__init__()
+        self.feature_extractor = feature_extractor
+        self.proj = nn.Linear(num_sensors * 128, mDim)
+        
+        hidden_len = 2 * max_seq_len
+        self.pos_layer1 = WaveletEncoding(mDim, max_seq_len, hidden_len)
+        self.pos_layer2 = WaveletEncoding(mDim, max_seq_len, hidden_len)
+        
+        self.wave1 = nn.Parameter(torch.randn(2, mDim, 1))
+        self.wave1.data[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        
+        self.wave2 = nn.Parameter(torch.zeros(2, mDim, 1))
+        self.wave2.data[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        
+        self.wave3 = nn.Parameter(torch.zeros(2, mDim, 1))
+        self.wave3.data[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        
+        self.wave1_ = nn.Parameter(torch.randn(2, mDim, 1))
+        self.wave1_.data[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        
+        self.wave2_ = nn.Parameter(torch.zeros(2, mDim, 1))
+        self.wave2_.data[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        
+        self.wave3_ = nn.Parameter(torch.zeros(2, mDim, 1))
+        self.wave3_.data[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+
+class CrossAttentionFusion(nn.Module):
+    def __init__(self, mDim, num_heads=8, dropout=0.1):
+        super().__init__()
+        self.mDim = mDim
+        self.num_heads = num_heads
+        
+        self.imu_tof_cross_attn = nn.MultiheadAttention(mDim, num_heads, dropout=dropout, batch_first=True)
+        self.imu_thm_cross_attn = nn.MultiheadAttention(mDim, num_heads, dropout=dropout, batch_first=True)
+        self.tof_thm_cross_attn = nn.MultiheadAttention(mDim, num_heads, dropout=dropout, batch_first=True)
+        
+        self.fusion_proj = nn.Linear(mDim * 3, mDim)
+        self.norm = nn.LayerNorm(mDim)
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, imu_features, tof_features, thm_features, mask=None):
+        imu_tof_out, _ = self.imu_tof_cross_attn(
+            imu_features, tof_features, tof_features, 
+            key_padding_mask=mask if mask is not None else None
+        )
+        
+        imu_thm_out, _ = self.imu_thm_cross_attn(
+            imu_features, thm_features, thm_features,
+            key_padding_mask=mask if mask is not None else None
+        )
+        
+        tof_thm_out, _ = self.tof_thm_cross_attn(
+            tof_features, thm_features, thm_features,
+            key_padding_mask=mask if mask is not None else None
+        )
+        
+        fused_features = torch.cat([imu_tof_out, imu_thm_out, tof_thm_out], dim=-1)
+        fused_features = self.fusion_proj(fused_features)
+        
+        fused_features = self.norm(fused_features + imu_features)
+        fused_features = self.dropout(fused_features)
+        
+        return fused_features
+
+class MultiSensor_TimeMIL_v2(nn.Module):
+    def __init__(self, n_classes=cfg.num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+        super().__init__()
+        
+        self.imu_processor = SensorProcessor(
+            InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars),
+            mDim, max_seq_len, cfg.imu_num_sensor
+        )
+        
+        self.tof_processor = SensorProcessor(
+            InceptionTimeFeatureExtractor(n_in_channels=cfg.tof_vars),
+            mDim, max_seq_len, cfg.tof_num_sensor
+        )
+        
+        self.thm_processor = SensorProcessor(
+            InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars),
+            mDim, max_seq_len, cfg.thm_num_sensor
+        )
+        
+        self.cross_attention_fusion = CrossAttentionFusion(mDim, num_heads=8, dropout=dropout)
+        
+        self.cls_token = nn.Parameter(torch.randn(1, 1, mDim))
+        
+        self.layer1 = TransLayer(dim=mDim, dropout=dropout)
+        self.layer2 = TransLayer(dim=mDim, dropout=dropout)
+        self.norm = nn.LayerNorm(mDim)
+        
+        self._fc2 = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, n_classes)
+        )
+        
+        self._fc2_aux2 = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 2),
+        )
+        
+        self.alpha = nn.Parameter(torch.ones(1))
+        initialize_weights(self)
+    
+    def process_sensor_data(self, processor, sensor_data, pad_mask=None):
+        B, num_sensors, L, channels = sensor_data.shape
+        all_features = []
+        
+        for i in range(num_sensors):
+            sensor_features = sensor_data[:, i, :, :].transpose(1, 2)  # [B, channels, L]
+            features = processor.feature_extractor(sensor_features)  # [B, 128, L]
+            
+            if pad_mask is not None:
+                features = features * pad_mask.unsqueeze(1).float()
+            
+            all_features.append(features)
+        
+        x = torch.cat(all_features, dim=1)  # [B, num_sensors*128, L]
+        x = x.transpose(1, 2)  # [B, L, num_sensors*128]
+        x = processor.proj(x)  # [B, L, mDim]
+        
+        if pad_mask is not None:
+            x = x * pad_mask.unsqueeze(-1).float()
+        
+        x = processor.pos_layer1(x, processor.wave1, processor.wave2, processor.wave3)
+        x = processor.pos_layer2(x, processor.wave1_, processor.wave2_, processor.wave3_)
+        
+        return x
+    
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None, warmup=False):
+        """
+        Args:
+            imu_data: [B, 1, L, 7] - IMU sensor data
+            tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
+            thm_data: [B, 5, L, 1] - Thermal sensor data
+            pad_mask: [B, L] - padding mask (1=valid, 0=padding)
+            warmup: bool - whether to use warmup strategy
+        """
+        B, _, L, _ = imu_data.shape
+        
+        imu_features = self.process_sensor_data(self.imu_processor, imu_data, pad_mask)  # [B, L, mDim]
+        tof_features = self.process_sensor_data(self.tof_processor, tof_data, pad_mask)  # [B, L, mDim]  
+        thm_features = self.process_sensor_data(self.thm_processor, thm_data, pad_mask)  # [B, L, mDim]
+        
+        padding_mask = None if pad_mask is None else ~pad_mask.bool()
+        fused_features = self.cross_attention_fusion(
+            imu_features, tof_features, thm_features, mask=padding_mask
+        )  # [B, L, mDim]
+        
+        if pad_mask is not None:
+            valid_counts = pad_mask.sum(dim=1, keepdim=True).float()
+            valid_counts = torch.clamp(valid_counts, min=1.0)
+            global_token = (fused_features * pad_mask.unsqueeze(-1).float()).sum(dim=1) / valid_counts
+        else:
+            global_token = fused_features.mean(dim=1)
+        
+        cls_tokens = self.cls_token.expand(B, -1, -1)  # [B, 1, mDim]
+        x = torch.cat((cls_tokens, fused_features), dim=1)  # [B, L+1, mDim]
+        
+        if pad_mask is not None:
+            extended_mask = torch.cat([
+                torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),
+                pad_mask
+            ], dim=1)  # [B, L+1]
+        else:
+            extended_mask = None
+        
+        if extended_mask is not None:
+            x = self.layer1(x, mask=extended_mask.bool())
+            x = self.layer2(x, mask=extended_mask.bool())
+        else:
+            x = self.layer1(x)
+            x = self.layer2(x)
+        
+        x = x[:, 0]  # [B, mDim]
+        
+        if warmup:
+            x = 0.1 * x + 0.99 * global_token
+        
+        logits = self._fc2(x)
+        logits_aux2 = self._fc2_aux2(x)
+        
+        return logits, logits_aux2
