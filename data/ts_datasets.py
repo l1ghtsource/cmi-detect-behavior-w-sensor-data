@@ -228,17 +228,27 @@ class TS_CMIDataset(Dataset):
             data = aug_func(data)
             
         return data
+    
+    def _create_padding_mask(self, data):
+        mask = (data != 0.0).astype(np.float32)
+        return mask
 
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
         data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+
+        padding_mask = self._create_padding_mask(data_stacked) # (seq_len, len(sensor_cols))
+
         if cfg.use_stats_vectors: 
-            stats_features = self._compute_statistics_features(data_stacked, sensor_type)
+            stats_features = self._compute_statistics_features(data_stacked, sensor_type) # (len(sensor_cols) * 14)
         else:
             stats_features = None
+
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
-        data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
-        return data_stacked, stats_features # shape: (seq_len, len(sensor_cols)); (len(sensor_cols) * 14)
+
+        data_stacked = self._normalize_sensor_data(data_stacked, sensor_type) # (seq_len, len(sensor_cols))
+
+        return data_stacked, stats_features, padding_mask 
     
     def _prepare_demographic_data(self, row):
         demo_bin = []
@@ -269,14 +279,17 @@ class TS_CMIDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         
-        imu_data, imu_stats = self._prepare_sensor_data(row, self.imu_cols, 'imu')
-        thm_data, thm_stats = self._prepare_sensor_data(row, self.thm_cols, 'thm')
-        tof_data, tof_stats = self._prepare_sensor_data(row, self.tof_cols, 'tof')
+        imu_data, imu_stats, imu_mask = self._prepare_sensor_data(row, self.imu_cols, 'imu')
+        thm_data, thm_stats, thm_mask = self._prepare_sensor_data(row, self.thm_cols, 'thm')
+        tof_data, tof_stats, tof_mask = self._prepare_sensor_data(row, self.tof_cols, 'tof')
 
         features = {
             'imu': torch.tensor(imu_data, dtype=torch.float32),
             'thm': torch.tensor(thm_data, dtype=torch.float32),
-            'tof': torch.tensor(tof_data, dtype=torch.float32)
+            'tof': torch.tensor(tof_data, dtype=torch.float32),
+            'imu_mask': torch.tensor(imu_mask, dtype=torch.float32),
+            'thm_mask': torch.tensor(thm_mask, dtype=torch.float32),
+            'tof_mask': torch.tensor(tof_mask, dtype=torch.float32)
         }
 
         if cfg.use_demo:
@@ -301,7 +314,7 @@ class TS_CMIDataset(Dataset):
         return features
 
 # compatitable w/ timemil and decomposewhar !!
-class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset): # TODO: update after main ds update
+class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
     def __init__(
         self, 
         dataframe, 
@@ -322,10 +335,18 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset): # TODO: update after main ds u
         tof_tensor = features['tof'] # (seq_len, 320)
         tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
 
+        imu_mask = features['imu_mask'].unsqueeze(0) # (1, seq_len, 7)
+        thm_mask = features['thm_mask'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
+        tof_mask_tensor = features['tof_mask'] # (seq_len, 320)
+        tof_mask_reshaped = tof_mask_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
+
         result = {
             'imu': imu_data,
             'thm': thm_data, 
-            'tof': tof_reshaped 
+            'tof': tof_reshaped,
+            'imu_mask': imu_mask,
+            'thm_mask': thm_mask,
+            'tof_mask': tof_mask_reshaped
         }
 
         if cfg.use_demo:
@@ -348,7 +369,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset): # TODO: update after main ds u
         return result
 
 # ebaniy kal, prosto zalupa
-class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset): # TODO: update after main ds update
+class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
     def __init__(
         self, 
         dataframe, 
@@ -369,10 +390,20 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset): # TODO: update afte
             features['thm'], # (seq_len, 5) 
             features['tof']  # (seq_len, 320)
         ], dim=1) # (seq_len, 332)
+
+        all_masks = torch.cat([
+            features['imu_mask'], # (seq_len, 7)
+            features['thm_mask'], # (seq_len, 5)
+            features['tof_mask']  # (seq_len, 320)
+        ], dim=1) # (seq_len, 332)
         
         model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
+        mask_input = all_masks.unsqueeze(0) # (1, seq_len, 332)
 
-        result = {'megasensor': model_input}
+        result = {
+            'megasensor': model_input,
+            'megasensor_mask': mask_input
+        }
 
         if cfg.use_demo:
             result['demography_bin'] = features['demography_bin']
