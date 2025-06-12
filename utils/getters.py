@@ -136,13 +136,14 @@ def forward_model(model, batch, imu_only):
 def get_prefix():
     prefix_parts = []
     
-    if cfg.use_timemil:
-        prefix_parts.append('timemil')
-    elif cfg.use_dwhar:
-        prefix_parts.append('decomposewhar')
-    else:
-        prefix_parts.append('baseline')
-    
+    model = cfg.selected_model
+    prefix_parts.append(model)
+
+    if model == 'decomposewhar':
+        prefix_parts.append(f'ver{cfg.dwhar_ver}')
+    elif model == 'timemil':
+        prefix_parts.append(f'ver{cfg.timemil_ver}')
+
     if cfg.imu_only:
         prefix_parts.append('imu_only')
     
