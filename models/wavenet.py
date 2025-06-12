@@ -248,7 +248,7 @@ class InterSensorFusionModule(nn.Module):
         
         return x
 
-class WaveNet_MultiSensor(nn.Module):
+class WaveNet_MultiSensor_v1(nn.Module):
     def __init__(self, kernel_size=3):
         super().__init__()
         dropout_rate = 0.1
