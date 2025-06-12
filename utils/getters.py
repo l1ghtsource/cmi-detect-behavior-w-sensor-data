@@ -15,7 +15,10 @@ from models.decompose_whar import (
     MultiSensor_DecomposeWHAR_v1, DecomposeWHAR_SingleSensor_v1, 
     MultiSensor_DecomposeWHAR_v2, DecomposeWHAR_SingleSensor_v2
 )
-from models.timemil import MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_v1
+from models.timemil import (
+    MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_v1,
+    MultiSensor_TimeMIL_v2
+)
 from configs.config import cfg
 
 def get_optimizer(params):
@@ -36,14 +39,15 @@ def get_optimizer(params):
         raise Exception('stick your finger in your ass')
 
 def get_ts_dataset():
-    if cfg.use_dwhar or cfg.use_timemil: # datasex is compatitable for decopmosewhar and timemil !! so i'm happy today
+    if cfg.selected_model in ('timemil', 'decomposewhar'): # datasex is compatitable for decopmosewhar and timemil !! so i'm happy today
         return TS_CMIDataset_DecomposeWHAR_Megasensor if cfg.use_megasensor else TS_CMIDataset_DecomposeWHAR
     return TS_CMIDataset
 
 def get_ts_model_and_params(imu_only):
-    if cfg.use_dwhar: # decomposewhar
+    if cfg.selected_model == 'decomposewhar':
         if cfg.use_megasensor or imu_only: # all data in one sensor OR only imu sensor
-            return DecomposeWHAR_SingleSensor_v2, {
+            dwhar_model = DecomposeWHAR_SingleSensor_v1 if cfg.dwhar_ver == '1' else DecomposeWHAR_SingleSensor_v2
+            return dwhar_model, {
                 'M': cfg.imu_vars + cfg.thm_vars + cfg.tof_vars if cfg.use_megasensor else cfg.imu_vars,
                 'L': cfg.seq_len,
                 'num_classes': cfg.num_classes,
@@ -51,6 +55,7 @@ def get_ts_model_and_params(imu_only):
                 'S': cfg.stride
             }
         else:
+            dwhar_model = MultiSensor_DecomposeWHAR_v1 if cfg.dwhar_ver == '1' else MultiSensor_DecomposeWHAR_v2
             return MultiSensor_DecomposeWHAR_v2, { # multi sensor model
                 'num_imu': cfg.imu_num_sensor,
                 'num_thm': cfg.thm_num_sensor,
@@ -64,7 +69,7 @@ def get_ts_model_and_params(imu_only):
                 'S': cfg.stride,
                 # 'use_cross_sensor': cfg.use_cross_sensor
             }
-    elif cfg.use_timemil: # timemil
+    elif cfg.selected_model == 'timemil':
         if imu_only:
             return TimeMIL_SingleSensor_v1, { # only imu sensor
                 'n_classes': cfg.num_classes,
@@ -73,25 +78,24 @@ def get_ts_model_and_params(imu_only):
                 'dropout': cfg.timemil_dropout
             }
         else:
-            return MultiSensor_TimeMIL_v1, { # multi sensor model
+            timemil_model = MultiSensor_TimeMIL_v1 if cfg.timemil_ver == '1' else MultiSensor_TimeMIL_v2
+            return timemil_model, { # multi sensor model
                 'n_classes': cfg.num_classes,
                 'mDim': cfg.timemil_dim, 
                 'max_seq_len': cfg.seq_len,
                 'dropout': cfg.timemil_dropout
             }
-    else: # classic cnn-lstm model
+    elif cfg.selected_model == 'baseline':
         if imu_only: # only imu sensor
-            model_cls = ... if cfg.use_demo else TS_IMUModel
+            model_cls = TS_IMUModel
             params = {
                 'imu_features': len(cfg.imu_cols),
                 'num_classes': cfg.num_classes,
                 'hidden_dim': 128
             }
-            if cfg.use_demo: # w/ demography
-                params['demo_features'] = len(cfg.demo_cols)
             return model_cls, params
         else: # multi sensor model
-            model_cls = ... if cfg.use_demo else TS_MSModel
+            model_cls = TS_MSModel
             params = {
                 'imu_features': len(cfg.imu_cols),
                 'thm_features': len(cfg.thm_cols),
@@ -99,8 +103,6 @@ def get_ts_model_and_params(imu_only):
                 'num_classes': cfg.num_classes,
                 'hidden_dim': 128
             }
-            if cfg.use_demo: # w/ demography
-                params['demo_features'] = len(cfg.demo_cols)
             return model_cls, params
 
 def forward_model(model, batch, imu_only):

@@ -42,6 +42,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
+cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'baseline']
 
 # --- im ds cfg ---
 cfg.im_size = 160
@@ -61,7 +62,6 @@ cfg.model_dir = 'weights'
 cfg.oof_dir = 'oofs'
 
 # --- decomposewhar !! ---
-cfg.use_dwhar = False
 cfg.use_cross_sensor = False
 cfg.use_megasensor = False # can't be used w/ imu_only=True
 cfg.kernel_size = 3
@@ -78,11 +78,12 @@ cfg.tof_num_sensor = 5
 cfg.imu_vars = 7
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
+cfg.dwhar_ver = '1'
 
 # --- timemil ---
-cfg.use_timemil = True
 cfg.timemil_dim = 256
 cfg.timemil_dropout = 0.0
+cfg.timemil_ver = '1'
 
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
