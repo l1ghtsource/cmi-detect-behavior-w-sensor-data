@@ -120,8 +120,6 @@ def forward_model(model, batch, imu_only):
         if not imu_only:
             inputs.append(batch['thm'])
             inputs.append(batch['tof'])
-    if cfg.use_pad_mask:
-        inputs.append(batch['pad_mask'])
     if cfg.use_stats_vectors:
         inputs.append(batch['imu_stats'])
         if not imu_only:
@@ -130,6 +128,8 @@ def forward_model(model, batch, imu_only):
     if cfg.use_demo:
         inputs.append(batch['demography_bin'])
         inputs.append(batch['demography_cont'])
+    if cfg.use_pad_mask:
+        inputs.append(batch['pad_mask'])
     return model(*inputs)
             
 # haha what a shit
