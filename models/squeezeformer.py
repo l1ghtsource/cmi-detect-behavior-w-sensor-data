@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# TODO: test it
+
 class GLU(nn.Module):
     def __init__(self):
         super().__init__()

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# TODO: test it
+
 class Wave_Block(nn.Module):
     def __init__(self, in_channels, out_channels, dilation_rates, kernel_size):
         super(Wave_Block, self).__init__()
