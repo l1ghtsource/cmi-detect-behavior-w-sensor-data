@@ -1,5 +1,4 @@
 import os
-import gc
 import json
 
 import pandas as pd
@@ -45,22 +44,13 @@ if cfg.do_wandb_log:
 train = pd.read_csv(cfg.train_path)
 train_demographics = pd.read_csv(cfg.train_demographics_path)
 
-test = pd.read_csv(cfg.test_path)
-test_demographics = pd.read_csv(cfg.test_demographics_path)
-
 # --- join demographics stats ---
 
 train = train.merge(train_demographics, how='left', on='subject')
-test = test.merge(test_demographics, how='left', on='subject')
 
 # -- convert to seq ---
 
 train_seq = fast_seq_agg(train)
-test_seq = fast_seq_agg(test)
-
-del train, test
-gc.collect()
-
 train_seq = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
