@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 # https://www.kaggle.com/code/jsday96/parkinsons-overlapping-se-unet-frequency-domain
 
+# TODO: test it
+
 class Conv1dBlockSE(nn.Module):
     def __init__(self, channels, kernel_size=3, stride=1, padding=1, reduction=16, dropout=0):
         super(Conv1dBlockSE, self).__init__()
