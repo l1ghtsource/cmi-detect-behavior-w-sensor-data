@@ -31,8 +31,8 @@ class TransLayer(nn.Module):
             dropout=dropout
         )
 
-    def forward(self, x):
-        x = x + self.attn(self.norm(x))
+    def forward(self, x, mask=None):
+        x = x + self.attn(self.norm(x), mask=mask)
         return x
     
 ### Define Wavelet Kernel
@@ -249,7 +249,7 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             nn.Linear(mDim, n_classes)
         ) 
 
-        self._fc2_aux = nn.Sequential(
+        self._fc2_aux2 = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -259,14 +259,21 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
+
+    def apply_feature_mask(self, features, mask):
+        # mask is [B, L], expand to match features
+        mask = mask.unsqueeze(1)  # [B, 1, L]
         
-    def forward(self, imu_data, thm_data, tof_data, warmup=False):
+        return features * mask.float()
+        
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None, warmup=False):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
             tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
             thm_data: [B, 5, L, 1] - Thermal sensor data
-            warmup: bool - whether to use warmup strategy
+            pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
+            warmup: bool - whether to use warmup strategy [optional!]
         """
         B, _, L, _ = imu_data.shape
         
@@ -277,18 +284,24 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         for i in range(cfg.imu_num_sensor):
             sensor_data = imu_data[:, i, :, :].transpose(1, 2)  # [B, 7, L]
             features = self.imu_feature_extractor(sensor_data)  # [B, 128, L]
+            if pad_mask is not None:
+                features = self.apply_feature_mask(features, pad_mask)
             all_features.append(features)
         
         # Process ToF data (5 sensors)
         for i in range(cfg.tof_num_sensor):
             sensor_data = tof_data[:, i, :, :].transpose(1, 2)  # [B, 64, L]
             features = self.tof_feature_extractor(sensor_data)  # [B, 128, L]
+            if pad_mask is not None:
+                features = self.apply_feature_mask(features, pad_mask)
             all_features.append(features)
         
         # Process Thermal data (5 sensors)
         for i in range(cfg.thm_num_sensor):
             sensor_data = thm_data[:, i, :, :].transpose(1, 2)  # [B, 1, L]
             features = self.thm_feature_extractor(sensor_data)  # [B, 128, L]
+            if pad_mask is not None:
+                features = self.apply_feature_mask(features, pad_mask)
             all_features.append(features)
         
         # Concatenate all features along channel dimension
@@ -298,24 +311,44 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         x = x.transpose(1, 2)  # [B, L, 11*128]
         x = self.feature_proj(x)  # [B, L, mDim]
 
+        if pad_mask is not None:
+            x = x * pad_mask.unsqueeze(-1).float()  # [B, L, mDim]
+
         # Compute global token
-        global_token = x.mean(dim=1)
+        if pad_mask is not None:
+            valid_counts = pad_mask.sum(dim=1, keepdim=True).float()  # [B, 1]
+            valid_counts = torch.clamp(valid_counts, min=1.0)  # Avoid division by zero
+            global_token = (x * pad_mask.unsqueeze(-1).float()).sum(dim=1) / valid_counts  # [B, mDim]
+        else:
+            global_token = x.mean(dim=1)  # [B, mDim]
         
         # Add class token
         cls_tokens = self.cls_token.expand(B, -1, -1)  # [B, 1, mDim]
         x = torch.cat((cls_tokens, x), dim=1)
+
+        if pad_mask is not None:
+            extended_mask = torch.cat([
+                torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),  # cls token is always valid
+                pad_mask
+            ], dim=1)  # [B, L+1]
         
         # Apply Wavelet Positional Encoding 1
         x = self.pos_layer(x, self.wave1, self.wave2, self.wave3)
         
         # Apply TransLayer 1
-        x = self.layer1(x)
+        if pad_mask is not None:
+            x = self.layer1(x, mask=extended_mask)
+        else:
+            x = self.layer1(x)
         
         # Apply Wavelet Positional Encoding 2
         x = self.pos_layer2(x, self.wave1_, self.wave2_, self.wave3_)
         
         # Apply TransLayer 2
-        x = self.layer2(x)
+        if pad_mask is not None:
+            x = self.layer2(x, mask=extended_mask)
+        else:
+            x = self.layer2(x)
         
         # Extract class token
         x = x[:, 0]
@@ -326,9 +359,9 @@ class MultiSensor_TimeMIL_v1(nn.Module):
  
         # Final classification
         logits = self._fc2(x)
-        logits_aux = self._fc2_aux(x)
+        logits_aux2 = self._fc2_aux2(x)
             
-        return logits, logits_aux
+        return logits, logits_aux2
             
 # ya ebal eto govnishe
 class TimeMIL_SingleSensor_v1(nn.Module):
@@ -387,7 +420,7 @@ class TimeMIL_SingleSensor_v1(nn.Module):
             nn.Linear(mDim, n_classes)
         ) 
 
-        self._fc2_aux = nn.Sequential(
+        self._fc2_aux2 = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -397,41 +430,71 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
+
+    def apply_feature_mask(self, features, mask):
+        # mask is [B, L], expand to match features
+        mask = mask.unsqueeze(1)  # [B, 1, L]
         
-    def forward(self, imu_data, warmup=False):
+        return features * mask.float()
+        
+    def forward(self, imu_data, pad_mask=None, warmup=False):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
-            warmup: bool - whether to use warmup strategy
+            pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
+            warmup: bool - whether to use warmup strategy [optional!]
         """
         B, _, L, _ = imu_data.shape
         
         # Process IMU data (single sensor)
         sensor_data = imu_data[:, 0, :, :].transpose(1, 2)  # [B, 7, L]
         x = self.imu_feature_extractor(sensor_data)  # [B, 128, L]
+
+        if pad_mask is not None:
+            x = self.apply_feature_mask(x, pad_mask)
         
         # Transpose and project to target dimension
         x = x.transpose(1, 2)  # [B, L, 128]
         x = self.feature_proj(x)  # [B, L, mDim]
 
+        if pad_mask is not None:
+            x = x * pad_mask.unsqueeze(-1).float()  # [B, L, mDim]
+
         # Compute global token
-        global_token = x.mean(dim=1)
+        if pad_mask is not None:
+            valid_counts = pad_mask.sum(dim=1, keepdim=True).float()  # [B, 1]
+            valid_counts = torch.clamp(valid_counts, min=1.0)  # Avoid division by zero
+            global_token = (x * pad_mask.unsqueeze(-1).float()).sum(dim=1) / valid_counts  # [B, mDim]
+        else:
+            global_token = x.mean(dim=1)  # [B, mDim]
         
         # Add class token
         cls_tokens = self.cls_token.expand(B, -1, -1)  # [B, 1, mDim]
         x = torch.cat((cls_tokens, x), dim=1)
+
+        if pad_mask is not None:
+            extended_mask = torch.cat([
+                torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),  # cls token is always valid
+                pad_mask
+            ], dim=1)  # [B, L+1]
         
         # Apply Wavelet Positional Encoding 1
         x = self.pos_layer(x, self.wave1, self.wave2, self.wave3)
         
         # Apply TransLayer 1
-        x = self.layer1(x)
+        if pad_mask is not None:
+            x = self.layer1(x, mask=extended_mask)
+        else:
+            x = self.layer1(x)
         
         # Apply Wavelet Positional Encoding 2
         x = self.pos_layer2(x, self.wave1_, self.wave2_, self.wave3_)
         
         # Apply TransLayer 2
-        x = self.layer2(x)
+        if pad_mask is not None:
+            x = self.layer2(x, mask=extended_mask)
+        else:
+            x = self.layer2(x)
         
         # Extract class token
         x = x[:, 0]
@@ -442,6 +505,6 @@ class TimeMIL_SingleSensor_v1(nn.Module):
  
         # Final classification
         logits = self._fc2(x)
-        logits_aux = self._fc2_aux(x)
+        logits_aux2 = self._fc2_aux2(x)
             
-        return logits, logits_aux
+        return logits, logits_aux2

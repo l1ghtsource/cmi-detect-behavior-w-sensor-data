@@ -53,6 +53,7 @@ cfg.window_tof = True
 cfg.norm_ts = True
 cfg.use_demo = False
 cfg.use_stats_vectors = False
+cfg.use_pad_mask = True
 cfg.imu_only = True
 
 # --- save dir ---

@@ -100,27 +100,26 @@ def get_ts_model_and_params(imu_only):
             return model_cls, params
 
 def forward_model(model, batch, imu_only):
-    if cfg.use_dwhar:
-        if cfg.use_megasensor:
-            return model(batch['megasensor'])
-        elif imu_only:
-            return model(batch['imu'])
-        else:
-            return model(batch['imu'], batch['thm'], batch['tof'])
-    elif cfg.use_timemil:
-        if imu_only:
-            return model(batch['imu'])
-        else:
-            return model(batch['imu'], batch['thm'], batch['tof'])
+    inputs = []
+    if cfg.use_dwhar and cfg.use_megasensor:
+        inputs.append(batch['megasensor'])
     else:
-        if imu_only:
-            return model(batch['imu'], batch['demography_bin'], batch['demography_cont']) if cfg.use_demo else model(batch['imu'])
-        else:
-            if cfg.use_demo:
-                return model(batch['imu'], batch['thm'], batch['tof'], batch['demography_bin'], batch['demography_cont'])
-            else:
-                return model(batch['imu'], batch['thm'], batch['tof'])
-
+        inputs.append(batch['imu'])
+        if not imu_only:
+            inputs.append(batch['thm'])
+            inputs.append(batch['tof'])
+    if cfg.use_pad_mask:
+        inputs.append(batch['pad_mask'])
+    if cfg.use_demo:
+        inputs.append(batch['demography_bin'])
+        inputs.append(batch['demography_cont'])
+    if cfg.use_stats_vectors:
+        inputs.append(batch['imu_stats'])
+        if not imu_only:
+            inputs.append(batch['thm_stats'])
+            inputs.append(batch['tof_stats'])
+    return model(*inputs)
+            
 # haha what a shit
 def get_prefix():
     prefix_parts = []
