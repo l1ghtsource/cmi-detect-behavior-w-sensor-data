@@ -113,7 +113,7 @@ def get_ts_model_and_params(imu_only):
 
 def forward_model(model, batch, imu_only):
     inputs = []
-    if cfg.use_dwhar and cfg.use_megasensor:
+    if cfg.selected_model == 'decomposewhar' and cfg.use_megasensor:
         inputs.append(batch['megasensor'])
     else:
         inputs.append(batch['imu'])
@@ -122,14 +122,14 @@ def forward_model(model, batch, imu_only):
             inputs.append(batch['tof'])
     if cfg.use_pad_mask:
         inputs.append(batch['pad_mask'])
-    if cfg.use_demo:
-        inputs.append(batch['demography_bin'])
-        inputs.append(batch['demography_cont'])
     if cfg.use_stats_vectors:
         inputs.append(batch['imu_stats'])
         if not imu_only:
             inputs.append(batch['thm_stats'])
             inputs.append(batch['tof_stats'])
+    if cfg.use_demo:
+        inputs.append(batch['demography_bin'])
+        inputs.append(batch['demography_cont'])
     return model(*inputs)
             
 # haha what a shit
