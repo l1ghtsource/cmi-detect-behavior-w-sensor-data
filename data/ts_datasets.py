@@ -46,9 +46,9 @@ class TS_CMIDataset(Dataset):
             self.norm_stats = None
 
     def _compute_phase_moments(self, phase_sequence):
-        phase_array = np.array(phase_sequence)
-        gesture_indices = np.where(phase_array == 'Gesture')[0]
-        gesture_start = gesture_indices[0] / len(phase_array) if len(gesture_indices) > 0 else 0.0 # FIXME: recalc it when use time_warp
+        phase_processed, _ = self._pad_or_truncate(phase_sequence, self.seq_len)
+        gesture_indices = np.where(phase_processed == 'Gesture')[0]
+        gesture_start = gesture_indices[0] / self.seq_len if len(gesture_indices) > 0 else 0.0 # FIXME: recalc it when use time_warp
         return gesture_start
 
     def _compute_normalization_stats(self):
