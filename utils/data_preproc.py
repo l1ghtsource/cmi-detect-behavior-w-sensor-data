@@ -62,9 +62,17 @@ def le(df):
         'Target': 1,
     }
 
+    mapper_behaviour = {
+        'Hand at target location': 1,
+        'Moves hand to target location': 2,
+        'Performs gesture': 3,
+        'Relaxes and moves hand to target location': 4,
+    }
+
     df[cfg.target] = df[cfg.target].map(mapper_target)
     df[cfg.aux_target] = df[cfg.aux_target].map(mapper_aux)
     df[cfg.aux2_target] = df[cfg.aux2_target].map(mapper_aux2)
+    df[cfg.state] = df[cfg.state].map(mapper_behaviour)
 
     return df
 

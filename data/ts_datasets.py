@@ -50,6 +50,10 @@ class TS_CMIDataset(Dataset):
         gesture_indices = np.where(phase_processed == 'Gesture')[0]
         gesture_start = gesture_indices[0] / self.seq_len if len(gesture_indices) > 0 else 0.0 # FIXME: recalc it when use time_warp
         return gesture_start
+    
+    def _compute_behaviour_seq(self, behaviour_sequence):
+        behaviour_processed, _ = self._pad_or_truncate(behaviour_sequence, self.seq_len)
+        return behaviour_processed
 
     def _compute_normalization_stats(self):
         stats = {}
@@ -263,7 +267,9 @@ class TS_CMIDataset(Dataset):
         
         if 'phase' in self.df.columns:
             gesture_start = self._compute_phase_moments(row['phase'])
+            behaviour_seq = self._compute_behaviour_seq(row['behaviour'])
             features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
+            features['behaviour_seq'] = torch.tensor(behaviour_seq, dtype=torch.long)
         
         if 'gesture' in self.df.columns:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
@@ -315,6 +321,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
+            result['behaviour_seq'] = features['behaviour_seq']
         
         if 'gesture' in self.df.columns:
             result['target'] = features['target']
@@ -372,6 +379,7 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
+            result['behaviour_seq'] = features['behaviour_seq']
 
         if 'gesture' in self.df.columns:
             result['target'] = features['target']
