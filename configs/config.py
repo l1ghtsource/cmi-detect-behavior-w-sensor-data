@@ -55,6 +55,7 @@ cfg.window_tof = True
 
 # --- ts ds cfg ---
 cfg.norm_ts = True
+cfg.denoise_data = 'none' # ['none', 'wavelet', 'sagvol', 'butter']
 cfg.use_demo = False
 cfg.use_stats_vectors = False
 cfg.use_diff = False

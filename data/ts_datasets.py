@@ -3,10 +3,9 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from scipy.signal import find_peaks
-import scipy.stats as stats
-from configs.config import cfg
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
+from utils.denoising import apply_denoising
+from configs.config import cfg
 
 # TODO: all augmentations to gpu!
 
@@ -162,9 +161,32 @@ class TS_CMIDataset(Dataset):
             data = aug_func(data)
             
         return data
+    
+    def _denoise_sensor_data(self, data, pad_mask):
+        if cfg.denoise_data == 'none':
+            return data
+        
+        denoised_data = data.copy()
+        valid_indices = np.where(pad_mask)[0]
+        
+        if len(valid_indices) == 0:
+            return denoised_data
+        
+        for feature_idx in range(data.shape[1]):
+            if len(valid_indices) > 1:
+                valid_data = data[valid_indices, feature_idx]
+                denoised_valid = apply_denoising(
+                    valid_data, 
+                    method=cfg.denoise_data
+                )
+                denoised_data[valid_indices, feature_idx] = denoised_valid
+        
+        return denoised_data
 
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
         data_stacked, padding_mask = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+
+        data_stacked = self._denoise_sensor_data(data_stacked, padding_mask)
 
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
