@@ -145,11 +145,26 @@ def get_prefix(imu_only):
     if cfg.use_stats_vectors:
         prefix_parts.append('use_stats_vectors')
 
+    if cfg.use_diff:
+        prefix_parts.append('use_diff')
+
+    if cfg.use_time_pos:
+        prefix_parts.append('use_time_pos')
+
     if cfg.use_pad_mask:
         prefix_parts.append('use_pad_mask')
 
     if cfg.use_lookahead:
         prefix_parts.append('lookahead')
+
+    if cfg.use_sam:
+        prefix_parts.append('sam')
+
+    if cfg.use_target_weighting:
+        prefix_parts.append('target_weighting')
+
+    if cfg.use_aux2_target_weighting:
+        prefix_parts.append('aux2_target_weighting')
     
     prefix_parts.append(cfg.optim_type)
 
