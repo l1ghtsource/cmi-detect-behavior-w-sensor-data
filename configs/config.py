@@ -127,26 +127,15 @@ cfg.weights_path = '/kaggle/input/dwhar-models'
 cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..
+cfg.override_non_target = False
 cfg.tta_strategies = {}
 # cfg.tta_strategies = {
 #     'jitter': {
 #         'sigma': 0.03,
 #         'sensors': ['imu', 'thm', 'tof']
 #     },
-#     'jitter': {
-#         'sigma': 0.02,
-#         'sensors': ['imu', 'thm', 'tof']
-#     },
-#     'jitter': {
-#         'sigma': 0.05,
-#         'sensors': ['imu', 'thm', 'tof']
-#     },
 #     'scaling': {
 #         'sigma': 0.03,
-#         'sensors': ['imu', 'thm']
-#     },
-#     'scaling': {
-#         'sigma': 0.05,
 #         'sensors': ['imu', 'thm']
 #     },
 # }

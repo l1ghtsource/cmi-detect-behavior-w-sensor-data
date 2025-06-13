@@ -90,4 +90,16 @@ def get_rev_mapping():
         "Write name on leg": 17,
     }
 
-    return {y: x for x, y in ae_zhok.items()}
+    ae_zhok_aux = {
+        'Seated Straight': 0,
+        'Seated Lean Non Dom - FACE DOWN': 1,
+        'Lie on Back': 2,
+        'Lie on Side - Non Dominant': 3
+    }
+
+    ae_zhok_aux2 = {
+        'Non-Target': 0,
+        'Target': 1,
+    }
+
+    return {y: x for x, y in ae_zhok.items()}, {y: x for x, y in ae_zhok_aux.items()}, {y: x for x, y in ae_zhok_aux2.items()}
