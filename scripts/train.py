@@ -20,6 +20,7 @@ from configs.config import cfg
 from modules.ema import EMA
 from modules.mixup import MixupLoss, mixup_batch
 from optimizers.lookahead import Lookahead
+from optimizers.sam import SAM
 from utils.getters import (
     get_optimizer, 
     get_ts_dataset, 
@@ -256,6 +257,8 @@ def run_training_with_stratified_group_kfold():
         optimizer = get_optimizer(params=model.parameters())
         if cfg.use_lookahead:
             optimizer = Lookahead(optimizer)    
+        if cfg.use_sam:
+            optimizer = SAM(optimizer)    
 
         if cfg.use_target_weighting:
             criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing, weight=class_weights_tensor)
