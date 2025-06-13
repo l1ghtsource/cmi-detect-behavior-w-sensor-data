@@ -234,8 +234,8 @@ def run_training_with_stratified_group_kfold():
             norm_stats=train_dataset.norm_stats
         )
         
-        train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4)
-        val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
+        train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=0)
+        val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=0)
 
         TSModel, m_params = get_ts_model_and_params(imu_only=cfg.imu_only)
         model = TSModel(**m_params).to(device)
