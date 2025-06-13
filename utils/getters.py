@@ -118,6 +118,12 @@ def forward_model(model, batch, imu_only):
     if cfg.use_demo:
         inputs.append(batch['demography_bin'])
         inputs.append(batch['demography_cont'])
+    if cfg.use_time_pos:
+        inputs.append(batch['time_pos'])
+    if cfg.use_diff:
+        inputs.append(batch['imu_diff'])
+        inputs.append(batch['thm_diff'])
+        inputs.append(batch['tof_diff'])
     if cfg.use_pad_mask:
         inputs.append(batch['pad_mask'])
     return model(*inputs)
