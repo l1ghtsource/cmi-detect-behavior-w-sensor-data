@@ -52,8 +52,8 @@ train = train.merge(train_demographics, how='left', on='subject')
 
 # -- convert to seq ---
 
+train = le(train)
 train_seq = fast_seq_agg(train)
-train_seq = le(train_seq)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
