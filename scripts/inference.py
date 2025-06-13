@@ -55,7 +55,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 
-    prefix = get_prefix()
+    prefix = get_prefix(use_imu_only)
 
     test_dataset = TSDataset(
         dataframe=processed_df_for_dataset,

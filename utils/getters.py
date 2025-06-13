@@ -123,7 +123,7 @@ def forward_model(model, batch, imu_only):
     return model(*inputs)
             
 # haha what a shit
-def get_prefix():
+def get_prefix(imu_only):
     prefix_parts = []
     
     model = cfg.selected_model
@@ -134,10 +134,10 @@ def get_prefix():
     elif model == 'timemil':
         prefix_parts.append(f'ver{cfg.timemil_ver}')
 
-    if cfg.imu_only:
+    if imu_only:
         prefix_parts.append('imu_only')
     
-    prefix_parts.append(f'seq_len={cfg.seq_len}')
+    prefix_parts.append(f'seq_len{cfg.seq_len}')
     
     if cfg.use_demo:
         prefix_parts.append('use_demo')

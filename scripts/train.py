@@ -168,7 +168,7 @@ def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
     os.makedirs(cfg.oof_dir, exist_ok=True)
 
-    prefix = get_prefix()
+    prefix = get_prefix(cfg.imu_only)
 
     sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
     targets = train_seq[cfg.target].values
