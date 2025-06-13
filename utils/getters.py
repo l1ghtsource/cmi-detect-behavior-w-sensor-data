@@ -152,6 +152,8 @@ def get_prefix(imu_only):
         prefix_parts.append('lookahead')
     
     prefix_parts.append(cfg.optim_type)
+
+    prefix_parts.append(f'ls{cfg.label_smoothing}')
     
     if cfg.use_ema:
         prefix_parts.append(f'ema_{cfg.ema_decay}')
