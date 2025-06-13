@@ -28,11 +28,11 @@ from utils.getters import (
 )
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
-from utils.seed import seed_everything
+from utils.seed import seed_everything, worker_init_fn
 
 # --- set seed ---
 
-seed_everything(cfg.seed)
+seed_everything()
 
 # --- wandb ---
 
@@ -234,8 +234,8 @@ def run_training_with_stratified_group_kfold():
             norm_stats=train_dataset.norm_stats
         )
         
-        train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=0)
-        val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=0)
+        train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4, worker_init_fn=worker_init_fn)
+        val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4, worker_init_fn=worker_init_fn)
 
         TSModel, m_params = get_ts_model_and_params(imu_only=cfg.imu_only)
         model = TSModel(**m_params).to(device)
