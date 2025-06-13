@@ -199,6 +199,15 @@ class TS_CMIDataset(Dataset):
         
         return np.array(demo_bin, dtype=np.float32), np.array(demo_cont, dtype=np.float32)
     
+    def _generate_time_positions(self):
+        positions = np.arange(1, self.seq_len + 1) / self.seq_len
+        return positions
+    
+    def _compute_sensor_diff(self, sensor_data):
+        diff_data = np.zeros_like(sensor_data)
+        diff_data[1:] = sensor_data[1:] - sensor_data[:-1]
+        return diff_data
+    
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         
@@ -212,6 +221,18 @@ class TS_CMIDataset(Dataset):
             'tof': torch.tensor(tof_data, dtype=torch.float32),
             'pad_mask': torch.tensor(pad_mask, dtype=torch.float32),
         }
+
+        if cfg.use_time_pos:
+            time_pos = self._generate_time_positions()
+            features['time_pos'] = torch.tensor(time_pos, dtype=torch.float32)
+
+        if cfg.use_diff:
+            imu_diff = self._compute_sensor_diff(imu_data)
+            thm_diff = self._compute_sensor_diff(thm_data) 
+            tof_diff = self._compute_sensor_diff(tof_data)
+            features['imu_diff'] = torch.tensor(imu_diff, dtype=torch.float32)
+            features['thm_diff'] = torch.tensor(thm_diff, dtype=torch.float32)
+            features['tof_diff'] = torch.tensor(tof_diff, dtype=torch.float32)
 
         if cfg.use_demo:
             demo_bin, demo_cont = self._prepare_demographic_data(row)
@@ -248,20 +269,27 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         
         imu_data = features['imu'].unsqueeze(0) # (1, seq_len, 7)
         thm_data = features['thm'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
-        tof_tensor = features['tof'] # (seq_len, 320)
-        tof_reshaped = tof_tensor.view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
+        tof_data = features['tof'].view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
         pad_mask = features['pad_mask'] # (seq_len,)
         
         result = {
             'imu': imu_data,
             'thm': thm_data, 
-            'tof': tof_reshaped,
+            'tof': tof_data,
             'pad_mask': pad_mask,
         }
 
+        if cfg.use_time_pos:
+            result['time_pos'] = features['time_pos'] # (seq_len,)
+
+        if cfg.use_diff:
+            result['imu_diff'] = features['imu_diff'].unsqueeze(0) # (1, seq_len, 7)
+            result['thm_diff'] = features['thm_diff'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
+            result['time_pos'] = features['tof_diff'].view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64) 
+
         if cfg.use_demo:
-            result['demography_bin'] = features['demography_bin'] # (3)
-            result['demography_cont'] = features['demography_cont'] # (4)
+            result['demography_bin'] = features['demography_bin'] # (3,)
+            result['demography_cont'] = features['demography_cont'] # (4,)
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
@@ -298,11 +326,23 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         
         model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
         mask_input = features['pad_mask'] # (seq_len)
+        pos_input = features['time_pos'] # (seq_len,)
 
         result = {
             'megasensor': model_input,
-            'pad_mask': mask_input
+            'pad_mask': mask_input,
+            'pos_input': pos_input,
         }
+
+        if cfg.use_time_pos:
+            result['time_pos'] = features['time_pos'] # (seq_len,)
+
+        if cfg.use_diff:
+            result['megasensor_diff'] = torch.cat([
+                features['imu_diff'], # (seq_len, 7)
+                features['thm_diff'], # (seq_len, 5) 
+                features['tof_diff']  # (seq_len, 320)
+            ], dim=1) # (seq_len, 332)
 
         if cfg.use_demo:
             result['demography_bin'] = features['demography_bin'] # (3)

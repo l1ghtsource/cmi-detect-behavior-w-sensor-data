@@ -39,7 +39,7 @@ cfg.use_aux_target_weighting = False
 cfg.aux2_target = 'sequence_type'
 cfg.aux2_num_classes = 2
 cfg.aux2_weight = 0.5
-cfg.use_aux2_target_weighting = False
+cfg.use_aux2_target_weighting = True
 cfg.group = 'subject'
 cfg.seq_len = 120
 cfg.n_splits = 5
@@ -57,6 +57,8 @@ cfg.window_tof = True
 cfg.norm_ts = True
 cfg.use_demo = False
 cfg.use_stats_vectors = False
+cfg.use_diff = False
+cfg.use_time_pos = False
 cfg.use_pad_mask = True
 cfg.imu_only = True
 
