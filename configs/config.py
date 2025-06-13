@@ -31,12 +31,15 @@ cfg.is_infer = False
 # --- important vars ---
 cfg.target = 'gesture'
 cfg.num_classes = 18
+cfg.use_target_weighting = False
 cfg.aux_target = 'orientation'
 cfg.aux_num_classes = 4
-cfg.aux_weight = 0.5
+cfg.aux_weight = 0
+cfg.use_aux_target_weighting = False
 cfg.aux2_target = 'sequence_type'
 cfg.aux2_num_classes = 2
 cfg.aux2_weight = 0.5
+cfg.use_aux2_target_weighting = False
 cfg.group = 'subject'
 cfg.seq_len = 120
 cfg.n_splits = 5

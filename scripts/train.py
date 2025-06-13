@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 
 from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.utils.class_weight import compute_class_weight
 
 import torch
 import torch.nn as nn
@@ -32,7 +33,7 @@ from utils.seed import seed_everything
 
 # --- set seed ---
 
-seed_everything(cfg.seed)
+seed_everything()
 
 # --- wandb ---
 
@@ -168,7 +169,15 @@ def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
     os.makedirs(cfg.oof_dir, exist_ok=True)
 
-    prefix = get_prefix()
+    if cfg.use_target_weighting:
+        class_weights = compute_class_weight(class_weight='balanced', classes=np.arange(cfg.num_classes), y=train_seq[cfg.target].values)
+        class_weights_tensor = torch.tensor(class_weights, dtype=torch.float).to(device)
+
+    if cfg.use_aux2_target_weighting:
+        class_weights_aux2 = compute_class_weight(class_weight='balanced', classes=np.arange(cfg.aux2_num_classes), y=train_seq[cfg.aux2_target].values)
+        class_weights_tensor_aux2 = torch.tensor(class_weights_aux2, dtype=torch.float).to(device)
+
+    prefix = get_prefix(cfg.imu_only)
 
     sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
     targets = train_seq[cfg.target].values
@@ -197,7 +206,6 @@ def run_training_with_stratified_group_kfold():
                     'batch_size': cfg.bs,
                     'learning_rate': cfg.lr,
                     'n_epochs': cfg.n_epochs,
-                    'num_classes': cfg.num_classes,
                     'use_mixup': cfg.use_mixup,
                     'use_ema': cfg.use_ema,
                     'imu_only': cfg.imu_only,
@@ -249,8 +257,15 @@ def run_training_with_stratified_group_kfold():
         if cfg.use_lookahead:
             optimizer = Lookahead(optimizer)    
 
-        criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
-        aux2_criterion = nn.CrossEntropyLoss()
+        if cfg.use_target_weighting:
+            criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing, weight=class_weights_tensor)
+        else:
+            criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
+
+        if cfg.use_aux2_target_weighting:
+            aux2_criterion = nn.CrossEntropyLoss(weight=class_weights_tensor_aux2)
+        else:
+            aux2_criterion = nn.CrossEntropyLoss()
 
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
