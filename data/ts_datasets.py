@@ -267,9 +267,9 @@ class TS_CMIDataset(Dataset):
         
         if 'phase' in self.df.columns:
             gesture_start = self._compute_phase_moments(row['phase'])
-            behaviour_seq = self._compute_behaviour_seq(row['behaviour'])
+            behaviour_seq = self._compute_behaviour_seq(row['behavior'])
             features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
-            features['behaviour_seq'] = torch.tensor(behaviour_seq, dtype=torch.long)
+            features['behavior_seq'] = torch.tensor(behaviour_seq, dtype=torch.long)
         
         if 'gesture' in self.df.columns:
             features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
@@ -321,7 +321,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
-            result['behaviour_seq'] = features['behaviour_seq']
+            result['behavior_seq'] = features['behavior_seq']
         
         if 'gesture' in self.df.columns:
             result['target'] = features['target']
@@ -379,7 +379,7 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
 
         if 'phase' in self.df.columns:
             result['gesture_start'] = features['gesture_start']
-            result['behaviour_seq'] = features['behaviour_seq']
+            result['behavior_seq'] = features['behavior_seq']
 
         if 'gesture' in self.df.columns:
             result['target'] = features['target']
