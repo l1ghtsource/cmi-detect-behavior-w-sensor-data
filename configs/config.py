@@ -63,6 +63,7 @@ cfg.use_diff = False
 cfg.use_time_pos = False
 cfg.use_pad_mask = True
 cfg.use_world_coords = False
+cfg.use_hand_symm = False
 cfg.imu_only = True
 
 # --- im ds cfg ---
@@ -81,11 +82,11 @@ cfg.use_megasensor = False # can't be used w/ imu_only=True
 cfg.kernel_size = 3
 cfg.emb_kernel_size = cfg.seq_len // cfg.kernel_size
 cfg.stride = cfg.emb_kernel_size // 2
-cfg.ddim = 128
+cfg.ddim = 256
 cfg.reduction_ratio = 1
-cfg.num_layers = 4
-cfg.num_a_layers = 2
-cfg.num_m_layers = 2
+cfg.num_layers = 2
+cfg.num_a_layers = 1
+cfg.num_m_layers = 1
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
