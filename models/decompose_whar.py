@@ -128,7 +128,8 @@ class MultiSensor_DecomposeWHAR_v1(nn.Module):
                  imu_num_sensor=cfg.imu_num_sensor, imu_M=cfg.imu_vars,
                  thm_num_sensor=cfg.thm_num_sensor, thm_M=cfg.thm_vars,
                  tof_num_sensor=cfg.tof_num_sensor, tof_M=cfg.tof_vars,
-                 L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.main_num_classes, 
+                 L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.main_num_classes,
+                 num_seq_type_classes=cfg.seq_type_aux_num_classes, 
                  S=cfg.stride, use_cross_sensor=True):
         super().__init__()
         
@@ -165,9 +166,17 @@ class MultiSensor_DecomposeWHAR_v1(nn.Module):
                 nn.Dropout(0.1),
                 nn.Linear(common_dim, num_classes)
             )
+
+            self.final_proj_seq_type = nn.Sequential(
+                nn.Linear(3 * common_dim, common_dim),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Linear(common_dim, num_seq_type_classes)
+            )
         else:
             total_size = imu_size + thm_size + tof_size
             self.classifier = nn.Linear(total_size, num_classes)
+            self.classifier_seq_type = nn.Linear(total_size, num_seq_type_classes)
     
     def forward(self, imu_data, thm_data, tof_data):
         imu_x = self.imu_dwhar(imu_data)  # (B, imu_size)
@@ -187,12 +196,15 @@ class MultiSensor_DecomposeWHAR_v1(nn.Module):
             
             combined = attended_features.flatten(1)  # (B, 3*common_dim)
             pred = self.final_proj(combined)
+            pred_seq_type = self.final_proj_seq_type(combined)
             
-            return pred
+            return pred, pred_seq_type
         else:
             comb_x = torch.cat([imu_x, thm_x, tof_x], dim=1)
             pred = self.classifier(comb_x)
-            return pred
+            pred_seq_type = self.classifier_seq_type(comb_x)
+
+            return pred, pred_seq_type
 
 # stupid 1-sensor dwhar
 class DecomposeWHAR_SingleSensor_v1(nn.Module):
@@ -201,6 +213,7 @@ class DecomposeWHAR_SingleSensor_v1(nn.Module):
             M=len(cfg.imu_cols),
             L=cfg.seq_len,
             num_classes=cfg.main_num_classes,
+            num_seq_type_classes=cfg.seq_type_aux_num_classes,
             D=cfg.ddim,
             S=cfg.stride,
         ):
@@ -215,11 +228,14 @@ class DecomposeWHAR_SingleSensor_v1(nn.Module):
         )
 
         self.classifier = nn.Linear(D * (L // S), num_classes)
+        self.classifier_seq_type = nn.Linear(D * (L // S), num_seq_type_classes)
     
     def forward(self, data):
         x = self.model(data)
         pred = self.classifier(x)
-        return pred
+        pred_seq_type = self.classifier_seq_type(x)
+        
+        return pred, pred_seq_type
 
 # multi-sensor w/ diff embedding layers and backbones
 class MultiSensor_DecomposeWHAR_v2(nn.Module):
@@ -239,7 +255,8 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
                  num_layers=cfg.num_layers, 
                  num_m_layers=cfg.num_m_layers, 
                  num_a_layers=cfg.num_a_layers,
-                 num_classes=cfg.main_num_classes):
+                 num_classes=cfg.main_num_classes,
+                 num_seq_type_classes=cfg.seq_type_aux_num_classes):
         super(MultiSensor_DecomposeWHAR_v2, self).__init__()
         
         self.num_imu = num_imu
@@ -293,6 +310,7 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
         ])
         
         self.fc_out = nn.Linear(total_sensors * D * T, num_classes)
+        self.fc_out_seq_type = nn.Linear(total_sensors * D * T, num_seq_type_classes)
         self.dropout_prob = 0.6
 
     def forward(self, imu_data, thm_data, tof_data):
@@ -361,8 +379,9 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
         x = x_emb.reshape(B, -1)
         x = F.dropout(x, p=self.dropout_prob, training=self.training)
         pred = self.fc_out(x)
+        pred_seq_type = self.fc_out_seq_type(x)
         
-        return pred
+        return pred, pred_seq_type
 
 # simplified dwhar for 1-sensor input
 class DecomposeWHAR_SingleSensor_v2(nn.Module):
@@ -376,7 +395,8 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
                  r=cfg.reduction_ratio,  # A hyperparameter for decomposition (e.g., reduction ratio)
                  num_layers=cfg.num_layers,  # Number of decomposition layers
                  num_m_layers=cfg.num_m_layers,  # Number of mamba layers
-                 num_classes=cfg.main_num_classes):   
+                 num_classes=cfg.main_num_classes,
+                 num_seq_type_classes=cfg.seq_type_aux_num_classes):   
         super(DecomposeWHAR_SingleSensor_v2, self).__init__()
 
         self.num_layers = num_layers
@@ -406,6 +426,7 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
 
         # Final classification layer
         self.fc_out = nn.Linear(1 * D * T, num_classes)
+        self.fc_out_seq_type = nn.Linear(1 * D * T, num_seq_type_classes)
 
     def forward(self, inputs):  # inputs: (B, 1, L, M) - Batch size, 1 sensor, Sequence length, Number of variables
         B, N, L, M = inputs.shape[0],inputs.shape[1],inputs.shape[2],inputs.shape[3] # bs,n_sensors,seq_len,n_vars
@@ -445,5 +466,6 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
         # Dropout and classification
         x = F.dropout(x, p=self.dropout_prob, training=self.training)
         pred = self.fc_out(x)  # [B, D*T] -> [B, num_classes]
+        pred_seq_type = self.fc_out_seq_type(x)  # [B, D*T] -> [B, num_seq_type_classes]
 
-        return pred
+        return pred, pred_seq_type
