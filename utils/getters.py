@@ -178,5 +178,8 @@ def get_prefix(imu_only):
     
     if cfg.use_ema:
         prefix_parts.append(f'ema_{cfg.ema_decay}')
+
+    if cfg.denoise_data != 'none':
+        prefix_parts.append(cfg.denoise_data)
     
     return '_'.join(prefix_parts) + '_'

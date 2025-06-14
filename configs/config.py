@@ -62,7 +62,7 @@ cfg.use_stats_vectors = False
 cfg.use_diff = False
 cfg.use_time_pos = False
 cfg.use_pad_mask = True
-cfg.use_world_coords = True
+cfg.use_world_coords = False
 cfg.imu_only = True
 
 # --- im ds cfg ---
