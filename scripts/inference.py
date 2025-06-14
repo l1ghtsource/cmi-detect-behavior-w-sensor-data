@@ -18,6 +18,7 @@ from utils.data_preproc import (
     fast_seq_agg, 
     le, 
     convert_to_world_coordinates, 
+    apply_symmetry,
     get_rev_mapping
 )
 from utils.tta import apply_tta
@@ -30,6 +31,10 @@ train = pd.read_csv(cfg.train_path)
 
 if cfg.use_world_coords:
     train = convert_to_world_coordinates(train)
+
+if cfg.use_hand_symm:
+    right_handed_mask = train['handedness'] == 1
+    train.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(train.loc[right_handed_mask, cfg.imu_cols])
 
 train = le(train)
 train_seq = fast_seq_agg(train)
@@ -66,6 +71,10 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     if cfg.use_world_coords:
         test_df = convert_to_world_coordinates(test_df)
+
+    if cfg.use_hand_symm and use_imu_only:
+        right_handed_mask = test_df['handedness'] == 1
+        test_df.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(test_df.loc[right_handed_mask, cfg.imu_cols])
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 

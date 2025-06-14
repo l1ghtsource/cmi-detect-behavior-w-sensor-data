@@ -22,6 +22,14 @@ def convert_to_world_coordinates(df):
 
     return df_world
 
+def apply_symmetry(data):
+    transformed = data.copy()
+    transformed['acc_z'] = -transformed['acc_z']
+    transformed['acc_y'] = -transformed['acc_y']
+    transformed['rot_y'] = -transformed['rot_y']
+    transformed['rot_z'] = -transformed['rot_z']
+    return transformed
+
 def fast_seq_agg(df):
     sc = cfg.static_cols
     seq_cols = [c for c in df.columns if c not in sc + ['sequence_counter', 'row_id']]

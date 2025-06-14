@@ -92,7 +92,7 @@ def get_ts_model_and_params(imu_only):
             params = {
                 'imu_features': len(cfg.imu_cols),
                 'num_classes': cfg.main_num_classes,
-                'hidden_dim': 128
+                'hidden_dim': 256
             }
             return model_cls, params
         else: # multi sensor model
@@ -102,7 +102,7 @@ def get_ts_model_and_params(imu_only):
                 'thm_features': len(cfg.thm_cols),
                 'tof_features': len(cfg.tof_cols),
                 'num_classes': cfg.main_num_classes,
-                'hidden_dim': 128
+                'hidden_dim': 256
             }
             return model_cls, params
 
