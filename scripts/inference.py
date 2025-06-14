@@ -32,9 +32,11 @@ TSDataset = get_ts_dataset()
 train_dataset = TSDataset(
     dataframe=train_seq,
     seq_len=cfg.seq_len,
-    target_col=cfg.target,
-    aux_target_col=cfg.aux_target,
-    aux2_target_col=cfg.aux2_target,
+    main_target=cfg.main_target,
+    orientation_aux_target=cfg.orientation_aux_target,
+    seq_type_aux_target=cfg.seq_type_aux_target,
+    behavior_aux_target=cfg.behavior_aux_target,
+    phase_aux_target=cfg.phase_aux_target,
     train=True
 )
 
@@ -63,7 +65,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         train=False,
         norm_stats=train_dataset.norm_stats
     )
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, pin_memory=True, persistent_workers=True, num_workers=0) 
 
     use_tta = len(cfg.tta_strategies) > 0 # strats != {}
     

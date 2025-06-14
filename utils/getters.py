@@ -50,7 +50,7 @@ def get_ts_model_and_params(imu_only):
             return dwhar_model, {
                 'M': cfg.imu_vars + cfg.thm_vars + cfg.tof_vars if cfg.use_megasensor else cfg.imu_vars,
                 'L': cfg.seq_len,
-                'num_classes': cfg.num_classes,
+                'num_classes': cfg.main_num_classes,
                 'D': cfg.ddim,
                 'S': cfg.stride
             }
@@ -64,7 +64,7 @@ def get_ts_model_and_params(imu_only):
                 'thm_vars': cfg.thm_vars,
                 'tof_vars': cfg.tof_vars,
                 'L': cfg.seq_len,
-                'num_classes': cfg.num_classes,
+                'num_classes': cfg.main_num_classes,
                 'D': cfg.ddim,
                 'S': cfg.stride,
                 # 'use_cross_sensor': cfg.use_cross_sensor
@@ -73,7 +73,7 @@ def get_ts_model_and_params(imu_only):
         if imu_only:
             timemil_model = TimeMIL_SingleSensor_v1
             return timemil_model, { # only imu sensor
-                'n_classes': cfg.num_classes,
+                'n_classes': cfg.main_num_classes,
                 'mDim': cfg.timemil_dim, 
                 'max_seq_len': cfg.seq_len,
                 'dropout': cfg.timemil_dropout
@@ -81,7 +81,7 @@ def get_ts_model_and_params(imu_only):
         else:
             timemil_model = MultiSensor_TimeMIL_v1 if cfg.timemil_ver == '1' else MultiSensor_TimeMIL_v2
             return timemil_model, { # multi sensor model
-                'n_classes': cfg.num_classes,
+                'n_classes': cfg.main_num_classes,
                 'mDim': cfg.timemil_dim, 
                 'max_seq_len': cfg.seq_len,
                 'dropout': cfg.timemil_dropout
@@ -91,7 +91,7 @@ def get_ts_model_and_params(imu_only):
             model_cls = TS_IMUModel
             params = {
                 'imu_features': len(cfg.imu_cols),
-                'num_classes': cfg.num_classes,
+                'num_classes': cfg.main_num_classes,
                 'hidden_dim': 128
             }
             return model_cls, params
@@ -101,12 +101,12 @@ def get_ts_model_and_params(imu_only):
                 'imu_features': len(cfg.imu_cols),
                 'thm_features': len(cfg.thm_cols),
                 'tof_features': len(cfg.tof_cols),
-                'num_classes': cfg.num_classes,
+                'num_classes': cfg.main_num_classes,
                 'hidden_dim': 128
             }
             return model_cls, params
 
-def forward_model(model, batch, imu_only):
+def forward_model(model, batch, imu_only, warmup=False):
     inputs = []
     if cfg.selected_model == 'decomposewhar' and cfg.use_megasensor:
         inputs.append(batch['megasensor'])
@@ -126,7 +126,10 @@ def forward_model(model, batch, imu_only):
         inputs.append(batch['tof_diff'])
     if cfg.use_pad_mask:
         inputs.append(batch['pad_mask'])
-    return model(*inputs)
+    if cfg.selected_model == 'timemil' and warmup:
+        return model(*inputs, warmup=True)
+    else:
+        return model(*inputs)
             
 # haha what a shit
 def get_prefix(imu_only):
@@ -166,11 +169,11 @@ def get_prefix(imu_only):
     if cfg.use_sam:
         prefix_parts.append('sam')
 
-    if cfg.use_target_weighting:
-        prefix_parts.append('target_weighting')
+    if cfg.use_main_target_weighting:
+        prefix_parts.append('main_target_weighting')
 
-    if cfg.use_aux2_target_weighting:
-        prefix_parts.append('aux2_target_weighting')
+    if cfg.use_seq_type_aux_target_weighting:
+        prefix_parts.append('seq_type_aux_target_weighting')
     
     prefix_parts.append(cfg.optim_type)
 

@@ -277,12 +277,12 @@ class RevIN(nn.Module):
     
 class HARMamba_SingleSensor_v1(nn.Module):
     def __init__(self, 
-                 seq_size=cfg.seq_size,
+                 seq_size=cfg.seq_len,
                  patch_size=16,
                  stride=16,
                  depth=12,
                  embed_dim=64,
-                 num_classes=cfg.num_classes,
+                 num_classes=cfg.main_num_classes,
                  ssm_cfg=None, 
                  drop_rate=0.,
                  drop_path_rate=0.1,
@@ -461,12 +461,12 @@ class HARMamba_SingleSensor_v1(nn.Module):
     
 class MultiSensor_HARMamba_v1(nn.Module):
     def __init__(self, 
-                 seq_size=512,
+                 seq_size=cfg.seq_len,
                  patch_size=16,
                  stride=16,
                  depth=12,
                  embed_dim=64,
-                 num_classes=12,
+                 num_classes=cfg.main_num_classes,
                  ssm_cfg=None, 
                  drop_rate=0.,
                  drop_path_rate=0.1,

@@ -15,17 +15,21 @@ class TS_CMIDataset(Dataset):
         self, 
         dataframe, 
         seq_len=cfg.seq_len, 
-        target_col=cfg.target, 
-        aux_target_col=cfg.aux_target, 
-        aux2_target_col=cfg.aux2_target, 
+        main_target=cfg.main_target, 
+        orientation_aux_target=cfg.orientation_aux_target, 
+        seq_type_aux_target=cfg.seq_type_aux_target, 
+        behavior_aux_target=cfg.behavior_aux_target,
+        phase_aux_target=cfg.phase_aux_target,
         train=True, 
         norm_stats=None
     ):
         self.df = dataframe.copy().reset_index(drop=True)
         self.seq_len = seq_len
-        self.target_col = target_col
-        self.aux_target_col = aux_target_col
-        self.aux2_target_col = aux2_target_col
+        self.main_target = main_target
+        self.orientation_aux_target = orientation_aux_target
+        self.seq_type_aux_target = seq_type_aux_target
+        self.behavior_aux_target = behavior_aux_target
+        self.phase_aux_target = phase_aux_target
         self.train = train
         
         self.imu_cols = cfg.imu_cols
@@ -34,6 +38,8 @@ class TS_CMIDataset(Dataset):
         
         self.demo_bin_cols = cfg.demo_bin_cols
         self.demo_cont_cols = cfg.demo_cont_cols
+
+        self.has_target = self.main_target in self.df.columns
         
         if cfg.norm_ts:
             if norm_stats is None and train:
@@ -47,7 +53,7 @@ class TS_CMIDataset(Dataset):
 
     def _compute_phase_moments(self, phase_sequence):
         phase_processed, _ = self._pad_or_truncate(phase_sequence, self.seq_len)
-        gesture_indices = np.where(phase_processed == 'Gesture')[0]
+        gesture_indices = np.where(phase_processed == 2)[0]
         gesture_start = gesture_indices[0] / self.seq_len if len(gesture_indices) > 0 else 0.0 # FIXME: recalc it when use time_warp
         return gesture_start
     
@@ -265,16 +271,16 @@ class TS_CMIDataset(Dataset):
             features['demography_bin'] = torch.tensor(demo_bin, dtype=torch.float32)
             features['demography_cont'] = torch.tensor(demo_cont, dtype=torch.float32)
         
-        if 'phase' in self.df.columns:
-            gesture_start = self._compute_phase_moments(row['phase'])
-            behaviour_seq = self._compute_behaviour_seq(row['behavior'])
-            features['gesture_start'] = torch.tensor(gesture_start, dtype=torch.float32)
-            features['behavior_seq'] = torch.tensor(behaviour_seq, dtype=torch.long)
+        if self.has_target:
+            phase_aux_target = self._compute_phase_moments(row[self.phase_aux_target])
+            behavior_aux_target = self._compute_behaviour_seq(row[self.behavior_aux_target])
+            features['phase_aux_target'] = torch.tensor(phase_aux_target, dtype=torch.float32)
+            features['behavior_aux_target'] = torch.tensor(behavior_aux_target, dtype=torch.long)
         
-        if 'gesture' in self.df.columns:
-            features['target'] = torch.tensor(row[self.target_col], dtype=torch.long)
-            features['aux_target'] = torch.tensor(row[self.aux_target_col], dtype=torch.long)
-            features['aux2_target'] = torch.tensor(row[self.aux2_target_col], dtype=torch.long)
+        if self.has_target:
+            features['main_target'] = torch.tensor(row[self.main_target], dtype=torch.long)
+            features['orientation_aux_target'] = torch.tensor(row[self.orientation_aux_target], dtype=torch.long)
+            features['seq_type_aux_target'] = torch.tensor(row[self.seq_type_aux_target], dtype=torch.long)
         
         return features
 
@@ -284,13 +290,15 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         self, 
         dataframe, 
         seq_len=cfg.seq_len, 
-        target_col=cfg.target, 
-        aux_target_col=cfg.aux_target, 
-        aux2_target_col=cfg.aux2_target, 
+        main_target=cfg.main_target, 
+        orientation_aux_target=cfg.orientation_aux_target, 
+        seq_type_aux_target=cfg.seq_type_aux_target, 
+        behavior_aux_target=cfg.behavior_aux_target,
+        phase_aux_target=cfg.phase_aux_target,
         train=True, 
         norm_stats=None
     ):
-        super().__init__(dataframe, seq_len, target_col, aux_target_col, aux2_target_col, train, norm_stats)
+        super().__init__(dataframe, seq_len, main_target, orientation_aux_target, seq_type_aux_target, behavior_aux_target, phase_aux_target, train, norm_stats)
     
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -313,20 +321,20 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         if cfg.use_diff:
             result['imu_diff'] = features['imu_diff'].unsqueeze(0) # (1, seq_len, 7)
             result['thm_diff'] = features['thm_diff'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
-            result['time_pos'] = features['tof_diff'].view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64) 
+            result['tof_diff'] = features['tof_diff'].view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64) 
 
         if cfg.use_demo:
             result['demography_bin'] = features['demography_bin'] # (3,)
             result['demography_cont'] = features['demography_cont'] # (4,)
 
-        if 'phase' in self.df.columns:
-            result['gesture_start'] = features['gesture_start']
-            result['behavior_seq'] = features['behavior_seq']
+        if self.has_target:
+            result['phase_aux_target'] = features['phase_aux_target']
+            result['behavior_aux_target'] = features['behavior_aux_target']
         
-        if 'gesture' in self.df.columns:
-            result['target'] = features['target']
-            result['aux_target'] = features['aux_target']
-            result['aux2_target'] = features['aux2_target']
+        if self.has_target:
+            result['main_target'] = features['main_target']
+            result['orientation_aux_target'] = features['orientation_aux_target']
+            result['seq_type_aux_target'] = features['seq_type_aux_target']
             
         return result
 
@@ -336,14 +344,16 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         self, 
         dataframe, 
         seq_len=cfg.seq_len, 
-        target_col=cfg.target, 
-        aux_target_col=cfg.aux_target, 
-        aux2_target_col=cfg.aux2_target, 
+        main_target=cfg.main_target, 
+        orientation_aux_target=cfg.orientation_aux_target, 
+        seq_type_aux_target=cfg.seq_type_aux_target, 
+        behavior_aux_target=cfg.behavior_aux_target,
+        phase_aux_target=cfg.phase_aux_target,
         train=True, 
         norm_stats=None
     ):
-        super().__init__(dataframe, seq_len, target_col, aux_target_col, aux2_target_col, train, norm_stats)
-    
+        super().__init__(dataframe, seq_len, main_target, orientation_aux_target, seq_type_aux_target, behavior_aux_target, phase_aux_target, train, norm_stats)
+
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
         
@@ -355,12 +365,10 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         
         model_input = all_sensors.unsqueeze(0) # (1, seq_len, 332)
         mask_input = features['pad_mask'] # (seq_len)
-        pos_input = features['time_pos'] # (seq_len,)
 
         result = {
             'megasensor': model_input,
             'pad_mask': mask_input,
-            'pos_input': pos_input,
         }
 
         if cfg.use_time_pos:
@@ -377,13 +385,13 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
             result['demography_bin'] = features['demography_bin'] # (3)
             result['demography_cont'] = features['demography_cont'] # (4)
 
-        if 'phase' in self.df.columns:
-            result['gesture_start'] = features['gesture_start']
-            result['behavior_seq'] = features['behavior_seq']
-
-        if 'gesture' in self.df.columns:
-            result['target'] = features['target']
-            result['aux_target'] = features['aux_target']
-            result['aux2_target'] = features['aux2_target']
+        if self.has_target:
+            result['phase_aux_target'] = features['phase_aux_target']
+            result['behavior_aux_target'] = features['behavior_aux_target']
+        
+        if self.has_target:
+            result['main_target'] = features['main_target']
+            result['orientation_aux_target'] = features['orientation_aux_target']
+            result['seq_type_aux_target'] = features['seq_type_aux_target']
             
         return result

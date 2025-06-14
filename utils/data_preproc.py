@@ -29,7 +29,7 @@ def fast_seq_agg(df):
     return res_df
 
 def le(df):
-    mapper_target = {
+    mapper_main = {
         "Above ear - pull hair": 0,
         "Cheek - pinch skin": 1,
         "Eyebrow - pull hair": 2,
@@ -50,14 +50,14 @@ def le(df):
         "Write name on leg": 17,
     }
 
-    mapper_aux = {
+    mapper_orientation = {
         'Seated Straight': 0,
         'Seated Lean Non Dom - FACE DOWN': 1,
         'Lie on Back': 2,
         'Lie on Side - Non Dominant': 3
     }
 
-    mapper_aux2 = {
+    mapper_seq_type = {
         'Non-Target': 0,
         'Target': 1,
     }
@@ -69,15 +69,21 @@ def le(df):
         'Relaxes and moves hand to target location': 4,
     }
 
-    df[cfg.target] = df[cfg.target].map(mapper_target)
-    df[cfg.aux_target] = df[cfg.aux_target].map(mapper_aux)
-    df[cfg.aux2_target] = df[cfg.aux2_target].map(mapper_aux2)
-    df[cfg.state] = df[cfg.state].map(mapper_behaviour)
+    mapper_phase = {
+        'Transition': 1,
+        'Gesture': 2,
+    }
+
+    df[cfg.main_target] = df[cfg.main_target].map(mapper_main)
+    df[cfg.orientation_aux_target] = df[cfg.orientation_aux_target].map(mapper_orientation)
+    df[cfg.seq_type_aux_target] = df[cfg.seq_type_aux_target].map(mapper_seq_type)
+    df[cfg.behavior_aux_target] = df[cfg.behavior_aux_target].map(mapper_behaviour)
+    df[cfg.phase_aux_target] = df[cfg.phase_aux_target].map(mapper_phase)
 
     return df
 
 def get_rev_mapping():
-    ae_zhok = {
+    main_ae_zhok = {
         "Above ear - pull hair": 0,
         "Cheek - pinch skin": 1,
         "Eyebrow - pull hair": 2,
@@ -98,16 +104,16 @@ def get_rev_mapping():
         "Write name on leg": 17,
     }
 
-    ae_zhok_aux = {
+    orientation_ae_zhok = {
         'Seated Straight': 0,
         'Seated Lean Non Dom - FACE DOWN': 1,
         'Lie on Back': 2,
         'Lie on Side - Non Dominant': 3
     }
 
-    ae_zhok_aux2 = {
+    seq_type_ae_zhok = {
         'Non-Target': 0,
         'Target': 1,
     }
 
-    return {y: x for x, y in ae_zhok.items()}, {y: x for x, y in ae_zhok_aux.items()}, {y: x for x, y in ae_zhok_aux2.items()}
+    return {y: x for x, y in main_ae_zhok.items()}, {y: x for x, y in orientation_ae_zhok.items()}, {y: x for x, y in seq_type_ae_zhok.items()}

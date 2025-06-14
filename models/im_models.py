@@ -9,7 +9,7 @@ class IMG_CMIModel(nn.Module):
     def __init__(
         self,
         encoder_name=cfg.encoder_name,
-        num_classes=cfg.num_classes,
+        num_classes=cfg.main_num_classes,
         pretrained=cfg.pretrained,
         num_attention_heads=8,
         dropout=0.1

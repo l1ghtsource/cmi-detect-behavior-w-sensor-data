@@ -35,6 +35,7 @@ from utils.seed import seed_everything
 # --- set seed ---
 
 seed_everything()
+g = torch.Generator(device='cpu').manual_seed(cfg.seed)
 
 # --- wandb ---
 
@@ -57,7 +58,7 @@ train_seq = fast_seq_agg(train)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, criterion, aux2_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
+def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
     model.train()
         
     total_loss = 0
@@ -66,7 +67,7 @@ def train_epoch(train_loader, model, optimizer, criterion, aux2_criterion, devic
     all_preds = []
     
     if cfg.use_mixup:
-        mixup_criterion = MixupLoss(criterion, aux2_criterion, cfg.aux2_weight, cfg.num_classes, cfg.aux2_num_classes, cfg.mixup_alpha)
+        mixup_criterion = MixupLoss(main_criterion, seq_type_criterion)
     
     loop = tqdm(train_loader, desc='train', leave=False)
 
@@ -79,18 +80,19 @@ def train_epoch(train_loader, model, optimizer, criterion, aux2_criterion, devic
         curr_proba = np.random.random()
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
-            mixed_batch, targets_a, targets_b, targets_aux2_a, targets_aux2_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs, aux2_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
-            loss, main_loss, aux2_loss = mixup_criterion(outputs, aux2_outputs, targets_a, targets_b, targets_aux2_a, targets_aux2_b, lam)
-            targets = batch['target']
-            aux2_targets = batch['aux2_target']
+            mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
+            outputs, seq_type_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only, warmup=is_warmup_phase)
+            main_loss, seq_type_loss = mixup_criterion(outputs, seq_type_outputs, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam)
+            loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss
+            targets = batch['main_target']
+            seq_type_aux_targets = batch['seq_type_aux_target']
         else:
-            outputs, aux2_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
-            targets = batch['target']
-            aux2_targets = batch['aux2_target']
-            main_loss = criterion(outputs, targets)
-            aux2_loss = aux2_criterion(aux2_outputs, aux2_targets)
-            loss = main_loss + cfg.aux2_weight * aux2_loss
+            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only, warmup=is_warmup_phase)
+            targets = batch['main_target']
+            seq_type_aux_targets = batch['seq_type_aux_target']
+            main_loss = main_criterion(outputs, targets)
+            seq_type_loss = seq_type_criterion(seq_type_outputs, seq_type_aux_targets)
+            loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss
 
         loss.backward()
 
@@ -113,7 +115,7 @@ def train_epoch(train_loader, model, optimizer, criterion, aux2_criterion, devic
             wandb.log({
                 f'fold_{fold}/train_batch_loss': loss.item(),
                 f'fold_{fold}/train_main_loss': main_loss.item(),
-                f'fold_{fold}/train_aux2_loss': aux2_loss.item(),
+                f'fold_{fold}/train_seq_type_loss': seq_type_loss.item(),
                 f'fold_{fold}/learning_rate': scheduler.get_last_lr()[0],
                 f'fold_{fold}/current_step': current_step
             })
@@ -126,7 +128,7 @@ def train_epoch(train_loader, model, optimizer, criterion, aux2_criterion, devic
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, criterion, aux2_criterion, device, ema=None):
+def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, ema=None):
     model.eval()
 
     if cfg.use_ema and ema is not None:
@@ -143,12 +145,12 @@ def valid_epoch(val_loader, model, criterion, aux2_criterion, device, ema=None):
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, aux2_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
-            targets = batch['target']
-            aux2_targets = batch['aux2_target']
-            main_loss = criterion(outputs, targets)
-            aux2_loss = aux2_criterion(aux2_outputs, aux2_targets)
-            loss = main_loss + cfg.aux2_weight * aux2_loss
+            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            targets = batch['main_target']
+            seq_type_aux_targets = batch['seq_type_aux_target']
+            main_loss = main_criterion(outputs, targets)
+            seq_type_loss = seq_type_criterion(seq_type_outputs, seq_type_aux_targets)
+            loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss
             
             total_loss += loss.item() * targets.size(0)
             total_samples += targets.size(0)
@@ -170,22 +172,22 @@ def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
     os.makedirs(cfg.oof_dir, exist_ok=True)
 
-    if cfg.use_target_weighting:
-        class_weights = compute_class_weight(class_weight='balanced', classes=np.arange(cfg.num_classes), y=train_seq[cfg.target].values)
-        class_weights_tensor = torch.tensor(class_weights, dtype=torch.float).to(device)
+    if cfg.use_main_target_weighting:
+        class_weights_main = compute_class_weight(class_weight='balanced', classes=np.arange(cfg.main_num_classes), y=train_seq[cfg.main_target].values)
+        class_weights_main_tensor = torch.tensor(class_weights_main, dtype=torch.float).to(device)
 
-    if cfg.use_aux2_target_weighting:
-        class_weights_aux2 = compute_class_weight(class_weight='balanced', classes=np.arange(cfg.aux2_num_classes), y=train_seq[cfg.aux2_target].values)
-        class_weights_tensor_aux2 = torch.tensor(class_weights_aux2, dtype=torch.float).to(device)
+    if cfg.use_seq_type_aux_target_weighting:
+        class_weights_seq_type = compute_class_weight(class_weight='balanced', classes=np.arange(cfg.seq_type_aux_num_classes), y=train_seq[cfg.seq_type_aux_target].values)
+        class_weights_seq_type_tensor = torch.tensor(class_weights_seq_type, dtype=torch.float).to(device)
 
     prefix = get_prefix(cfg.imu_only)
 
     sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
-    targets = train_seq[cfg.target].values
+    targets = train_seq[cfg.main_target].values
     groups = train_seq[cfg.group].values
     
-    oof_preds = np.zeros((len(train_seq), cfg.num_classes))
-    oof_targets = train_seq[cfg.target].values
+    oof_preds = np.zeros((len(train_seq), cfg.main_num_classes))
+    oof_targets = train_seq[cfg.main_target].values
     
     best_models = []
     best_f1_scores = []
@@ -228,26 +230,54 @@ def run_training_with_stratified_group_kfold():
         train_dataset = TSDataset(
             dataframe=train_subset,
             seq_len=cfg.seq_len,
-            target_col=cfg.target,
-            aux_target_col=cfg.aux_target,
-            aux2_target_col=cfg.aux2_target,
+            main_target=cfg.main_target,
+            orientation_aux_target=cfg.orientation_aux_target,
+            seq_type_aux_target=cfg.seq_type_aux_target,
+            behavior_aux_target=cfg.behavior_aux_target,
+            phase_aux_target=cfg.phase_aux_target,
             train=True
         )
         val_dataset = TSDataset(
             dataframe=val_subset,
             seq_len=cfg.seq_len,
-            target_col=cfg.target,
-            aux_target_col=cfg.aux_target,
-            aux2_target_col=cfg.aux2_target,
+            main_target=cfg.main_target,
+            orientation_aux_target=cfg.orientation_aux_target,
+            seq_type_aux_target=cfg.seq_type_aux_target,
+            behavior_aux_target=cfg.behavior_aux_target,
+            phase_aux_target=cfg.phase_aux_target,
             train=False,
             norm_stats=train_dataset.norm_stats
         )
         
-        train_loader = DataLoader(train_dataset, batch_size=cfg.bs, shuffle=True, num_workers=4)
-        val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
+        train_loader = DataLoader(
+            train_dataset, 
+            batch_size=cfg.bs, 
+            shuffle=True, 
+            pin_memory=True, 
+            persistent_workers=True, 
+            prefetch_factor=4, 
+            num_workers=4,
+            generator=g,
+            worker_init_fn=lambda worker_id: np.random.seed(cfg.seed + worker_id)
+        )
+        val_loader = DataLoader(
+            val_dataset, 
+            batch_size=cfg.bs, 
+            shuffle=False, 
+            pin_memory=True, 
+            persistent_workers=True, 
+            prefetch_factor=4, 
+            num_workers=4,
+            generator=g,
+            worker_init_fn=lambda worker_id: np.random.seed(cfg.seed + worker_id)           
+        )
 
         TSModel, m_params = get_ts_model_and_params(imu_only=cfg.imu_only)
         model = TSModel(**m_params).to(device)
+
+        fucking_kaggle_p100 = True
+        if not fucking_kaggle_p100:
+            model = torch.compile(model, mode='max-autotune')
 
         if cfg.do_wandb_log:
             wandb.watch(model, log='all', log_freq=10)
@@ -260,15 +290,15 @@ def run_training_with_stratified_group_kfold():
         if cfg.use_sam:
             optimizer = SAM(optimizer)    
 
-        if cfg.use_target_weighting:
-            criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing, weight=class_weights_tensor)
+        if cfg.use_main_target_weighting:
+            main_criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing, weight=class_weights_main_tensor)
         else:
-            criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
+            main_criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
 
-        if cfg.use_aux2_target_weighting:
-            aux2_criterion = nn.CrossEntropyLoss(weight=class_weights_tensor_aux2)
+        if cfg.use_seq_type_aux_target_weighting:
+            seq_type_criterion = nn.CrossEntropyLoss(weight=class_weights_seq_type_tensor)
         else:
-            aux2_criterion = nn.CrossEntropyLoss()
+            seq_type_criterion = nn.CrossEntropyLoss()
 
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
@@ -289,10 +319,10 @@ def run_training_with_stratified_group_kfold():
             print(f'{epoch=}')
             
             train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
-                train_loader, model, optimizer, criterion, aux2_criterion, device, scheduler, 
+                train_loader, model, optimizer, main_criterion, seq_type_criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, criterion, aux2_criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, ema)
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
@@ -353,7 +383,6 @@ def run_training_with_stratified_group_kfold():
         model.eval()
         all_preds = []
         with torch.no_grad():
-            val_loader = DataLoader(val_dataset, batch_size=cfg.bs, shuffle=False, num_workers=4)
             for batch in val_loader:
                 for key in batch.keys():
                     batch[key] = batch[key].to(device)
@@ -363,6 +392,9 @@ def run_training_with_stratified_group_kfold():
 
         all_preds = np.concatenate(all_preds, axis=0)
         oof_preds[val_idx] = all_preds
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         if cfg.do_wandb_log:
             wandb.finish()

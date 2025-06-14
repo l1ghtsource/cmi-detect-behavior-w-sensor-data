@@ -29,30 +29,30 @@ cfg.is_train = True
 cfg.is_infer = False
 
 # --- important vars ---
-cfg.target = 'gesture'
-cfg.num_classes = 18
-cfg.use_target_weighting = False
-cfg.aux_target = 'orientation'
-cfg.aux_num_classes = 4
-cfg.aux_weight = 0
-cfg.use_aux_target_weighting = False
-cfg.aux2_target = 'sequence_type'
-cfg.aux2_num_classes = 2
-cfg.aux2_weight = 0.5
-cfg.use_aux2_target_weighting = True
+cfg.main_target = 'gesture'
+cfg.main_num_classes = 18
+cfg.orientation_aux_target = 'orientation'
+cfg.orientation_aux_num_classes = 4
+cfg.seq_type_aux_target = 'sequence_type'
+cfg.seq_type_aux_num_classes = 2
+cfg.behavior_aux_target = 'behavior'
+cfg.phase_aux_target = 'phase'
 cfg.group = 'subject'
-cfg.state = 'behavior'
 cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
 cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'baseline']
 
-# --- im ds cfg ---
-cfg.im_size = 160
-cfg.transform_type = 'cwt'
-cfg.use_grads = True
-cfg.window_tof = True
+# --- target things ---
+cfg.main_weight = 1.0
+cfg.orientation_aux_weight = 0
+cfg.seq_type_aux_weight = 0.5
+cfg.behavior_aux_weight = 0
+cfg.phase_aux_weight = 0
+cfg.use_main_target_weighting = False
+cfg.use_orientation_aux_target_weighting = False
+cfg.use_seq_type_aux_target_weighting = False
 
 # --- ts ds cfg ---
 cfg.norm_ts = True
@@ -63,6 +63,12 @@ cfg.use_diff = False
 cfg.use_time_pos = False
 cfg.use_pad_mask = True
 cfg.imu_only = True
+
+# --- im ds cfg ---
+cfg.im_size = 160
+cfg.transform_type = 'cwt'
+cfg.use_grads = True
+cfg.window_tof = True
 
 # --- save dir ---
 cfg.model_dir = 'weights'

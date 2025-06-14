@@ -185,7 +185,7 @@ class Original_TimeMIL(nn.Module):
 
         # stablity of training random initialized global token
         if warmup:
-            x = 0.1*x+0.99*global_token   
+            x = 0.01*x+0.99*global_token   
  
         logits = self._fc2(x)
             
@@ -193,7 +193,7 @@ class Original_TimeMIL(nn.Module):
 
 # for imu + tof + thm !! lesssgo
 class MultiSensor_TimeMIL_v1(nn.Module):
-    def __init__(self, n_classes=cfg.num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
         super().__init__()
      
         # Define separate feature extractors for each sensor type
@@ -242,14 +242,14 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         self.layer2 = TransLayer(dim=mDim, dropout=dropout)
         self.norm = nn.LayerNorm(mDim)
         
-        self._fc2 = nn.Sequential(
+        self._fc_main = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(mDim, n_classes)
         ) 
 
-        self._fc2_aux2 = nn.Sequential(
+        self._fc_seq_type = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -355,17 +355,17 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         
         # Apply warmup strategy if needed
         if warmup:
-            x = 0.1 * x + 0.99 * global_token   
+            x = 0.01 * x + 0.99 * global_token   
  
         # Final classification
-        logits = self._fc2(x)
-        logits_aux2 = self._fc2_aux2(x)
+        logits_main = self._fc_main(x)
+        logits_seq_type = self._fc_seq_type(x)
             
-        return logits, logits_aux2
+        return logits_main, logits_seq_type
             
 # ya ebal eto govnishe
 class TimeMIL_SingleSensor_v1(nn.Module):
-    def __init__(self, n_classes=cfg.num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
         super().__init__()
      
         # Define feature extractor for IMU sensor only
@@ -413,14 +413,14 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         self.layer2 = TransLayer(dim=mDim, dropout=dropout)
         self.norm = nn.LayerNorm(mDim)
         
-        self._fc2 = nn.Sequential(
+        self._fc_main = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(mDim, n_classes)
         ) 
 
-        self._fc2_aux2 = nn.Sequential(
+        self._fc_seq_type = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -501,13 +501,13 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         
         # Apply warmup strategy if needed
         if warmup:
-            x = 0.1 * x + 0.99 * global_token   
+            x = 0.01 * x + 0.99 * global_token   
  
         # Final classification
-        logits = self._fc2(x)
-        logits_aux2 = self._fc2_aux2(x)
+        logits_main = self._fc_main(x)
+        logits_seq_type = self._fc_seq_type(x)
             
-        return logits, logits_aux2
+        return logits_main, logits_seq_type
     
 class SensorProcessor(nn.Module):
     def __init__(self, feature_extractor, mDim, max_seq_len, num_sensors):
@@ -576,7 +576,7 @@ class CrossAttentionFusion(nn.Module):
         return fused_features
 
 class MultiSensor_TimeMIL_v2(nn.Module):
-    def __init__(self, n_classes=cfg.num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
         super().__init__()
         
         self.imu_processor = SensorProcessor(
@@ -602,14 +602,14 @@ class MultiSensor_TimeMIL_v2(nn.Module):
         self.layer2 = TransLayer(dim=mDim, dropout=dropout)
         self.norm = nn.LayerNorm(mDim)
         
-        self._fc2 = nn.Sequential(
+        self._fc_main = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(mDim, n_classes)
         )
         
-        self._fc2_aux2 = nn.Sequential(
+        self._fc_seq_type = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -692,9 +692,9 @@ class MultiSensor_TimeMIL_v2(nn.Module):
         x = x[:, 0]  # [B, mDim]
         
         if warmup:
-            x = 0.1 * x + 0.99 * global_token
+            x = 0.01 * x + 0.99 * global_token
         
-        logits = self._fc2(x)
-        logits_aux2 = self._fc2_aux2(x)
+        logits_main = self._fc_main(x)
+        logits_seq_type = self._fc_seq_type(x)
         
-        return logits, logits_aux2
+        return logits_main, logits_seq_type

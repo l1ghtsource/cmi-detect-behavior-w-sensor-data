@@ -128,7 +128,7 @@ class MultiSensor_DecomposeWHAR_v1(nn.Module):
                  imu_num_sensor=cfg.imu_num_sensor, imu_M=cfg.imu_vars,
                  thm_num_sensor=cfg.thm_num_sensor, thm_M=cfg.thm_vars,
                  tof_num_sensor=cfg.tof_num_sensor, tof_M=cfg.tof_vars,
-                 L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.num_classes, 
+                 L=cfg.seq_len, D=cfg.ddim, num_classes=cfg.main_num_classes, 
                  S=cfg.stride, use_cross_sensor=True):
         super().__init__()
         
@@ -200,7 +200,7 @@ class DecomposeWHAR_SingleSensor_v1(nn.Module):
             self, 
             M=len(cfg.imu_cols),
             L=cfg.seq_len,
-            num_classes=cfg.num_classes,
+            num_classes=cfg.main_num_classes,
             D=cfg.ddim,
             S=cfg.stride,
         ):
@@ -239,7 +239,7 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
                  num_layers=cfg.num_layers, 
                  num_m_layers=cfg.num_m_layers, 
                  num_a_layers=cfg.num_a_layers,
-                 num_classes=cfg.num_classes):
+                 num_classes=cfg.main_num_classes):
         super(MultiSensor_DecomposeWHAR_v2, self).__init__()
         
         self.num_imu = num_imu
@@ -376,7 +376,7 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
                  r=cfg.reduction_ratio,  # A hyperparameter for decomposition (e.g., reduction ratio)
                  num_layers=cfg.num_layers,  # Number of decomposition layers
                  num_m_layers=cfg.num_m_layers,  # Number of mamba layers
-                 num_classes=cfg.num_classes):   
+                 num_classes=cfg.main_num_classes):   
         super(DecomposeWHAR_SingleSensor_v2, self).__init__()
 
         self.num_layers = num_layers

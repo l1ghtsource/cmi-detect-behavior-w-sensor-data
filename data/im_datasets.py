@@ -10,10 +10,10 @@ from data.ts_datasets import TS_CMIDataset
 
 class IM_CMIDataset(TS_CMIDataset):
     def __init__(
-            self, dataframe, seq_len=cfg.seq_len, target_col=cfg.target, aux_target_col=cfg.aux_target, 
+            self, dataframe, seq_len=cfg.seq_len, main_target=cfg.main_target, seq_type_aux_target=cfg.seq_type_aux_target, 
             train=True, im_size=cfg.im_size, transform_type=cfg.transform_type
     ):
-        super().__init__(dataframe, seq_len, target_col, aux_target_col, train)
+        super().__init__(dataframe, seq_len, main_target, seq_type_aux_target, train)
         self.im_size = im_size
         self.transform_type = transform_type # cwt or stft
         
