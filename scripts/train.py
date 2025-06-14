@@ -31,6 +31,7 @@ from utils.getters import (
 from utils.data_preproc import fast_seq_agg, le
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
+from utils.checkpointing import TopKCheckpoints
 
 # --- set seed ---
 
@@ -128,7 +129,7 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, ema=None):
+def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, ema=None, current_step=0, num_warmup_steps=0):
     model.eval()
 
     if cfg.use_ema and ema is not None:
@@ -139,13 +140,14 @@ def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, e
     all_targets = []
     all_preds = []
     
+    is_warmup_phase = current_step < num_warmup_steps
     with torch.no_grad():
         loop = tqdm(val_loader, desc='val', leave=False)
         for batch in loop:
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only, warmup=is_warmup_phase)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             main_loss = main_criterion(outputs, targets)
@@ -310,10 +312,9 @@ def run_training_with_stratified_group_kfold():
             num_training_steps=num_training_steps
         )
         
+        top_checkpoints = TopKCheckpoints(k=5)
         best_val_score = -np.inf
         patience_counter = 0
-        best_model_path = os.path.join(cfg.model_dir, f'{prefix}model_fold{fold}.pt')
-        best_ema_path = os.path.join(cfg.model_dir, f'{prefix}model_ema_fold{fold}.pt') if cfg.use_ema else None
         
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
@@ -326,6 +327,9 @@ def run_training_with_stratified_group_kfold():
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
+
+            model_path = os.path.join(cfg.model_dir, f'{prefix}model_fold{fold}_epoch{epoch:03d}_val_f1_{avg_m_val:.4f}.pt')
+            ema_path = os.path.join(cfg.model_dir, f'{prefix}model_ema_fold{fold}_epoch{epoch:03d}_val_f1_{avg_m_val:.4f}.pt') if cfg.use_ema else None
             
             if cfg.do_wandb_log:
                 wandb.log({
@@ -341,17 +345,19 @@ def run_training_with_stratified_group_kfold():
                     f'fold_{fold}/best_val_avg_f1': best_val_score,
                     f'fold_{fold}/patience_counter': patience_counter
                 })
-            
+
+            torch.save(model.state_dict(), model_path)
+            if cfg.use_ema and ema is not None:
+                ema_state_dict = {}
+                for name in ema.shadow:
+                    ema_state_dict[name] = ema.shadow[name]
+                torch.save(ema_state_dict, ema_path)
+
+            top_checkpoints.add_checkpoint(avg_m_val, epoch, model_path, ema_path)
+
             if avg_m_val > best_val_score:
                 best_val_score = avg_m_val
                 patience_counter = 0
-                torch.save(model.state_dict(), best_model_path)
-                if cfg.use_ema and ema is not None:
-                    ema_state_dict = {}
-                    for name in ema.shadow:
-                        ema_state_dict[name] = ema.shadow[name]
-                    torch.save(ema_state_dict, best_ema_path)
-                
                 if cfg.do_wandb_log:
                     wandb.log({f'fold_{fold}/new_best_val_avg_f1': best_val_score})
             else:
@@ -363,10 +369,12 @@ def run_training_with_stratified_group_kfold():
                     wandb.log({f'fold_{fold}/early_stopped_epoch': epoch})
                 break
 
-        model.load_state_dict(torch.load(best_model_path))
+        best_checkpoint = top_checkpoints.get_best_checkpoint()
+        if best_checkpoint:
+            model.load_state_dict(torch.load(best_checkpoint.model_path))
 
-        if cfg.use_ema and best_ema_path and os.path.exists(best_ema_path):
-            ema_state_dict = torch.load(best_ema_path, map_location=device)
+        if cfg.use_ema and best_checkpoint.ema_path and os.path.exists(best_checkpoint.ema_path):
+            ema_state_dict = torch.load(best_checkpoint.ema_path, map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:
                     param.data = ema_state_dict[name]
