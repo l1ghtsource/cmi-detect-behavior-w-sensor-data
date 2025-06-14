@@ -1,6 +1,22 @@
 import pandas as pd
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 from configs.config import cfg
+
+def convert_to_world_coordinates(df):
+    quats = df[['rot_w', 'rot_x', 'rot_y', 'rot_z']].to_numpy()
+    accs = df[['acc_x', 'acc_y', 'acc_z']].to_numpy()
+
+    rots = R.from_quat(quats[:, [1, 2, 3, 0]])
+    acc_world = rots.apply(accs)
+    
+    g = np.array([0, 0, 9.81])
+    acc_world_linear = acc_world - g
+
+    df_world = df.copy()
+    df_world[['acc_x', 'acc_y', 'acc_z']] = acc_world_linear
+
+    return df_world
 
 def fast_seq_agg(df):
     sc = cfg.static_cols

@@ -28,7 +28,7 @@ from utils.getters import (
     forward_model,
     get_prefix
 )
-from utils.data_preproc import fast_seq_agg, le
+from utils.data_preproc import fast_seq_agg, le, convert_to_world_coordinates
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
 from utils.checkpointing import TopKCheckpoints
@@ -52,7 +52,10 @@ train_demographics = pd.read_csv(cfg.train_demographics_path)
 
 train = train.merge(train_demographics, how='left', on='subject')
 
-# -- convert to seq ---
+# --- preproc & convert to seq ---
+
+if cfg.use_world_coords:
+    train = convert_to_world_coordinates(train)
 
 train = le(train)
 train_seq = fast_seq_agg(train)

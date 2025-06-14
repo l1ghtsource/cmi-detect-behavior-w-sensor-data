@@ -14,7 +14,12 @@ from utils.getters import (
     forward_model, 
     get_prefix
 )
-from utils.data_preproc import fast_seq_agg, le, get_rev_mapping
+from utils.data_preproc import (
+    fast_seq_agg, 
+    le, 
+    convert_to_world_coordinates, 
+    get_rev_mapping
+)
 from utils.tta import apply_tta
 
 # TODO: multigpu inference
@@ -22,6 +27,10 @@ from utils.tta import apply_tta
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 train = pd.read_csv(cfg.train_path)
+
+if cfg.use_world_coords:
+    train = convert_to_world_coordinates(train)
+
 train = le(train)
 train_seq = fast_seq_agg(train)
 
@@ -54,6 +63,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     if not demographics.is_empty():
         test_demographics = demographics.to_pandas()
         test_df = test_df.merge(test_demographics, how='left', on='subject')
+
+    if cfg.use_world_coords:
+        test_df = convert_to_world_coordinates(test_df)
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 
