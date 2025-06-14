@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 from modules.ts_modules import DilatedCNN, SensorAttn
+from configs.config import cfg
 
 class TS_MSModel(nn.Module):
-    def __init__(self, imu_features, thm_features, tof_features, num_classes, hidden_dim=128):
+    def __init__(self, imu_features, thm_features, tof_features, num_classes, num_seq_type_classes=cfg.seq_type_aux_num_classes, hidden_dim=128):
         super().__init__()
         
         self.imu_cnn = nn.Sequential(
@@ -37,7 +38,14 @@ class TS_MSModel(nn.Module):
             nn.Linear(512, num_classes)
         )
 
-    def forward(self, imu, thm, tof):
+        self.fc_seq_type = nn.Sequential(
+            nn.Linear(hidden_dim*6 * 2, 512),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, num_seq_type_classes)
+        )
+
+    def forward(self, imu, thm, tof, pad_mask=None):
         imu = self.imu_cnn(imu.permute(0, 2, 1)).permute(0, 2, 1)
         imu, _ = self.imu_lstm(imu)
         imu = self.imu_attn(imu)
@@ -58,10 +66,10 @@ class TS_MSModel(nn.Module):
         max_pool = temporal_out.max(dim=1).values
         features = torch.cat([avg_pool, max_pool], dim=1)
         
-        return self.fc(features)
+        return self.fc(features), self.fc_seq_type(features)
     
 class TS_IMUModel(nn.Module):
-    def __init__(self, imu_features, num_classes, hidden_dim=128):
+    def __init__(self, imu_features, num_classes, num_seq_type_classes=cfg.seq_type_aux_num_classes, hidden_dim=128):
         super().__init__()
         
         self.imu_cnn = nn.Sequential(
@@ -80,7 +88,14 @@ class TS_IMUModel(nn.Module):
             nn.Linear(512, num_classes)
         )
 
-    def forward(self, imu):
+        self.fc_seq_type = nn.Sequential(
+            nn.Linear(hidden_dim * 2 * 2, 512),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, num_seq_type_classes)
+        )
+
+    def forward(self, imu, pad_mask=None):
         imu = self.imu_cnn(imu.permute(0, 2, 1)).permute(0, 2, 1)
         imu, _ = self.imu_lstm(imu)
         imu = self.imu_attn(imu)
@@ -91,10 +106,10 @@ class TS_IMUModel(nn.Module):
         max_pool = temporal_out.max(dim=1).values
         features = torch.cat([avg_pool, max_pool], dim=1)
         
-        return self.fc(features)
+        return self.fc(features), self.fc_seq_type(features)
     
 class TS_SimpleMSModel(nn.Module):
-    def __init__(self, imu_features, thm_features, tof_features, num_classes, hidden_dim=64, dropout=0.2):
+    def __init__(self, imu_features, thm_features, tof_features, num_classes, num_seq_type_classes=cfg.seq_type_aux_num_classes, hidden_dim=64, dropout=0.2):
         super().__init__()
         
         self.imu_lstm = nn.LSTM(imu_features, hidden_dim, batch_first=True, bidirectional=True)
@@ -107,8 +122,9 @@ class TS_SimpleMSModel(nn.Module):
         self.tof_dropout = nn.Dropout(dropout)
         
         self.fc = nn.Linear(hidden_dim * 6, num_classes)
+        self.fc_seq_type = nn.Linear(hidden_dim * 6, num_seq_type_classes)
     
-    def forward(self, imu, thm, tof):
+    def forward(self, imu, thm, tof, pad_mask=None):
         imu_out, _ = self.imu_lstm(imu)
         imu_out = self.imu_dropout(imu_out)
         
@@ -121,22 +137,27 @@ class TS_SimpleMSModel(nn.Module):
         combined_features = torch.cat((imu_out[:, -1, :], thm_out[:, -1, :], tof_out[:, -1, :]), dim=1)
         
         output = self.fc(combined_features)
-        return output
+        output_seq_type = self.fc_seq_type(combined_features)
+
+        return output, output_seq_type
     
 class TS_SimpleIMUModel(nn.Module):
-    def __init__(self, imu_features, num_classes, hidden_dim=64, dropout=0.2):
+    def __init__(self, imu_features, num_classes, num_seq_type_classes=cfg.seq_type_aux_num_classes, hidden_dim=64, dropout=0.2):
         super().__init__()
         
         self.imu_lstm = nn.LSTM(imu_features, hidden_dim, batch_first=True, bidirectional=True)
         self.imu_dropout = nn.Dropout(dropout)
         
         self.fc = nn.Linear(hidden_dim * 2, num_classes)
+        self.fc_seq_type = nn.Linear(hidden_dim * 2, num_seq_type_classes)
     
-    def forward(self, imu):
+    def forward(self, imu, pad_mask=None):
         imu_out, _ = self.imu_lstm(imu)
         imu_out = self.imu_dropout(imu_out)
         
         features = imu_out[:, -1, :]
         
         output = self.fc(features)
-        return output
+        output_seq_type = self.fc_seq_type(features)
+
+        return output, output_seq_type
