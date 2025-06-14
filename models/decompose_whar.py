@@ -178,7 +178,7 @@ class MultiSensor_DecomposeWHAR_v1(nn.Module):
             self.classifier = nn.Linear(total_size, num_classes)
             self.classifier_seq_type = nn.Linear(total_size, num_seq_type_classes)
     
-    def forward(self, imu_data, thm_data, tof_data):
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         imu_x = self.imu_dwhar(imu_data)  # (B, imu_size)
         thm_x = self.thm_dwhar(thm_data)  # (B, thm_size)
         tof_x = self.tof_dwhar(tof_data)  # (B, tof_size)
@@ -230,7 +230,7 @@ class DecomposeWHAR_SingleSensor_v1(nn.Module):
         self.classifier = nn.Linear(D * (L // S), num_classes)
         self.classifier_seq_type = nn.Linear(D * (L // S), num_seq_type_classes)
     
-    def forward(self, data):
+    def forward(self, data, pad_mask=None):
         x = self.model(data)
         pred = self.classifier(x)
         pred_seq_type = self.classifier_seq_type(x)
@@ -313,7 +313,7 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
         self.fc_out_seq_type = nn.Linear(total_sensors * D * T, num_seq_type_classes)
         self.dropout_prob = 0.6
 
-    def forward(self, imu_data, thm_data, tof_data):
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         # inputs: 'imu', 'tof', 'thm'
         # imu: [B, 1, L, 7]
         # tof: [B, 5, L, 64] 
@@ -428,7 +428,7 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
         self.fc_out = nn.Linear(1 * D * T, num_classes)
         self.fc_out_seq_type = nn.Linear(1 * D * T, num_seq_type_classes)
 
-    def forward(self, inputs):  # inputs: (B, 1, L, M) - Batch size, 1 sensor, Sequence length, Number of variables
+    def forward(self, inputs, pad_mask=None):  # inputs: (B, 1, L, M) - Batch size, 1 sensor, Sequence length, Number of variables
         B, N, L, M = inputs.shape[0],inputs.shape[1],inputs.shape[2],inputs.shape[3] # bs,n_sensors,seq_len,n_vars
         x = inputs.reshape(B*N, L, M)  # (B*N, L, M)
         x = x.permute(0, 2, 1)  # (B*N, M, L)
