@@ -82,13 +82,13 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs, seq_type_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only, warmup=is_warmup_phase)
+            outputs, seq_type_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
             main_loss, seq_type_loss = mixup_criterion(outputs, seq_type_outputs, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam)
             loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
         else:
-            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only, warmup=is_warmup_phase)
+            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             main_loss = main_criterion(outputs, targets)
@@ -129,7 +129,7 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, ema=None, current_step=0, num_warmup_steps=0):
+def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, ema=None):
     model.eval()
 
     if cfg.use_ema and ema is not None:
@@ -140,14 +140,13 @@ def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, device, e
     all_targets = []
     all_preds = []
     
-    is_warmup_phase = current_step < num_warmup_steps
     with torch.no_grad():
         loop = tqdm(val_loader, desc='val', leave=False)
         for batch in loop:
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only, warmup=is_warmup_phase)
+            outputs, seq_type_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             main_loss = main_criterion(outputs, targets)

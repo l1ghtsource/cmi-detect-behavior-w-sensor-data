@@ -106,7 +106,7 @@ def get_ts_model_and_params(imu_only):
             }
             return model_cls, params
 
-def forward_model(model, batch, imu_only, warmup=False):
+def forward_model(model, batch, imu_only):
     inputs = []
     if cfg.selected_model == 'decomposewhar' and cfg.use_megasensor:
         inputs.append(batch['megasensor'])
@@ -126,10 +126,7 @@ def forward_model(model, batch, imu_only, warmup=False):
         inputs.append(batch['tof_diff'])
     if cfg.use_pad_mask:
         inputs.append(batch['pad_mask'])
-    if cfg.selected_model == 'timemil' and warmup:
-        return model(*inputs, warmup=True)
-    else:
-        return model(*inputs)
+    return model(*inputs)
             
 # haha what a shit
 def get_prefix(imu_only):
