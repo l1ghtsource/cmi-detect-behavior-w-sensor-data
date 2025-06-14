@@ -44,7 +44,7 @@ class DecomposeWHAR_Extractor(nn.Module):
         self.backbone = nn.ModuleList([DecomposeConvBlock(M, D, kernel_size, r) for _ in range(num_layers)])
         # Fully connected output layer for classification
         # self.fc_out = nn.Linear(num_sensor * D * T, num_classes)
-        self.dropout_prob = 0.2  # Dropout probability
+        self.dropout_prob = 0.6  # Dropout probability
 
         d_model = D * T  # Model dimension after embedding
         d_model_mamba = num_sensor * D  # Model dimension for Mamba preprocessing
@@ -293,7 +293,7 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
         ])
         
         self.fc_out = nn.Linear(total_sensors * D * T, num_classes)
-        self.dropout_prob = 0.2
+        self.dropout_prob = 0.6
 
     def forward(self, imu_data, thm_data, tof_data):
         # inputs: 'imu', 'tof', 'thm'
@@ -392,7 +392,7 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
         # Backbone consisting of multiple decomposition convolutional blocks
         self.backbone = nn.ModuleList([DecomposeConvBlock(M, D, kernel_size, r) for _ in range(num_layers)])
         
-        self.dropout_prob = 0.2  # Dropout probability
+        self.dropout_prob = 0.6 # Dropout probability
 
         d_model_mamba = D  # Model dimension for Mamba (single sensor)
         d_state = 16  # State dimension for Mamba
