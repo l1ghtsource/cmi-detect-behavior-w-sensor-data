@@ -381,28 +381,49 @@ class MultiSensor_TimeMIL_v1(nn.Module):
 class TimeMIL_SingleSensor_v1(nn.Module):
     def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
         super().__init__()
-     
-        # Define feature extractor for IMU sensor only
-        if cfg.timemil_extractor == 'inception_time':
-            self.imu_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
-        elif cfg.timemil_extractor == 'resnet':
-            self.imu_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
-        elif cfg.timemil_extractor == 'efficientnet':
-            self.imu_feature_extractor = EfficientNet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
-        elif cfg.timemil_extractor == 'inception_resnet':
-            self.imu_feature_extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.imu_vars)
-
-        # 128 cuz InceptionModule do x4 for out_dim !!
-        # Only 1 IMU sensor with cfg.imu_vars channels -> 128 features
-        total_features = 128  # 1 sensor * 128 features
         
-        # Projection layer to map features to target dimension
-        self.feature_proj = nn.Linear(total_features, mDim)
+        self.num_imu_channels = cfg.imu_vars
+        
+        # Define separate feature extractors for each IMU channel
+        self.imu_channel_extractors = nn.ModuleList()
+        for i in range(self.num_imu_channels):
+            if cfg.timemil_extractor == 'inception_time':
+                extractor = InceptionTimeFeatureExtractor(n_in_channels=1)  # Single channel
+            elif cfg.timemil_extractor == 'resnet':
+                extractor = Resnet1DFeatureExtractor(n_in_channels=1)
+            elif cfg.timemil_extractor == 'efficientnet':
+                extractor = EfficientNet1DFeatureExtractor(n_in_channels=1)
+            elif cfg.timemil_extractor == 'inception_resnet':
+                extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=1)
             
-        # Define WPE parameters    
+            self.imu_channel_extractors.append(extractor)
+
+        base_dim = mDim // self.num_imu_channels
+        remainder = mDim % self.num_imu_channels
+        
+        self.channel_projections = nn.ModuleList()
+        for i in range(self.num_imu_channels):
+            proj_dim = base_dim + (1 if i < remainder else 0)
+            self.channel_projections.append(nn.Linear(128, proj_dim))
+        
+        # Cross-channel fusion layer
+        self.channel_fusion = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.LayerNorm(mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout * 0.5)
+        )
+        
+        # Channel attention weights
+        self.channel_attention = nn.Sequential(
+            nn.Linear(mDim, self.num_imu_channels),
+            nn.Softmax(dim=-1)
+        )
+        
+        # Define WPE parameters 
         self.cls_token = nn.Parameter(torch.randn(1, 1, mDim))
         self.wave1 = torch.randn(2, mDim, 1)
-        self.wave1[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)  # ensure scale > 0
+        self.wave1[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
         self.wave1 = nn.Parameter(self.wave1)
         
         self.wave2 = torch.zeros(2, mDim, 1)
@@ -411,8 +432,8 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         
         self.wave3 = torch.zeros(2, mDim, 1)
         self.wave3[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
-        self.wave3 = nn.Parameter(self.wave3)    
-            
+        self.wave3 = nn.Parameter(self.wave3)
+        
         self.wave1_ = torch.randn(2, mDim, 1)
         self.wave1_[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
         self.wave1_ = nn.Parameter(self.wave1_)
@@ -423,24 +444,25 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         
         self.wave3_ = torch.zeros(2, mDim, 1)
         self.wave3_[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
-        self.wave3_ = nn.Parameter(self.wave3_)        
-            
+        self.wave3_ = nn.Parameter(self.wave3_)
+        
         hidden_len = 2 * max_seq_len
-            
-        # Define positional encoding and transformer layers      
-        self.pos_layer = WaveletEncoding(mDim, max_seq_len, hidden_len) 
-        self.pos_layer2 = WaveletEncoding(mDim, max_seq_len, hidden_len) 
+        
+        # Transformer layers 
+        self.pos_layer = WaveletEncoding(mDim, max_seq_len, hidden_len)
+        self.pos_layer2 = WaveletEncoding(mDim, max_seq_len, hidden_len)
         self.layer1 = TransLayer(dim=mDim, dropout=dropout)
         self.layer2 = TransLayer(dim=mDim, dropout=dropout)
         self.norm = nn.LayerNorm(mDim)
         
+        # Output heads 
         self._fc_main = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(mDim, n_classes)
-        ) 
-
+        )
+        
         self._fc_seq_type = nn.Sequential(
             nn.Linear(mDim, mDim),
             nn.ReLU(),
@@ -453,38 +475,62 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         initialize_weights(self)
 
     def apply_feature_mask(self, features, mask):
-        # mask is [B, L], expand to match features
         mask = mask.unsqueeze(1)  # [B, 1, L]
-        
         return features * mask.float()
+
+    def process_channels_separately(self, imu_data, pad_mask=None):
+        """
+        Process each IMU channel separately
+        """
+        B, _, L, C = imu_data.shape
+        channel_outputs = []
         
+        # Process each channel separately
+        for i in range(self.num_imu_channels):
+            # Extract single channel: [B, 1, L]
+            channel_data = imu_data[:, 0, :, i].unsqueeze(1)  # [B, 1, L]
+            
+            # Apply feature extractor
+            channel_features = self.imu_channel_extractors[i](channel_data)  # [B, 128, L]
+            
+            # Apply mask if provided
+            if pad_mask is not None:
+                channel_features = self.apply_feature_mask(channel_features, pad_mask)
+            
+            # Transpose and project
+            channel_features = channel_features.transpose(1, 2)  # [B, L, 128]
+            channel_features = self.channel_projections[i](channel_features)  # [B, L, proj_dim]
+            
+            channel_outputs.append(channel_features)
+        
+        # Concatenate all channels
+        fused_features = torch.cat(channel_outputs, dim=-1)  # [B, L, mDim]
+        
+        # Apply cross-channel fusion
+        fused_features = self.channel_fusion(fused_features)  # [B, L, mDim]
+        
+        # Apply padding mask if provided
+        if pad_mask is not None:
+            fused_features = fused_features * pad_mask.unsqueeze(-1).float()
+        
+        return fused_features
+
     def forward(self, imu_data, pad_mask=None, warmup=False):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
-            pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
-            warmup: bool - whether to use warmup strategy [optional!]
+            pad_mask: [B, L] - padding mask (1=valid, 0=padding)
+            warmup: bool - whether to use warmup strategy
         """
         B, _, L, _ = imu_data.shape
         
-        # Process IMU data (single sensor)
-        sensor_data = imu_data[:, 0, :, :].transpose(1, 2)  # [B, 7, L]
-        x = self.imu_feature_extractor(sensor_data)  # [B, 128, L]
-
-        if pad_mask is not None:
-            x = self.apply_feature_mask(x, pad_mask)
+        # Process channels separately and fuse
+        x = self.process_channels_separately(imu_data, pad_mask)  # [B, L, mDim]
         
-        # Transpose and project to target dimension
-        x = x.transpose(1, 2)  # [B, L, 128]
-        x = self.feature_proj(x)  # [B, L, mDim]
-
-        if pad_mask is not None:
-            x = x * pad_mask.unsqueeze(-1).float()  # [B, L, mDim]
-
         # Compute global token
         if pad_mask is not None:
             valid_counts = pad_mask.sum(dim=1, keepdim=True).float()  # [B, 1]
-            valid_counts = torch.clamp(valid_counts, min=1.0)  # Avoid division by zero
+            valid_counts = torch.clamp(valid_counts, min=1.0)
             global_token = (x * pad_mask.unsqueeze(-1).float()).sum(dim=1) / valid_counts  # [B, mDim]
         else:
             global_token = x.mean(dim=1)  # [B, mDim]
@@ -492,10 +538,10 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         # Add class token
         cls_tokens = self.cls_token.expand(B, -1, -1)  # [B, 1, mDim]
         x = torch.cat((cls_tokens, x), dim=1)
-
+        
         if pad_mask is not None:
             extended_mask = torch.cat([
-                torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),  # cls token is always valid
+                torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),
                 pad_mask
             ], dim=1)  # [B, L+1]
         
@@ -522,12 +568,12 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         
         # Apply warmup strategy if needed
         if warmup:
-            x = 0.01 * x + 0.99 * global_token   
- 
+            x = 0.01 * x + 0.99 * global_token
+        
         # Final classification
         logits_main = self._fc_main(x)
         logits_seq_type = self._fc_seq_type(x)
-            
+        
         return logits_main, logits_seq_type
     
 class SensorProcessor(nn.Module):
