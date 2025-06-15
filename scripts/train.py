@@ -396,12 +396,12 @@ def run_training_with_stratified_group_kfold():
                     wandb.log({f'fold_{fold}/early_stopped_epoch': epoch})
                 break
 
-        best_checkpoint = fold_checkpoints[0] if fold_checkpoints else None
+        best_checkpoint = fold_checkpoints[0]
         if best_checkpoint:
-            model.load_state_dict(torch.load(best_checkpoint.model_path))
+            model.load_state_dict(torch.load(best_checkpoint['model_path']))
 
-        if cfg.use_ema and best_checkpoint.ema_path and os.path.exists(best_checkpoint.ema_path):
-            ema_state_dict = torch.load(best_checkpoint.ema_path, map_location=device)
+        if cfg.use_ema and best_checkpoint['ema_path'] and os.path.exists(best_checkpoint['ema_path']):
+            ema_state_dict = torch.load(best_checkpoint['ema_path'], map_location=device)
             for name, param in model.named_parameters():
                 if name in ema_state_dict:
                     param.data = ema_state_dict[name]
