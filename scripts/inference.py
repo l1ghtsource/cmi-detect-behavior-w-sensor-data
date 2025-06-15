@@ -86,7 +86,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         train=False,
         norm_stats=train_dataset.norm_stats
     )
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, pin_memory=True, persistent_workers=True, num_workers=0) 
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0) 
 
     use_tta = len(cfg.tta_strategies) > 0 # strats != {}
     
