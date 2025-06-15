@@ -2,6 +2,30 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from modules.conv_block import manual_pad
+from modules.inceptiontime import InceptionBlock
+
+class XDD_InceptionResnet_FeatureExtractor(nn.Module):
+    def __init__(
+        self,
+        n_in_channels: int,
+        out_channels: int = 32,
+        padding_mode: str = "replicate",
+    ):
+        super().__init__()
+        self.n_in_channels = n_in_channels
+        self.instance_encoder = nn.Sequential(
+            ResidualBlock1D(n_in_channels, out_channels * 4, padding_mode=padding_mode),
+            InceptionBlock(out_channels * 4, out_channels * 4, padding_mode=padding_mode),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # PyTorch doesn't like replicate padding if the input tensor is too small, so pad manually to min length
+        min_len = 21
+        if x.shape[-1] >= min_len:
+            return self.instance_encoder(x)
+        else:
+            padded_x = manual_pad(x, min_len)
+            return self.instance_encoder(padded_x)
 
 class Resnet1DFeatureExtractor(nn.Module):
     def __init__(
