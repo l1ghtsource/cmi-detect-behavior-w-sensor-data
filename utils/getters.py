@@ -139,6 +139,7 @@ def get_prefix(imu_only):
         prefix_parts.append(f'ver{cfg.dwhar_ver}')
     elif model == 'timemil':
         prefix_parts.append(f'ver{cfg.timemil_ver}')
+        prefix_parts.append(f'{cfg.timemil_extractor}')
 
     if imu_only:
         prefix_parts.append('imu_only')
