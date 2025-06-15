@@ -36,7 +36,6 @@ from utils.data_preproc import (
 )
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
-from utils.checkpointing import TopKCheckpoints
 
 # --- set seed ---
 
@@ -323,9 +322,9 @@ def run_training_with_stratified_group_kfold():
             num_training_steps=num_training_steps
         )
         
-        top_checkpoints = TopKCheckpoints(k=5)
         best_val_score = -np.inf
         patience_counter = 0
+        fold_checkpoints = []
         
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
@@ -339,9 +338,6 @@ def run_training_with_stratified_group_kfold():
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
 
-            model_path = os.path.join(cfg.model_dir, f'{prefix}model_fold{fold}_epoch{epoch:03d}_val_f1_{avg_m_val:.4f}.pt')
-            ema_path = os.path.join(cfg.model_dir, f'{prefix}model_ema_fold{fold}_epoch{epoch:03d}_val_f1_{avg_m_val:.4f}.pt') if cfg.use_ema else None
-            
             if cfg.do_wandb_log:
                 wandb.log({
                     f'fold_{fold}/epoch': epoch,
@@ -357,6 +353,9 @@ def run_training_with_stratified_group_kfold():
                     f'fold_{fold}/patience_counter': patience_counter
                 })
 
+            model_path = os.path.join(cfg.model_dir, f'{prefix}model_fold{fold}_val_f1_{avg_m_val:.4f}_epoch{epoch:03d}.pt')
+            ema_path = os.path.join(cfg.model_dir, f'{prefix}model_ema_fold{fold}_val_f1_{avg_m_val:.4f}_epoch{epoch:03d}.pt') if cfg.use_ema else None
+
             torch.save(model.state_dict(), model_path)
             if cfg.use_ema and ema is not None:
                 ema_state_dict = {}
@@ -364,7 +363,24 @@ def run_training_with_stratified_group_kfold():
                     ema_state_dict[name] = ema.shadow[name]
                 torch.save(ema_state_dict, ema_path)
 
-            top_checkpoints.add_checkpoint(avg_m_val, epoch, model_path, ema_path)
+            fold_checkpoints.append({
+                'score': avg_m_val,
+                'epoch': epoch,
+                'model_path': model_path,
+                'ema_path': ema_path
+            })
+
+            fold_checkpoints.sort(key=lambda x: x['score'], reverse=True)
+            
+            if len(fold_checkpoints) > 5:
+                to_remove = fold_checkpoints[5:]
+                fold_checkpoints = fold_checkpoints[:5]
+                
+                for checkpoint in to_remove:
+                    if os.path.exists(checkpoint['model_path']):
+                        os.remove(checkpoint['model_path'])
+                    if checkpoint['ema_path'] and os.path.exists(checkpoint['ema_path']):
+                        os.remove(checkpoint['ema_path'])
 
             if avg_m_val > best_val_score:
                 best_val_score = avg_m_val
@@ -380,7 +396,7 @@ def run_training_with_stratified_group_kfold():
                     wandb.log({f'fold_{fold}/early_stopped_epoch': epoch})
                 break
 
-        best_checkpoint = top_checkpoints.get_best_checkpoint()
+        best_checkpoint = fold_checkpoints[0] if fold_checkpoints else None
         if best_checkpoint:
             model.load_state_dict(torch.load(best_checkpoint.model_path))
 

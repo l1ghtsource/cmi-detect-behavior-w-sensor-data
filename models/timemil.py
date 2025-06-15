@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from modules.inceptiontime import InceptionTimeFeatureExtractor
+# from modules.inceptiontime import InceptionTimeFeatureExtractor
+# from modules.inceptiontime_replacers import Resnet1DFeatureExtractor, ConvNext1DFeatureExtractor, EfficientNet1DFeatureExtractor, MultiScale1DFeatureExtractor, AFEN1DFeatureExtractor
+from modules.inceptiontime_replacers import Resnet1DFeatureExtractor as InceptionTimeFeatureExtractor
 from modules.nystrom_attention import NystromAttention
 from configs.config import cfg
 
