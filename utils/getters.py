@@ -16,8 +16,8 @@ from models.decompose_whar import (
     MultiSensor_DecomposeWHAR_v2, DecomposeWHAR_SingleSensor_v2
 )
 from models.timemil import (
-    MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_v1,
-    MultiSensor_TimeMIL_v2,
+    MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_Singlebranch_v1,
+    MultiSensor_TimeMIL_v2, TimeMIL_SingleSensor_Multibranch_v1
 )
 from configs.config import cfg
 
@@ -71,7 +71,7 @@ def get_ts_model_and_params(imu_only):
             }
     elif cfg.selected_model == 'timemil':
         if imu_only:
-            timemil_model = TimeMIL_SingleSensor_v1
+            timemil_model = TimeMIL_SingleSensor_Singlebranch_v1 if cfg.timemil_singlebranch else TimeMIL_SingleSensor_Multibranch_v1
             return timemil_model, { # only imu sensor
                 'n_classes': cfg.main_num_classes,
                 'mDim': cfg.timemil_dim, 

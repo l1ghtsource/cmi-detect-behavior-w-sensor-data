@@ -100,6 +100,7 @@ cfg.timemil_dim = 256
 cfg.timemil_dropout = 0.0
 cfg.timemil_ver = '1'
 cfg.timemil_extractor = 'inception_time' # ['inception_time', 'resnet', 'efficientnet', 'inception_resnet']
+cfg.timemil_singlebranch = True
 
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
@@ -140,7 +141,83 @@ cfg.use_ema = False
 cfg.ema_decay = 0.999
 
 # --- inference params ---
-cfg.weights_path = '/kaggle/input/dwhar-models'
+cfg.weights_pathes = {
+    'imu_only': {
+        'resnet_7': {
+            'prefix': 'timemil_ver1_resnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
+            'timemil_singlebranch': False,
+            'timemil_extractor': 'resnet',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+                'mDim': 256, 
+                'max_seq_len': 120,
+                'dropout': 0.0
+            }
+        },
+        'resnet_1': {
+            'prefix': 'timemil_ver1_resnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
+            'timemil_singlebranch': True,
+            'timemil_extractor': 'resnet',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+                'mDim': 256, 
+                'max_seq_len': 120,
+                'dropout': 0.0
+            }
+        },
+        'effnet_7': {
+            'prefix': 'timemil_ver1_efficientnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
+            'timemil_singlebranch': False,
+            'timemil_extractor': 'efficientnet',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+                'mDim': 256, 
+                'max_seq_len': 120,
+                'dropout': 0.0
+            }
+        },
+        'effnet_1': {
+            'prefix': 'timemil_ver1_efficientnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
+            'timemil_singlebranch': True,
+            'timemil_extractor': 'efficientnet',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+                'mDim': 256, 
+                'max_seq_len': 120,
+                'dropout': 0.0
+            }
+        },
+        'inception_7': {
+            'prefix': 'timemil_ver1_inception_time_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
+            'timemil_singlebranch': False,
+            'timemil_extractor': 'inception_time',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+                'mDim': 256, 
+                'max_seq_len': 120,
+                'dropout': 0.0
+            }
+        },
+        'inception_1': {
+            'prefix': 'timemil_ver1_inception_time_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
+            'timemil_singlebranch': True,
+            'timemil_extractor': 'inception_time',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+                'mDim': 256, 
+                'max_seq_len': 120,
+                'dropout': 0.0
+            }
+        },
+    },
+    'imu+tof+thm': {}
+}
 cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..

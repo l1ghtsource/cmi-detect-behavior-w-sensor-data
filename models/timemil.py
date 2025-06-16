@@ -378,8 +378,160 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         return logits_main, logits_seq_type
             
 # ya ebal eto govnishe
-class TimeMIL_SingleSensor_v1(nn.Module):
-    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+class TimeMIL_SingleSensor_Singlebranch_v1(nn.Module):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout, timemil_extractor=cfg.timemil_extractor):
+        super().__init__()
+     
+        # Define feature extractor for IMU sensor only
+        if timemil_extractor == 'inception_time':
+            self.imu_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
+        elif timemil_extractor == 'resnet':
+            self.imu_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
+        elif timemil_extractor == 'efficientnet':
+            self.imu_feature_extractor = EfficientNet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
+        elif timemil_extractor == 'inception_resnet':
+            self.imu_feature_extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.imu_vars)
+
+        # 128 cuz InceptionModule do x4 for out_dim !!
+        # Only 1 IMU sensor with cfg.imu_vars channels -> 128 features
+        total_features = 128  # 1 sensor * 128 features
+        
+        # Projection layer to map features to target dimension
+        self.feature_proj = nn.Linear(total_features, mDim)
+            
+        # Define WPE parameters    
+        self.cls_token = nn.Parameter(torch.randn(1, 1, mDim))
+        self.wave1 = torch.randn(2, mDim, 1)
+        self.wave1[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)  # ensure scale > 0
+        self.wave1 = nn.Parameter(self.wave1)
+        
+        self.wave2 = torch.zeros(2, mDim, 1)
+        self.wave2[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        self.wave2 = nn.Parameter(self.wave2)
+        
+        self.wave3 = torch.zeros(2, mDim, 1)
+        self.wave3[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        self.wave3 = nn.Parameter(self.wave3)    
+            
+        self.wave1_ = torch.randn(2, mDim, 1)
+        self.wave1_[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        self.wave1_ = nn.Parameter(self.wave1_)
+        
+        self.wave2_ = torch.zeros(2, mDim, 1)
+        self.wave2_[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        self.wave2_ = nn.Parameter(self.wave2_)
+        
+        self.wave3_ = torch.zeros(2, mDim, 1)
+        self.wave3_[0] = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+        self.wave3_ = nn.Parameter(self.wave3_)        
+            
+        hidden_len = 2 * max_seq_len
+            
+        # Define positional encoding and transformer layers      
+        self.pos_layer = WaveletEncoding(mDim, max_seq_len, hidden_len) 
+        self.pos_layer2 = WaveletEncoding(mDim, max_seq_len, hidden_len) 
+        self.layer1 = TransLayer(dim=mDim, dropout=dropout)
+        self.layer2 = TransLayer(dim=mDim, dropout=dropout)
+        self.norm = nn.LayerNorm(mDim)
+        
+        self._fc_main = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, n_classes)
+        ) 
+
+        self._fc_seq_type = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 2),
+        )
+        
+        self.alpha = nn.Parameter(torch.ones(1))
+        
+        initialize_weights(self)
+
+    def apply_feature_mask(self, features, mask):
+        # mask is [B, L], expand to match features
+        mask = mask.unsqueeze(1)  # [B, 1, L]
+        
+        return features * mask.float()
+        
+    def forward(self, imu_data, pad_mask=None, warmup=False):
+        """
+        Args:
+            imu_data: [B, 1, L, 7] - IMU sensor data
+            pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
+            warmup: bool - whether to use warmup strategy [optional!]
+        """
+        B, _, L, _ = imu_data.shape
+        
+        # Process IMU data (single sensor)
+        sensor_data = imu_data[:, 0, :, :].transpose(1, 2)  # [B, 7, L]
+        x = self.imu_feature_extractor(sensor_data)  # [B, 128, L]
+
+        if pad_mask is not None:
+            x = self.apply_feature_mask(x, pad_mask)
+        
+        # Transpose and project to target dimension
+        x = x.transpose(1, 2)  # [B, L, 128]
+        x = self.feature_proj(x)  # [B, L, mDim]
+
+        if pad_mask is not None:
+            x = x * pad_mask.unsqueeze(-1).float()  # [B, L, mDim]
+
+        # Compute global token
+        if pad_mask is not None:
+            valid_counts = pad_mask.sum(dim=1, keepdim=True).float()  # [B, 1]
+            valid_counts = torch.clamp(valid_counts, min=1.0)  # Avoid division by zero
+            global_token = (x * pad_mask.unsqueeze(-1).float()).sum(dim=1) / valid_counts  # [B, mDim]
+        else:
+            global_token = x.mean(dim=1)  # [B, mDim]
+        
+        # Add class token
+        cls_tokens = self.cls_token.expand(B, -1, -1)  # [B, 1, mDim]
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        if pad_mask is not None:
+            extended_mask = torch.cat([
+                torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),  # cls token is always valid
+                pad_mask
+            ], dim=1)  # [B, L+1]
+        
+        # Apply Wavelet Positional Encoding 1
+        x = self.pos_layer(x, self.wave1, self.wave2, self.wave3)
+        
+        # Apply TransLayer 1
+        if pad_mask is not None:
+            x = self.layer1(x, mask=extended_mask.bool())
+        else:
+            x = self.layer1(x)
+        
+        # Apply Wavelet Positional Encoding 2
+        x = self.pos_layer2(x, self.wave1_, self.wave2_, self.wave3_)
+        
+        # Apply TransLayer 2
+        if pad_mask is not None:
+            x = self.layer2(x, mask=extended_mask.bool())
+        else:
+            x = self.layer2(x)
+        
+        # Extract class token
+        x = x[:, 0]
+        
+        # Apply warmup strategy if needed
+        if warmup:
+            x = 0.01 * x + 0.99 * global_token   
+ 
+        # Final classification
+        logits_main = self._fc_main(x)
+        logits_seq_type = self._fc_seq_type(x)
+            
+        return logits_main, logits_seq_type
+
+class TimeMIL_SingleSensor_Multibranch_v1(nn.Module):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout, timemil_extractor=cfg.timemil_extractor):
         super().__init__()
         
         self.num_imu_channels = cfg.imu_vars
@@ -387,13 +539,13 @@ class TimeMIL_SingleSensor_v1(nn.Module):
         # Define separate feature extractors for each IMU channel
         self.imu_channel_extractors = nn.ModuleList()
         for i in range(self.num_imu_channels):
-            if cfg.timemil_extractor == 'inception_time':
+            if timemil_extractor == 'inception_time':
                 extractor = InceptionTimeFeatureExtractor(n_in_channels=1)  # Single channel
-            elif cfg.timemil_extractor == 'resnet':
+            elif timemil_extractor == 'resnet':
                 extractor = Resnet1DFeatureExtractor(n_in_channels=1)
-            elif cfg.timemil_extractor == 'efficientnet':
+            elif timemil_extractor == 'efficientnet':
                 extractor = EfficientNet1DFeatureExtractor(n_in_channels=1)
-            elif cfg.timemil_extractor == 'inception_resnet':
+            elif timemil_extractor == 'inception_resnet':
                 extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=1)
             
             self.imu_channel_extractors.append(extractor)
