@@ -96,10 +96,12 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     all_model_averaged_logits_aux2 = []
     all_model_predictions = []
     all_model_predictions_aux2 = []
+    model_weights = []
 
     w_key = 'imu_only' if use_imu_only else 'imu+tof+thm'
-    for weights_path, params in cfg.weights_pathes[w_key]:
+    for weights_path, params in cfg.weights_pathes[w_key].items():
         print(f'{params=}')
+        model_weights.append(params['weight'])
         if use_imu_only:
             TSModel = TimeMIL_SingleSensor_Singlebranch_v1 if params['timemil_singlebranch'] else TimeMIL_SingleSensor_Multibranch_v1
         else:
@@ -192,9 +194,14 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
             all_model_predictions_aux2.append(model_averaged_predictions_aux2)
 
     if cfg.is_soft:
-        final_averaged_logits = np.mean(np.array(all_model_averaged_logits), axis=0)
-        final_averaged_logits_aux2 = np.mean(np.array(all_model_averaged_logits_aux2), axis=0)
+        model_weights = np.array(model_weights)
         
+        all_model_averaged_logits = np.array(all_model_averaged_logits)
+        all_model_averaged_logits_aux2 = np.array(all_model_averaged_logits_aux2)
+        
+        final_averaged_logits = np.sum(all_model_averaged_logits * model_weights[:, np.newaxis, np.newaxis], axis=0)
+        final_averaged_logits_aux2 = np.sum(all_model_averaged_logits_aux2 * model_weights[:, np.newaxis, np.newaxis], axis=0)
+
         if cfg.use_entmax:
             final_logits_tensor = torch.tensor(final_averaged_logits, device=device)
             entmax_probs = entmax_bisect(final_logits_tensor, alpha=cfg.entmax_alpha, dim=1)

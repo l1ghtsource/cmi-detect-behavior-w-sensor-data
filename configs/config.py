@@ -143,7 +143,8 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        'resnet_7': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_resnet_7branches': {
+            'weight': 895.7572691,
             'prefix': 'timemil_ver1_resnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
             'timemil_singlebranch': False,
             'timemil_extractor': 'resnet',
@@ -155,7 +156,8 @@ cfg.weights_pathes = {
                 'dropout': 0.0
             }
         },
-        'resnet_1': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_resnet_1branch': {
+            'weight': 91.88802719,
             'prefix': 'timemil_ver1_resnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
             'timemil_singlebranch': True,
             'timemil_extractor': 'resnet',
@@ -167,7 +169,8 @@ cfg.weights_pathes = {
                 'dropout': 0.0
             }
         },
-        'effnet_7': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_effnet_7branches': {
+            'weight': 406.48007812,
             'prefix': 'timemil_ver1_efficientnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
             'timemil_singlebranch': False,
             'timemil_extractor': 'efficientnet',
@@ -179,7 +182,8 @@ cfg.weights_pathes = {
                 'dropout': 0.0
             }
         },
-        'effnet_1': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_effnet_1branch': {
+            'weight': 245.86609582,
             'prefix': 'timemil_ver1_efficientnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
             'timemil_singlebranch': True,
             'timemil_extractor': 'efficientnet',
@@ -191,7 +195,8 @@ cfg.weights_pathes = {
                 'dropout': 0.0
             }
         },
-        'inception_7': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_inception_7branches': {
+            'weight': 94.62517775,
             'prefix': 'timemil_ver1_inception_time_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
             'timemil_singlebranch': False,
             'timemil_extractor': 'inception_time',
@@ -203,7 +208,8 @@ cfg.weights_pathes = {
                 'dropout': 0.0
             }
         },
-        'inception_1': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_inception_1branch': {
+            'weight': 745.34457709,
             'prefix': 'timemil_ver1_inception_time_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05',
             'timemil_singlebranch': True,
             'timemil_extractor': 'inception_time',
