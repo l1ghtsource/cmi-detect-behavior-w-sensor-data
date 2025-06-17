@@ -194,23 +194,23 @@ class Original_TimeMIL(nn.Module):
 
 # for imu + tof + thm !! lesssgo
 class MultiSensor_TimeMIL_v1(nn.Module):
-    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout, timemil_extractor=cfg.timemil_extractor):
         super().__init__()
      
         # Define separate feature extractors for each sensor type
-        if cfg.timemil_extractor == 'inception_time':
+        if timemil_extractor == 'inception_time':
             self.imu_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.tof_vars)  
             self.thm_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars) 
-        elif cfg.timemil_extractor == 'resnet':
+        elif timemil_extractor == 'resnet':
             self.imu_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.tof_vars)  
             self.thm_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.thm_vars) 
-        elif cfg.timemil_extractor == 'efficientnet':
+        elif timemil_extractor == 'efficientnet':
             self.imu_feature_extractor = EfficientNet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = EfficientNet1DFeatureExtractor(n_in_channels=cfg.tof_vars)  
             self.thm_feature_extractor = EfficientNet1DFeatureExtractor(n_in_channels=cfg.thm_vars) 
-        elif cfg.timemil_extractor == 'inception_resnet':
+        elif timemil_extractor == 'inception_resnet':
             self.imu_feature_extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.tof_vars)  
             self.thm_feature_extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.thm_vars) 
@@ -795,10 +795,10 @@ class CrossAttentionFusion(nn.Module):
         return fused_features
 
 class MultiSensor_TimeMIL_v2(nn.Module):
-    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout, timemil_extractor=cfg.timemil_extractor):
         super().__init__()
 
-        if cfg.timemil_extractor == 'inception_time':
+        if timemil_extractor == 'inception_time':
             self.imu_processor = SensorProcessor(
                 InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars),
                 mDim, max_seq_len, cfg.imu_num_sensor
@@ -811,7 +811,7 @@ class MultiSensor_TimeMIL_v2(nn.Module):
                 InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars),
                 mDim, max_seq_len, cfg.thm_num_sensor
             )
-        elif cfg.timemil_extractor == 'resnet':
+        elif timemil_extractor == 'resnet':
             self.imu_processor = SensorProcessor(
                 Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars),
                 mDim, max_seq_len, cfg.imu_num_sensor
@@ -824,7 +824,7 @@ class MultiSensor_TimeMIL_v2(nn.Module):
                 Resnet1DFeatureExtractor(n_in_channels=cfg.thm_vars),
                 mDim, max_seq_len, cfg.thm_num_sensor
             )
-        elif cfg.timemil_extractor == 'efficientnet':
+        elif timemil_extractor == 'efficientnet':
             self.imu_processor = SensorProcessor(
                 EfficientNet1DFeatureExtractor(n_in_channels=cfg.imu_vars),
                 mDim, max_seq_len, cfg.imu_num_sensor
@@ -837,7 +837,7 @@ class MultiSensor_TimeMIL_v2(nn.Module):
                 EfficientNet1DFeatureExtractor(n_in_channels=cfg.thm_vars),
                 mDim, max_seq_len, cfg.thm_num_sensor
             )
-        elif cfg.timemil_extractor == 'inception_resnet':
+        elif timemil_extractor == 'inception_resnet':
             self.imu_processor = SensorProcessor(
                 XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.imu_vars),
                 mDim, max_seq_len, cfg.imu_num_sensor
