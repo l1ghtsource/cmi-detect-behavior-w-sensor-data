@@ -35,7 +35,7 @@ def apply_denoising(data, method):
     if method == 'kalman':
         print('poka net kalmana, soryan')
         return data.copy() # TODO: add kalman
-    elif method == 'sagvol':
+    elif method == 'savgol':
         return savgol_denoising(data)
     elif method == 'butter':
         return butterworth_denoising(data)

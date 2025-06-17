@@ -56,7 +56,7 @@ cfg.use_seq_type_aux_target_weighting = False
 
 # --- ts ds cfg ---
 cfg.norm_ts = True
-cfg.denoise_data = 'none' # ['none', 'wavelet', 'sagvol', 'butter']
+cfg.denoise_data = 'none' # ['none', 'wavelet', 'savgol', 'butter']
 cfg.use_demo = False
 cfg.use_stats_vectors = False
 cfg.use_diff = False
