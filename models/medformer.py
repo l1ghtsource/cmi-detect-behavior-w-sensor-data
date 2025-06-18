@@ -6,8 +6,6 @@ from modules.selfattn import MedformerLayer
 from modules.embed import ListPatchEmbedding
 from configs.config import cfg
 
-# TODO: test it
-
 class Original_Medformer(nn.Module):
     """
     Paper link: https://arxiv.org/pdf/2405.19363
@@ -121,7 +119,7 @@ class Medformer_SingleSensor_v1(nn.Module):
     def __init__(
         self,
         seq_len=cfg.seq_len,
-        n_vars=cfg.imu_vars,
+        n_vars=7,
         num_classes=cfg.main_num_classes,
         d_model=128,
         n_heads=8,
@@ -198,9 +196,10 @@ class Medformer_SingleSensor_v1(nn.Module):
             (1 if not single_channel else n_vars)
         )
         
-        self.projection = nn.Linear(projection_dim, num_classes)
+        self.projection1 = nn.Linear(projection_dim, num_classes)
+        self.projection2 = nn.Linear(projection_dim, 2)
 
-    def forward(self, x):
+    def forward(self, x, pad_mask=None):
         # Input shape: (batch, 1, seq_len, n_vars)
         # Need to reshape to (batch, seq_len, n_vars) for embedding
         batch_size = x.shape[0]
@@ -224,20 +223,21 @@ class Medformer_SingleSensor_v1(nn.Module):
         output = output.reshape(output.shape[0], -1)
         
         # Final classification projection
-        output = self.projection(output)
+        output1 = self.projection1(output)
+        output2 = self.projection2(output)
         
-        return output
+        return output1, output2
     
 class MultiSensor_Medformer_v1(nn.Module):
     def __init__(
         self,
         seq_len=cfg.seq_len,
-        imu_vars=cfg.imu_vars,
-        tof_vars=cfg.tof_vars,
-        thm_vars=cfg.thm_vars,
-        num_imu_sensors=cfg.imu_num_sensor,
-        num_tof_sensors=cfg.num_tof_sensor,
-        num_thm_sensors=cfg.num_thm_sensor,
+        imu_vars=7,
+        tof_vars=64,
+        thm_vars=1,
+        num_imu_sensors=1,
+        num_tof_sensors=5,
+        num_thm_sensors=5,
         num_classes=cfg.main_num_classes,
         d_model=128,
         n_heads=8,
@@ -330,7 +330,8 @@ class MultiSensor_Medformer_v1(nn.Module):
         total_sensors = num_imu_sensors + num_tof_sensors + num_thm_sensors
         projection_dim = d_model * len(patch_num_list) * total_sensors
         
-        self.projection = nn.Linear(projection_dim, num_classes)
+        self.projection1 = nn.Linear(projection_dim, num_classes)
+        self.projection2 = nn.Linear(projection_dim, 2)
     
     def _build_encoder(self, num_patches, d_model, n_heads, layers, d_ff, 
                       dropout, activation, output_attention, no_inter_attn):
@@ -385,7 +386,7 @@ class MultiSensor_Medformer_v1(nn.Module):
         # Stack outputs: [B, num_sensors, total_patches, d_model]
         return torch.stack(sensor_outputs, dim=1)
     
-    def forward(self, imu_data, thm_data, tof_data):
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
@@ -432,6 +433,7 @@ class MultiSensor_Medformer_v1(nn.Module):
         output = output.reshape(B, -1)
         
         # Final projection
-        output = self.projection(output)
+        output1 = self.projection1(output)
+        output2 = self.projection2(output)
         
-        return output
+        return output1, output2

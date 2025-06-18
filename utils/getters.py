@@ -20,8 +20,11 @@ from models.timemil import (
     MultiSensor_TimeMIL_v2, TimeMIL_SingleSensor_Multibranch_v1
 )
 from models.husformer import (
-    SingleSensor_HUSFORMER_v1,
-    MultiSensor_HUSFORMER_v1, MultiSensor_HUSFORMER_v2
+    MultiSensor_HUSFORMER_v1, MultiSensor_HUSFORMER_v2,
+    SingleSensor_HUSFORMER_v1
+)
+from models.medformer import (
+    MultiSensor_Medformer_v1, Medformer_SingleSensor_v1
 )
 from models.harmamba import (
     MultiSensor_HARMamba_v1, HARMamba_SingleSensor_v1
@@ -117,6 +120,19 @@ def get_ts_model_and_params(imu_only):
             model_cls = MultiSensor_HUSFORMER_v2
             params = {
                 'output_dim': cfg.main_num_classes,
+            }
+            return model_cls, params
+    elif cfg.selected_model == 'medformer':
+        if imu_only: # only imu sensor
+            model_cls = Medformer_SingleSensor_v1
+            params = {
+                'num_classes': cfg.main_num_classes,
+            }
+            return model_cls, params
+        else: # multi sensor model
+            model_cls = MultiSensor_Medformer_v1
+            params = {
+                'num_classes': cfg.main_num_classes,
             }
             return model_cls, params
     elif cfg.selected_model == 'baseline':
