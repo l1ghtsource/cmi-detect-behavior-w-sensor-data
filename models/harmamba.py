@@ -14,6 +14,7 @@ from modules.drop import DropPath
 from modules.helpers import to_2tuple
 
 import math
+import random
 
 from mamba_ssm.modules.mamba_simple import Mamba
 
@@ -21,13 +22,14 @@ from modules.rope import *
 from modules.revin import RevIN
 
 try:
-    from mamba_ssm.ops.triton.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
+    from mamba_ssm.ops.triton.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn  # Legacy mambav1 file structure
 except ImportError:
-    RMSNorm, layer_norm_fn, rms_norm_fn = None, None, None
+    try:
+        from mamba_ssm.ops.triton.layer_norm import RMSNorm, layer_norm_fn, rms_norm_fn  # mambav2 file structure
+    except ImportError:
+        RMSNorm, layer_norm_fn, rms_norm_fn = None, None, None
 
 from configs.config import cfg
-
-# TODO: test it
 
 class PatchEmbed(nn.Module):
     """ Patch Embedding
@@ -215,104 +217,143 @@ def segm_init_weights(m):
         nn.init.zeros_(m.bias)
         nn.init.ones_(m.weight)
 
-class HARMamba_SingleSensor_v1(nn.Module):
+class HARMamba(nn.Module):
     def __init__(self, 
-                 seq_size=cfg.seq_len,
+                 seq_size=512,
                  patch_size=16,
                  stride=16,
                  depth=12,
                  embed_dim=64,
-                 num_classes=cfg.main_num_classes,
+                 channels=1,
+                 num_classes=12,
                  ssm_cfg=None, 
                  drop_rate=0.,
                  drop_path_rate=0.1,
-                 norm_epsilon=1e-5, 
-                 rms_norm=False, 
+                 norm_epsilon: float = 1e-5, 
+                 rms_norm: bool = False, 
                  initializer_cfg=None,
                  fused_add_norm=True,
                  residual_in_fp32=False,
                  device=None,
                  dtype=None,
+                 ft_seq_len=None,
+                 pt_hw_seq_len=14,
                  if_bidirectional=True,
                  final_pool_type='mean',
                  if_abs_pos_embed=True,
+                 if_rope=False,
+                 if_rope_residual=False,
+                 flip_img_sequences_ratio=-1.,
                  if_bimamba=True,
                  bimamba_type="none",
+                 if_cls_token=True,
                  if_devide_out=False,
                  init_layer_scale=None,
+                 use_double_cls_token=False,
+                 use_middle_cls_token=False,
                  revin=True,
                  affine=True,
+                 c_in=9,
                  subtract_last=False,
                  **kwargs):
-        
         factory_kwargs = {"device": device, "dtype": dtype}
+        # add factory_kwargs into kwargs
         kwargs.update(factory_kwargs) 
         super().__init__()
-        
         self.residual_in_fp32 = residual_in_fp32
         self.fused_add_norm = fused_add_norm
         self.if_bidirectional = if_bidirectional
         self.final_pool_type = final_pool_type
         self.if_abs_pos_embed = if_abs_pos_embed
+        self.if_rope = if_rope
+        self.if_rope_residual = if_rope_residual
+        self.flip_img_sequences_ratio = flip_img_sequences_ratio
+        self.if_cls_token = if_cls_token
+        self.use_double_cls_token = use_double_cls_token
+        self.use_middle_cls_token = use_middle_cls_token
+        self.num_tokens = 1 if if_cls_token else 0
+
+
         self.num_classes = num_classes
-        self.d_model = self.num_features = self.embed_dim = embed_dim
-        
-        # RevIN for normalization
+        self.d_model = self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
+        # RevIn
         self.revin = revin
-        if self.revin: 
-            self.revin_layer = RevIN(7, affine=affine, subtract_last=subtract_last)  # 7 IMU channels
-        
-        # Patch embedding IMU [B, 1, L, 7] -> [B, num_patches, embed_dim]
+        if self.revin: self.revin_layer = RevIN(c_in, affine=affine, subtract_last=subtract_last)
         self.patch_embed = PatchEmbed(
-            seq_size=seq_size, 
-            patch_size=patch_size, 
-            stride=stride, 
-            in_chans=7,  # 7 IMU channels 
-            embed_dim=embed_dim
-        )
-        num_patches = self.patch_embed.num_patches
-        
-        # Positional embedding
+            seq_size=seq_size, patch_size=patch_size, stride=stride, in_chans=channels, embed_dim=embed_dim)
+        num_patches = self.patch_embed.num_patches * c_in
+
+        if if_cls_token:
+            if use_double_cls_token:
+                self.cls_token_head = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
+                self.cls_token_tail = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
+                self.num_tokens = 2
+            else:
+                self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
+                self.num_tokens = 1
+            
         if if_abs_pos_embed:
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, self.embed_dim))
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, self.embed_dim))
             self.pos_drop = nn.Dropout(p=drop_rate)
-        
-        # Stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
-        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0. else nn.Identity()
-        
-        # Mamba layers
-        self.layers = nn.ModuleList([
-            create_block(
-                embed_dim,
-                ssm_cfg=ssm_cfg,
-                norm_epsilon=norm_epsilon,
-                rms_norm=rms_norm,
-                residual_in_fp32=residual_in_fp32,
-                fused_add_norm=fused_add_norm,
-                layer_idx=i,
-                if_bimamba=if_bimamba,
-                bimamba_type=bimamba_type,
-                drop_path=dpr[i],
-                if_devide_out=if_devide_out,
-                init_layer_scale=init_layer_scale,
-                **factory_kwargs,
+
+        if if_rope:
+            half_head_dim = embed_dim // 2
+            hw_seq_len = seq_size // patch_size
+            self.rope = VisionRotaryEmbeddingFast(
+                dim=half_head_dim,
+                pt_seq_len=pt_hw_seq_len,
+                ft_seq_len=hw_seq_len
             )
-            for i in range(depth)
-        ])
+        self.head1 = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        self.head2 = nn.Linear(self.num_features, 2)
+
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
+        # import ipdb;ipdb.set_trace()
+        inter_dpr = [0.0] + dpr
+        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0. else nn.Identity()
+                # transformer blocks
+        self.layers = nn.ModuleList(
+            [
+                create_block(
+                    embed_dim,
+                    ssm_cfg=ssm_cfg,
+                    norm_epsilon=norm_epsilon,
+                    rms_norm=rms_norm,
+                    residual_in_fp32=residual_in_fp32,
+                    fused_add_norm=fused_add_norm,
+                    layer_idx=i,
+                    if_bimamba=if_bimamba,
+                    bimamba_type=bimamba_type,
+                    drop_path=inter_dpr[i],
+                    if_devide_out=if_devide_out,
+                    init_layer_scale=init_layer_scale,
+                    **factory_kwargs,
+                )
+                for i in range(depth)
+            ]
+        )
         
-        # Output normalization and classification head
+        # output head
         self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(
             embed_dim, eps=norm_epsilon, **factory_kwargs
         )
-        self.head = nn.Linear(self.num_features, num_classes)
-        
-        # Initialize weights
+
+        # self.pre_logits = nn.Identity()
+
+        # original init
         self.patch_embed.apply(segm_init_weights)
-        self.head.apply(segm_init_weights)
+        self.head1.apply(segm_init_weights)
+        self.head2.apply(segm_init_weights)
         if if_abs_pos_embed:
             trunc_normal_(self.pos_embed, std=.02)
-        
+        if if_cls_token:
+            if use_double_cls_token:
+                trunc_normal_(self.cls_token_head, std=.02)
+                trunc_normal_(self.cls_token_tail, std=.02)
+            else:
+                trunc_normal_(self.cls_token, std=.02)
+
+        # mamba init
         self.apply(
             partial(
                 _init_weights,
@@ -321,49 +362,147 @@ class HARMamba_SingleSensor_v1(nn.Module):
             )
         )
 
-    def forward(self, imu_data):
-        """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-        Returns:
-            logits: [B, num_classes] - Classification logits
-        """
-        # Remove singleton dimension: [B, 1, L, 7] -> [B, L, 7]
-        x = imu_data.squeeze(1)
-        B, L, C = x.shape
-        
-        # Apply RevIN normalization if enabled
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        return {
+            i: layer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+            for i, layer in enumerate(self.layers)
+        }
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {"pos_embed", "cls_token", "dist_token", "cls_token_head", "cls_token_tail"}
+
+    def forward_features(self, x, inference_params=None, if_random_cls_token_position=False, if_random_token_rank=False):
+        # print(f"x.device: {x.device}, pos_embed.device: {self.pos_embed.device}")
+
+        # norm
         if self.revin:
+            x = np.squeeze(x)
             x = self.revin_layer(x, 'norm')
-        
-        # Patch embedding: [B, L, 7] -> [B, num_patches, embed_dim]
-        x = self.patch_embed(x.unsqueeze(1))  # Add channel dim for patch_embed
-        
-        # Add positional embedding
+            # denorm
+        if self.revin:
+            x = self.revin_layer(x, 'denorm')
+
+        x = x.unsqueeze(1)
+        x = self.patch_embed(x)
+        # print(x.shape)
+        B, M, _ = x.shape
+
+        if self.if_cls_token:
+            if self.use_double_cls_token:
+                cls_token_head = self.cls_token_head.expand(B, -1, -1)
+                cls_token_tail = self.cls_token_tail.expand(B, -1, -1)
+                token_position = [0, M + 1]
+                x = torch.cat((cls_token_head, x, cls_token_tail), dim=1)
+                M = x.shape[1]
+            else:
+                if self.use_middle_cls_token:
+                    cls_token = self.cls_token.expand(B, -1, -1)
+                    token_position = M // 2
+                    # add cls token in the middle
+                    x = torch.cat((x[:, :token_position, :], cls_token, x[:, token_position:, :]), dim=1)
+                elif if_random_cls_token_position:
+                    cls_token = self.cls_token.expand(B, -1, -1)
+                    token_position = random.randint(0, M)
+                    x = torch.cat((x[:, :token_position, :], cls_token, x[:, token_position:, :]), dim=1)
+                    print("token_position: ", token_position)
+                else:
+                    cls_token = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+                    # M = x.shape[1]
+                    token_position = 0
+                    # x = torch.cat((x,cls_token), dim=1)
+
+                    x = torch.cat((cls_token, x), dim=1)
+                M = x.shape[1]
+
         if self.if_abs_pos_embed:
+
+            # pos_embed = self.pos_embed
+            # print(x.shape)
+            # print(pos_embed.shape)
             x = x + self.pos_embed
             x = self.pos_drop(x)
-        
-        # Process through Mamba layers
+
+        if if_random_token_rank:
+
+
+            shuffle_indices = torch.randperm(M)
+
+            if isinstance(token_position, list):
+                print("original value: ", x[0, token_position[0], 0], x[0, token_position[1], 0])
+            else:
+                print("original value: ", x[0, token_position, 0])
+            print("original token_position: ", token_position)
+
+
+            x = x[:, shuffle_indices, :]
+
+            if isinstance(token_position, list):
+
+                new_token_position = [torch.where(shuffle_indices == token_position[i])[0].item() for i in range(len(token_position))]
+                token_position = new_token_position
+            else:
+
+                token_position = torch.where(shuffle_indices == token_position)[0].item()
+
+            if isinstance(token_position, list):
+                print("new value: ", x[0, token_position[0], 0], x[0, token_position[1], 0])
+            else:
+                print("new value: ", x[0, token_position, 0])
+            print("new token_position: ", token_position)
+
+
+
+
+        if_flip_img_sequences = False
+        if self.flip_img_sequences_ratio > 0 and (self.flip_img_sequences_ratio - random.random()) > 1e-5:
+            x = x.flip([1])
+            if_flip_img_sequences = True
+
+        # mamba impl
         residual = None
+
         hidden_states = x
-        
         if not self.if_bidirectional:
-            # Unidirectional processing
             for layer in self.layers:
-                hidden_states, residual = layer(hidden_states, residual)
+
+                if if_flip_img_sequences and self.if_rope:
+                    hidden_states = hidden_states.flip([1])
+                    if residual is not None:
+                        residual = residual.flip([1])
+
+                # rope about
+                if self.if_rope:
+                    hidden_states = self.rope(hidden_states)
+                    if residual is not None and self.if_rope_residual:
+                        residual = self.rope(residual)
+
+                if if_flip_img_sequences and self.if_rope:
+                    hidden_states = hidden_states.flip([1])
+                    if residual is not None:
+                        residual = residual.flip([1])
+
+                hidden_states, residual = layer(
+                    hidden_states, residual, inference_params=inference_params
+                )
         else:
-            # Bidirectional processing
+            # get two layers in a single for-loop
             for i in range(len(self.layers) // 2):
-                hidden_states_f, residual_f = self.layers[i * 2](hidden_states, residual)
+                if self.if_rope:
+                    hidden_states = self.rope(hidden_states)
+                    if residual is not None and self.if_rope_residual:
+                        residual = self.rope(residual)
+
+                hidden_states_f, residual_f = self.layers[i * 2](
+                    hidden_states, residual, inference_params=inference_params
+                )
                 hidden_states_b, residual_b = self.layers[i * 2 + 1](
-                    hidden_states.flip([1]), 
-                    None if residual is None else residual.flip([1])
+                    hidden_states.flip([1]), None if residual == None else residual.flip([1]), inference_params=inference_params
                 )
                 hidden_states = hidden_states_f + hidden_states_b.flip([1])
                 residual = residual_f + residual_b.flip([1])
-        
-        # Final normalization
+
         if not self.fused_add_norm:
             if residual is None:
                 residual = hidden_states
@@ -371,6 +510,7 @@ class HARMamba_SingleSensor_v1(nn.Module):
                 residual = residual + self.drop_path(hidden_states)
             hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))
         else:
+            # Set prenorm=False here since we don't need the residual
             fused_add_norm_fn = rms_norm_fn if isinstance(self.norm_f, RMSNorm) else layer_norm_fn
             hidden_states = fused_add_norm_fn(
                 self.drop_path(hidden_states),
@@ -381,23 +521,79 @@ class HARMamba_SingleSensor_v1(nn.Module):
                 prenorm=False,
                 residual_in_fp32=self.residual_in_fp32,
             )
-        
-        # Global pooling
-        if self.final_pool_type == 'mean':
-            features = hidden_states.mean(dim=1)
+
+        # return only cls token if it exists
+        if self.if_cls_token:
+            if self.use_double_cls_token:
+                return (hidden_states[:, token_position[0], :] + hidden_states[:, token_position[1], :]) / 2
+            else:
+                if self.use_middle_cls_token:
+                    return hidden_states[:, token_position, :]
+                elif if_random_cls_token_position:
+                    return hidden_states[:, token_position, :]
+                else:
+                    return hidden_states[:, token_position, :]
+                    # return hidden_states[:, token_position, :],hidden_states[:,token_position,:]
+
+        if self.final_pool_type == 'none':
+            return hidden_states[:, -1, :]
+            # return hidden_states[:, -1, :],hidden_states[:,-1,:]
+        elif self.final_pool_type == 'mean':
+            return hidden_states.mean(dim=1)
+
         elif self.final_pool_type == 'max':
-            features = hidden_states.max(dim=1)[0]
-        else:  # 'none' - use last token
-            features = hidden_states[:, -1, :]
+            return hidden_states
+        elif self.final_pool_type == 'all':
+            return hidden_states
+        else:
+            raise NotImplementedError
+
+    def forward(self, x, return_features=False, inference_params=None, if_random_cls_token_position=False, if_random_token_rank=False):
+        x = self.forward_features(x, inference_params, if_random_cls_token_position=if_random_cls_token_position, if_random_token_rank=if_random_token_rank)
+        if return_features:
+            return x
+        x1 = self.head1(x)
+        x2 = self.head2(x)
+        if self.final_pool_type == 'max':
+            x1 = x1.max(dim=1)[0]
+            x2 = x2.max(dim=1)[0]
+        return x1, x2
+
+class HARMamba_SingleSensor_v1(nn.Module):
+    def __init__(self, 
+                 seq_size=cfg.seq_len,
+                 patch_size=16,
+                 stride=16,
+                 depth=12,
+                 embed_dim=256,
+                 num_classes=18,
+                 **kwargs):
+        super().__init__()
         
-        # Apply RevIN denormalization if enabled
-        if self.revin:
-            features = self.revin_layer(features, 'denorm')
+        self.harmamba = HARMamba(
+            seq_size=seq_size,
+            patch_size=patch_size,
+            stride=stride,
+            depth=depth,
+            embed_dim=embed_dim,
+            channels=1,
+            num_classes=num_classes,
+            c_in=7,
+            revin=True,
+            **kwargs
+        )
+    
+    def forward(self, imu_data, pad_mask=False):
+        """
+        Args:
+            imu_data: [B, 1, L, 7] - IMU sensor data
+        Returns:
+            logits: [B, num_classes] - classification logits
+        """
+        x = imu_data.squeeze(1)  # [B, L, 7]
+        out, out2 = self.harmamba(x)
         
-        # Classification
-        logits = self.head(features)
-        
-        return logits
+        return out, out2
     
 class MultiSensor_HARMamba_v1(nn.Module):
     def __init__(self, 
@@ -405,271 +601,114 @@ class MultiSensor_HARMamba_v1(nn.Module):
                  patch_size=16,
                  stride=16,
                  depth=12,
-                 embed_dim=64,
-                 num_classes=cfg.main_num_classes,
-                 ssm_cfg=None, 
-                 drop_rate=0.,
-                 drop_path_rate=0.1,
-                 norm_epsilon=1e-5, 
-                 rms_norm=False, 
-                 initializer_cfg=None,
-                 fused_add_norm=True,
-                 residual_in_fp32=False,
-                 device=None,
-                 dtype=None,
-                 if_bidirectional=True,
-                 final_pool_type='mean',
-                 if_abs_pos_embed=True,
-                 if_bimamba=True,
-                 bimamba_type="none",
-                 if_devide_out=False,
-                 init_layer_scale=None,
-                 revin=True,
-                 affine=True,
-                 subtract_last=False,
-                 fusion_strategy='concat',  # 'concat', 'add', 'attention'
+                 embed_dim=256,
+                 num_classes=18,
+                 fusion_type='concat',  # 'concat', 'add', 'attention'
                  **kwargs):
-        
-        factory_kwargs = {"device": device, "dtype": dtype}
-        kwargs.update(factory_kwargs) 
         super().__init__()
         
-        self.residual_in_fp32 = residual_in_fp32
-        self.fused_add_norm = fused_add_norm
-        self.if_bidirectional = if_bidirectional
-        self.final_pool_type = final_pool_type
-        self.if_abs_pos_embed = if_abs_pos_embed
-        self.num_classes = num_classes
-        self.fusion_strategy = fusion_strategy
-        self.d_model = self.num_features = self.embed_dim = embed_dim
-        
-        # RevIN layers for each sensor modality
-        self.revin = revin
-        if self.revin:
-            self.revin_imu = RevIN(7, affine=affine, subtract_last=subtract_last)
-            self.revin_tof = RevIN(64, affine=affine, subtract_last=subtract_last) 
-            self.revin_thm = RevIN(1, affine=affine, subtract_last=subtract_last)
-        
-        # Separate patch embeddings for each sensor type
-        self.patch_embed_imu = PatchEmbed(
-            seq_size=seq_size, 
-            patch_size=patch_size, 
-            stride=stride, 
-            in_chans=7,  # IMU: 7 channels
-            embed_dim=embed_dim
+        self.imu_harmamba = HARMamba(
+            seq_size=seq_size,
+            patch_size=patch_size,
+            stride=stride,
+            depth=depth,
+            embed_dim=embed_dim,
+            channels=1,
+            num_classes=0,
+            c_in=7,
+            revin=True,
+            **kwargs
         )
         
-        self.patch_embed_tof = PatchEmbed(
-            seq_size=seq_size, 
-            patch_size=patch_size, 
-            stride=stride, 
-            in_chans=64,  # ToF: 64 channels
-            embed_dim=embed_dim
+        self.tof_harmamba = HARMamba(
+            seq_size=seq_size,
+            patch_size=patch_size,
+            stride=stride,
+            depth=depth,
+            embed_dim=embed_dim,
+            channels=5,
+            num_classes=0,
+            c_in=64,
+            revin=True,
+            **kwargs
         )
         
-        self.patch_embed_thm = PatchEmbed(
-            seq_size=seq_size, 
-            patch_size=patch_size, 
-            stride=stride, 
-            in_chans=1,  # Thermal: 1 channel
-            embed_dim=embed_dim
+        self.thm_harmamba = HARMamba(
+            seq_size=seq_size,
+            patch_size=patch_size,
+            stride=stride,
+            depth=depth,
+            embed_dim=embed_dim,
+            channels=5,
+            num_classes=0,
+            c_in=1,
+            revin=True,
+            **kwargs
         )
         
-        # Calculate total number of patches from all sensors
-        num_patches_imu = self.patch_embed_imu.num_patches
-        num_patches_tof = self.patch_embed_tof.num_patches * 5  # 5 ToF sensors
-        num_patches_thm = self.patch_embed_thm.num_patches * 5  # 5 Thermal sensors
-        
-        if fusion_strategy == 'concat':
-            total_patches = num_patches_imu + num_patches_tof + num_patches_thm
-        else:  # 'add' or 'attention'
-            total_patches = max(num_patches_imu, num_patches_tof, num_patches_thm)
-        
-        # Sensor type embeddings to distinguish different modalities
-        self.sensor_type_embed = nn.Parameter(torch.zeros(3, embed_dim))  # 3 sensor types
-        
-        # Positional embeddings
-        if if_abs_pos_embed:
-            self.pos_embed = nn.Parameter(torch.zeros(1, total_patches, embed_dim))
-            self.pos_drop = nn.Dropout(p=drop_rate)
-        
-        # Attention-based fusion module if needed
-        if fusion_strategy == 'attention':
-            self.fusion_attention = nn.MultiheadAttention(
-                embed_dim, num_heads=8, batch_first=True
-            )
-            self.fusion_norm = nn.LayerNorm(embed_dim)
-        
-        # Stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
-        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0. else nn.Identity()
-        
-        # Mamba layers
-        self.layers = nn.ModuleList([
-            create_block(
-                embed_dim,
-                ssm_cfg=ssm_cfg,
-                norm_epsilon=norm_epsilon,
-                rms_norm=rms_norm,
-                residual_in_fp32=residual_in_fp32,
-                fused_add_norm=fused_add_norm,
-                layer_idx=i,
-                if_bimamba=if_bimamba,
-                bimamba_type=bimamba_type,
-                drop_path=dpr[i],
-                if_devide_out=if_devide_out,
-                init_layer_scale=init_layer_scale,
-                **factory_kwargs,
-            )
-            for i in range(depth)
-        ])
-        
-        # Output normalization and classification head
-        self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(
-            embed_dim, eps=norm_epsilon, **factory_kwargs
-        )
-        self.head = nn.Linear(embed_dim, num_classes)
-        
-        # Initialize weights
-        self.patch_embed_imu.apply(segm_init_weights)
-        self.patch_embed_tof.apply(segm_init_weights)
-        self.patch_embed_thm.apply(segm_init_weights)
-        self.head.apply(segm_init_weights)
-        
-        if if_abs_pos_embed:
-            trunc_normal_(self.pos_embed, std=.02)
-        trunc_normal_(self.sensor_type_embed, std=.02)
-        
-        self.apply(
-            partial(
-                _init_weights,
-                n_layer=depth,
-                **(initializer_cfg if initializer_cfg is not None else {}),
-            )
-        )
-
-    def forward(self, imu_data, thm_data, tof_data):
+        self.fusion_type = fusion_type
+        if fusion_type == 'concat':
+            self.classifier1 = nn.Linear(embed_dim * 3, num_classes)
+            self.classifier2 = nn.Linear(embed_dim * 3, 2)
+        elif fusion_type == 'add':
+            self.classifier1 = nn.Linear(embed_dim, num_classes)
+            self.classifier2 = nn.Linear(embed_dim, 2)
+        elif fusion_type == 'attention':
+            self.attention_fusion = MultiModalAttentionFusion(embed_dim, num_modalities=3)
+            self.classifier1 = nn.Linear(embed_dim, num_classes)
+            self.classifier2 = nn.Linear(embed_dim, 2)
+    
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=False):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
             tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
             thm_data: [B, 5, L, 1] - Thermal sensor data
-        Returns:
-            logits: [B, num_classes] - Classification logits
         """
-        B = imu_data.shape[0]
+        # IMU: [B, 1, L, 7] -> [B, L, 7]
+        imu_features = self.imu_harmamba(imu_data.squeeze(1), return_features=True)
         
-        # Process IMU data
-        imu_x = imu_data.squeeze(1)  # [B, L, 7]
-        if self.revin:
-            imu_x = self.revin_imu(imu_x, 'norm')
-        imu_patches = self.patch_embed_imu(imu_x.unsqueeze(1))  # [B, num_patches_imu, embed_dim]
-        imu_patches = imu_patches + self.sensor_type_embed[0]  # Add sensor type embedding
+        # ToF: [B, 5, L, 64] -> [B, L, 320] (5*64)
+        B, n_sensors, L, n_vars = tof_data.shape
+        tof_reshaped = tof_data.permute(0, 2, 1, 3).reshape(B, L, n_sensors * n_vars)
+        tof_features = self.tof_harmamba(tof_reshaped, return_features=True)
         
-        # Process ToF data (5 sensors)
-        tof_patches_list = []
-        for i in range(5):
-            tof_x = tof_data[:, i, :, :]  # [B, L, 64]
-            if self.revin:
-                tof_x = self.revin_tof(tof_x, 'norm')
-            tof_patch = self.patch_embed_tof(tof_x.unsqueeze(1))  # [B, num_patches_tof, embed_dim]
-            tof_patch = tof_patch + self.sensor_type_embed[1]  # Add sensor type embedding
-            tof_patches_list.append(tof_patch)
-        tof_patches = torch.cat(tof_patches_list, dim=1)  # [B, 5*num_patches_tof, embed_dim]
+        # THM: [B, 5, L, 1] -> [B, L, 5] (5*1)
+        B, n_sensors, L, n_vars = thm_data.shape
+        thm_reshaped = thm_data.permute(0, 2, 1, 3).reshape(B, L, n_sensors * n_vars)
+        thm_features = self.thm_harmamba(thm_reshaped, return_features=True)
         
-        # Process Thermal data (5 sensors)  
-        thm_patches_list = []
-        for i in range(5):
-            thm_x = thm_data[:, i, :, :]  # [B, L, 1]
-            if self.revin:
-                thm_x = self.revin_thm(thm_x, 'norm')
-            thm_patch = self.patch_embed_thm(thm_x.unsqueeze(1))  # [B, num_patches_thm, embed_dim]
-            thm_patch = thm_patch + self.sensor_type_embed[2]  # Add sensor type embedding
-            thm_patches_list.append(thm_patch)
-        thm_patches = torch.cat(thm_patches_list, dim=1)  # [B, 5*num_patches_thm, embed_dim]
+        if self.fusion_type == 'concat':
+            fused_features = torch.cat([imu_features, tof_features, thm_features], dim=1)
+        elif self.fusion_type == 'add':
+            fused_features = imu_features + tof_features + thm_features
+        elif self.fusion_type == 'attention':
+            fused_features = self.attention_fusion([imu_features, tof_features, thm_features])
         
-        # Sensor fusion
-        if self.fusion_strategy == 'concat':
-            # Concatenate all patches
-            x = torch.cat([imu_patches, tof_patches, thm_patches], dim=1)
-        elif self.fusion_strategy == 'add':
-            # Add patches (requires same number of patches)
-            min_patches = min(imu_patches.shape[1], tof_patches.shape[1], thm_patches.shape[1])
-            x = (imu_patches[:, :min_patches, :] + 
-                 tof_patches[:, :min_patches, :] + 
-                 thm_patches[:, :min_patches, :]) / 3
-        elif self.fusion_strategy == 'attention':
-            # Attention-based fusion
-            all_patches = torch.cat([imu_patches, tof_patches, thm_patches], dim=1)
-            fused_patches, _ = self.fusion_attention(all_patches, all_patches, all_patches)
-            x = self.fusion_norm(fused_patches + all_patches)
+        logits1 = self.classifier1(fused_features)
+        logits2 = self.classifier2(fused_features)
+
+        return logits1, logits2
+
+class MultiModalAttentionFusion(nn.Module):
+    def __init__(self, embed_dim, num_modalities):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_modalities = num_modalities
         
-        # Add positional embeddings
-        if self.if_abs_pos_embed:
-            if x.shape[1] <= self.pos_embed.shape[1]:
-                x = x + self.pos_embed[:, :x.shape[1], :]
-            else:
-                # Interpolate positional embeddings if needed
-                pos_embed_interp = torch.nn.functional.interpolate(
-                    self.pos_embed.transpose(1, 2), 
-                    size=x.shape[1], 
-                    mode='linear'
-                ).transpose(1, 2)
-                x = x + pos_embed_interp
-            x = self.pos_drop(x)
+        self.attention = nn.MultiheadAttention(embed_dim, num_heads=8, batch_first=True)
+        self.norm = nn.LayerNorm(embed_dim)
         
-        # Process through Mamba layers
-        residual = None
-        hidden_states = x
+    def forward(self, modality_features):
+        """
+        Args:
+            modality_features: [B, embed_dim]
+        """
+        stacked = torch.stack(modality_features, dim=1)
         
-        if not self.if_bidirectional:
-            # Unidirectional processing
-            for layer in self.layers:
-                hidden_states, residual = layer(hidden_states, residual)
-        else:
-            # Bidirectional processing
-            for i in range(len(self.layers) // 2):
-                hidden_states_f, residual_f = self.layers[i * 2](hidden_states, residual)
-                hidden_states_b, residual_b = self.layers[i * 2 + 1](
-                    hidden_states.flip([1]), 
-                    None if residual is None else residual.flip([1])
-                )
-                hidden_states = hidden_states_f + hidden_states_b.flip([1])
-                residual = residual_f + residual_b.flip([1])
+        attended, _ = self.attention(stacked, stacked, stacked)
         
-        # Final normalization
-        if not self.fused_add_norm:
-            if residual is None:
-                residual = hidden_states
-            else:
-                residual = residual + self.drop_path(hidden_states)
-            hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))
-        else:
-            fused_add_norm_fn = rms_norm_fn if isinstance(self.norm_f, RMSNorm) else layer_norm_fn
-            hidden_states = fused_add_norm_fn(
-                self.drop_path(hidden_states),
-                self.norm_f.weight,
-                self.norm_f.bias,
-                eps=self.norm_f.eps,
-                residual=residual,
-                prenorm=False,
-                residual_in_fp32=self.residual_in_fp32,
-            )
+        fused = attended.mean(dim=1)  # [B, embed_dim]
+        fused = self.norm(fused)
         
-        # Global pooling
-        if self.final_pool_type == 'mean':
-            features = hidden_states.mean(dim=1)
-        elif self.final_pool_type == 'max':
-            features = hidden_states.max(dim=1)[0]
-        else:  # 'none' - use last token
-            features = hidden_states[:, -1, :]
-        
-        # Apply RevIN denormalization if needed
-        if self.revin:
-            # For features, we can apply any of the revin layers for denorm
-            features = self.revin_imu(features, 'denorm')
-        
-        # Classification
-        logits = self.head(features)
-        
-        return logits
+        return fused
