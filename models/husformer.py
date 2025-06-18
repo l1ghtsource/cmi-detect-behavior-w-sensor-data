@@ -94,11 +94,11 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
                  out_dropout=0.1,
                  embed_dropout=0.1,
                  attn_mask=False,
-                 output_dim=2,
-                 d_m=30):
+                 output_dim=18,
+                 d_m=256):
         super(MultiSensor_HUSFORMER_v1, self).__init__()
-        
-        # Store all parameters
+
+        self.d_m = d_m
         self.num_heads = num_heads
         self.layers = layers
         self.attn_dropout = attn_dropout
@@ -107,117 +107,66 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
         self.out_dropout = out_dropout
         self.embed_dropout = embed_dropout
         self.attn_mask = attn_mask
-        self.output_dim = output_dim
-        self.d_m = d_m
-        
-        # Original dimensions for each sensor type
-        self.orig_d_imu = 7  # IMU variables
-        self.orig_d_tof = 64 * 5  # ToF: 5 sensors * 64 variables each = 320
-        self.orig_d_thm = 1 * 5   # Thermal: 5 sensors * 1 variable each = 5
-        
-        # Combined dimension and channels
-        self.combined_dim = d_m     
-        self.channels = 3  # IMU + ToF + Thermal modalities
-        
-        # 1. Temporal convolutional layers for each modality
-        self.proj_imu = nn.Conv1d(self.orig_d_imu, self.d_m, kernel_size=1, padding=0, bias=False)
-        self.proj_tof = nn.Conv1d(self.orig_d_tof, self.d_m, kernel_size=1, padding=0, bias=False)
-        self.proj_thm = nn.Conv1d(self.orig_d_thm, self.d_m, kernel_size=1, padding=0, bias=False)
-        
+
+        self.channels = 1 + 5 + 5  # IMU(1) + ToF(5) + THM(5)
+
+        # Projection layers for modalities
+        self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
+        self.proj_tof = nn.Conv1d(64, d_m, kernel_size=1, padding=0, bias=False)
+        self.proj_thm = nn.Conv1d(1, d_m, kernel_size=1, padding=0, bias=False)
+
         self.final_conv = nn.Conv1d(self.channels, 1, kernel_size=1, padding=0, bias=False)
-        
-        # 2. Cross-modal Attentions
-        self.trans_imu_all = self.get_network(self_type='imu_all', layers=3)
-        self.trans_tof_all = self.get_network(self_type='tof_all', layers=3)
-        self.trans_thm_all = self.get_network(self_type='thm_all', layers=3)
-        
-        # 3. Self Attentions
-        self.trans_final = self.get_network(self_type='policy', layers=5)
-        
-        # 4. Projection layers
-        self.proj1 = self.proj2 = nn.Linear(self.combined_dim, self.combined_dim)
-        self.out_layer = nn.Linear(self.combined_dim, self.output_dim)
 
-    def get_network(self, self_type='l', layers=-1):
-        if self_type in ['imu_all', 'tof_all', 'thm_all', 'policy']:
-            embed_dim, attn_dropout = self.d_m, self.attn_dropout
-        else:
-            raise ValueError("Unknown network type")
-        
-        return TransformerEncoder(embed_dim=embed_dim,
-                                  num_heads=self.num_heads,
-                                  layers=max(self.layers, layers),
-                                  attn_dropout=attn_dropout,
-                                  relu_dropout=self.relu_dropout,
-                                  res_dropout=self.res_dropout,
-                                  embed_dropout=self.embed_dropout,
-                                  attn_mask=self.attn_mask)
-    
-    def process_sensor_data(self, sensor_data, num_sensors):
-        """
-        Process multi-sensor data by reshaping and concatenating
-        Args:
-            sensor_data: [B, num_sensors, L, features]
-            num_sensors: number of sensors
-        Returns:
-            processed_data: [B, num_sensors * features, L]
-        """
-        B, S, L, F = sensor_data.shape
-        # Reshape to [B, S*F, L] to concatenate all sensor features
-        return sensor_data.reshape(B, S * F, L)
-            
-    def forward(self, imu_data, thm_data, tof_data):
-        """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-            tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
-            thm_data: [B, 5, L, 1] - Thermal sensor data
-        """
+        self.trans_imu_all = self.get_network('imu_all', layers=3)
+        self.trans_tof_all = self.get_network('tof_all', layers=3)
+        self.trans_thm_all = self.get_network('thm_all', layers=3)
+
+        self.trans_final = self.get_network('policy', layers=5)
+
+        self.proj1 = self.proj2 = nn.Linear(d_m, d_m)
+        self.out_layer = nn.Linear(d_m, output_dim)
+
+    def get_network(self, self_type, layers):
+        return TransformerEncoder(
+            embed_dim=self.d_m,
+            num_heads=self.num_heads,
+            layers=max(self.layers, layers),
+            attn_dropout=self.attn_dropout,
+            relu_dropout=self.relu_dropout,
+            res_dropout=self.res_dropout,
+            embed_dropout=self.embed_dropout,
+            attn_mask=self.attn_mask,
+        )
+
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
+        # Shapes: [B, C, L, F]
         B, _, L, _ = imu_data.shape
-        
-        # Process each sensor type
-        # IMU: [B, 1, L, 7] -> [B, 7, L]
-        imu_processed = imu_data.squeeze(1).transpose(1, 2)  # [B, 7, L]
-        
-        # ToF: [B, 5, L, 64] -> [B, 320, L] (5*64=320)
-        tof_processed = self.process_sensor_data(tof_data, 5)  # [B, 320, L]
-        
-        # Thermal: [B, 5, L, 1] -> [B, 5, L]
-        thm_processed = self.process_sensor_data(thm_data, 5)  # [B, 5, L]
-        
-        # Apply projections to get same embedding dimension
-        proj_x_imu = self.proj_imu(imu_processed)  # [B, 30, L]
-        proj_x_tof = self.proj_tof(tof_processed)  # [B, 30, L]
-        proj_x_thm = self.proj_thm(thm_processed)  # [B, 30, L]
-        
-        # Transpose for transformer: [L, B, 30]
-        proj_x_imu = proj_x_imu.permute(2, 0, 1)  # [L, B, 30]
-        proj_x_tof = proj_x_tof.permute(2, 0, 1)  # [L, B, 30]
-        proj_x_thm = proj_x_thm.permute(2, 0, 1)  # [L, B, 30]
-        
-        # Concatenate all modalities: [3*L, B, 30]
-        proj_all = torch.cat([proj_x_imu, proj_x_tof, proj_x_thm], dim=0)
-        
-        # Cross-modal attention: each modality attends to all modalities
-        imu_with_all = self.trans_imu_all(proj_x_imu, proj_all, proj_all)  # [L, B, 30]
-        tof_with_all = self.trans_tof_all(proj_x_tof, proj_all, proj_all)  # [L, B, 30]
-        thm_with_all = self.trans_thm_all(proj_x_thm, proj_all, proj_all)  # [L, B, 30]
-        
-        # Concatenate attended features: [3*L, B, 30]
-        last_hs1 = torch.cat([imu_with_all, tof_with_all, thm_with_all], dim=0)
-        
-        # Final self-attention and reshape: [B, 3*L, 30]
-        last_hs2 = self.trans_final(last_hs1).permute(1, 0, 2)
-        
-        # Reduce sequence dimension: [B, 3, 30] -> [B, 1, 30] -> [B, 30]
-        last_hs2_reshaped = last_hs2.view(B, 3, L, 30).mean(dim=2)  # Average over time
-        last_hs = self.final_conv(last_hs2_reshaped.transpose(1, 2)).squeeze(1)  # [B, 30]
-        
-        # Final classification
-        output = self.out_layer(last_hs)
-        
-        return output
 
+        imu = imu_data[:, 0]       # [B, L, 7]
+        tof = tof_data.reshape(B * 5, L, 64)
+        thm = thm_data.reshape(B * 5, L, 1)
+
+        imu = self.proj_imu(imu.transpose(1, 2))       # [B, d_m, L]
+        tof = self.proj_tof(tof.transpose(1, 2))       # [B*5, d_m, L]
+        thm = self.proj_thm(thm.transpose(1, 2))       # [B*5, d_m, L]
+
+        imu = imu.permute(2, 0, 1)                     # [L, B, d_m]
+        tof = tof.view(L, B, 5, self.d_m).permute(0, 2, 1, 3).reshape(L, B * 5, self.d_m)
+        thm = thm.view(L, B, 5, self.d_m).permute(0, 2, 1, 3).reshape(L, B * 5, self.d_m)
+
+        all_modal = torch.cat([imu, tof, thm], dim=1)
+
+        imu_out = self.trans_imu_all(imu, all_modal, all_modal)
+        tof_out = self.trans_tof_all(tof, all_modal, all_modal)
+        thm_out = self.trans_thm_all(thm, all_modal, all_modal)
+
+        merged = torch.cat([imu_out, tof_out, thm_out], dim=1)
+        merged = self.trans_final(merged).permute(1, 0, 2)  # [B_all, L, d_m]
+        final_out = self.final_conv(merged).squeeze(1)      # [B, d_m]
+        output = self.out_layer(final_out)
+
+        return output, final_out
+    
 # imu only modification 
 class SingleSensor_HUSFORMER_v1(nn.Module):
     def __init__(self, 
@@ -229,11 +178,11 @@ class SingleSensor_HUSFORMER_v1(nn.Module):
                  out_dropout=0.1,
                  embed_dropout=0.1,
                  attn_mask=False,
-                 output_dim=2,
-                 d_m=30):
+                 output_dim=18,
+                 d_m=256):
         super(SingleSensor_HUSFORMER_v1, self).__init__()
-        
-        # Store all parameters
+
+        self.d_m = d_m
         self.num_heads = num_heads
         self.layers = layers
         self.attn_dropout = attn_dropout
@@ -242,101 +191,49 @@ class SingleSensor_HUSFORMER_v1(nn.Module):
         self.out_dropout = out_dropout
         self.embed_dropout = embed_dropout
         self.attn_mask = attn_mask
-        self.output_dim = output_dim
-        self.d_m = d_m
-        
-        # Original dimension for IMU sensor only
-        self.orig_d_imu = 7  # IMU variables
-        
-        # Combined dimension and channels
-        self.combined_dim = d_m     
-        self.channels = 1  # Only IMU modality
-        
-        # 1. Temporal convolutional layer for IMU modality
-        self.proj_imu = nn.Conv1d(self.orig_d_imu, self.d_m, kernel_size=1, padding=0, bias=False)
-        
-        self.final_conv = nn.Conv1d(self.channels, 1, kernel_size=1, padding=0, bias=False)
-        
-        # 2. Self Attention (no cross-modal needed for single sensor)
-        self.trans_imu_all = self.get_network(self_type='imu_all', layers=3)
-        
-        # 3. Final Self Attention
-        self.trans_final = self.get_network(self_type='policy', layers=5)
-        
-        # 4. Projection layers
-        self.proj1 = self.proj2 = nn.Linear(self.combined_dim, self.combined_dim)
-        self.out_layer = nn.Linear(self.combined_dim, self.output_dim)
 
-    def get_network(self, self_type='l', layers=-1):
-        if self_type in ['imu_all', 'policy']:
-            embed_dim, attn_dropout = self.d_m, self.attn_dropout
-        else:
-            raise ValueError("Unknown network type")
-        
-        return TransformerEncoder(embed_dim=embed_dim,
-                                  num_heads=self.num_heads,
-                                  layers=max(self.layers, layers),
-                                  attn_dropout=attn_dropout,
-                                  relu_dropout=self.relu_dropout,
-                                  res_dropout=self.res_dropout,
-                                  embed_dropout=self.embed_dropout,
-                                  attn_mask=self.attn_mask)
-            
-    def forward(self, imu_data):
-        """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-        """
-        B, _, L, _ = imu_data.shape
-        
-        # Process IMU data
-        # IMU: [B, 1, L, 7] -> [B, 7, L]
-        imu_processed = imu_data.squeeze(1).transpose(1, 2)  # [B, 7, L]
-        
-        # Apply projection to get embedding dimension
-        proj_x_imu = self.proj_imu(imu_processed)  # [B, 30, L]
-        
-        # Transpose for transformer: [L, B, 30]
-        proj_x_imu = proj_x_imu.permute(2, 0, 1)  # [L, B, 30]
-        
-        # Since we only have one modality, proj_all is just proj_x_imu
-        proj_all = proj_x_imu  # [L, B, 30]
-        
-        # Self-attention: IMU attends to itself (no cross-modal)
-        imu_with_all = self.trans_imu_all(proj_x_imu, proj_all, proj_all)  # [L, B, 30]
-        
-        # Since we only have one modality, last_hs1 is just imu_with_all
-        last_hs1 = imu_with_all  # [L, B, 30]
-        
-        # Final self-attention and reshape: [B, L, 30]
-        last_hs2 = self.trans_final(last_hs1).permute(1, 0, 2)
-        
-        # Reduce sequence dimension: [B, 1, 30] -> [B, 30]
-        last_hs2_reshaped = last_hs2.mean(dim=1)  # Average over time: [B, 30]
-        last_hs2_reshaped = last_hs2_reshaped.unsqueeze(1)  # [B, 1, 30]
-        last_hs = self.final_conv(last_hs2_reshaped.transpose(1, 2)).squeeze(1)  # [B, 30]
-        
-        # Final classification
-        output = self.out_layer(last_hs)
-        
-        return output
+        self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
+        self.trans = self.get_network('imu_only', layers)
+        self.out_layer = nn.Linear(d_m, output_dim)
+
+    def get_network(self, self_type, layers):
+        return TransformerEncoder(
+            embed_dim=self.d_m,
+            num_heads=self.num_heads,
+            layers=layers,
+            attn_dropout=self.attn_dropout,
+            relu_dropout=self.relu_dropout,
+            res_dropout=self.res_dropout,
+            embed_dropout=self.embed_dropout,
+            attn_mask=self.attn_mask,
+        )
+
+    def forward(self, imu_data, pad_mask=None):
+        # [B, 1, L, 7] -> [B, L, 7]
+        imu = imu_data[:, 0]
+        imu = self.proj_imu(imu.transpose(1, 2))       # [B, d_m, L]
+        imu = imu.permute(2, 0, 1)                     # [L, B, d_m]
+        out = self.trans(imu).permute(1, 0, 2)         # [B, L, d_m]
+        out = out.mean(dim=1)                          # simple pooling
+        output = self.out_layer(out)
+        return output, out
 
 # imu + tof + thm modification (tof as 2d)
 class MultiSensor_HUSFORMER_v2(nn.Module):
     def __init__(self, 
-                num_heads=8,
-                layers=4,
-                attn_dropout=0.1,
-                relu_dropout=0.1,
-                res_dropout=0.1,
-                out_dropout=0.1,
-                embed_dropout=0.1,
-                attn_mask=False,
-                output_dim=2,
-                d_m=30):
-        super(MultiSensor_HUSFORMER_v2, self).__init__()
-        
-        # Store all parameters
+                 num_heads=8,
+                 layers=4,
+                 attn_dropout=0.1,
+                 relu_dropout=0.1,
+                 res_dropout=0.1,
+                 out_dropout=0.1,
+                 embed_dropout=0.1,
+                 attn_mask=False,
+                 output_dim=18,
+                 d_m=256):
+        super(MultiSensor_HUSFORMER_v1, self).__init__()
+
+        self.d_m = d_m
         self.num_heads = num_heads
         self.layers = layers
         self.attn_dropout = attn_dropout
@@ -345,10 +242,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         self.out_dropout = out_dropout
         self.embed_dropout = embed_dropout
         self.attn_mask = attn_mask
-        self.output_dim = output_dim
-        self.d_m = d_m
-        
-        # Original dimensions for each sensor type
+
         self.orig_d_imu = 7  # IMU variables
         self.orig_d_tof = 1  # ToF: 8x8 maps, 1 channel input
         self.orig_d_thm = 1 * 5   # Thermal: 5 sensors * 1 variable each = 5
@@ -356,11 +250,11 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         # Combined dimension and channels
         self.combined_dim = d_m     
         self.channels = 3  # IMU + ToF + Thermal modalities
-        
-        # 1. Projection layers for each modality
-        self.proj_imu = nn.Conv1d(self.orig_d_imu, self.d_m, kernel_size=1, padding=0, bias=False)
-        
-        # ToF projection: Conv2d + pooling to reduce spatial dimensions
+
+        self.channels = 1 + 5 + 5  # IMU(1) + ToF(5) + THM(5)
+
+        # Projection layers for modalities
+        self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
         self.proj_tof = nn.Sequential(
             nn.Conv2d(self.orig_d_tof, 16, kernel_size=3, padding=1, bias=False),  # 8x8 -> 8x8
             nn.ReLU(),
@@ -368,99 +262,57 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
             nn.AdaptiveAvgPool2d((4, 4)),  # 8x8 -> 4x4
             nn.Conv2d(32, self.d_m, kernel_size=4, padding=0, bias=False)  # 4x4 -> 1x1
         )
-        
-        self.proj_thm = nn.Conv1d(self.orig_d_thm, self.d_m, kernel_size=1, padding=0, bias=False)
-        
-        self.final_conv = nn.Conv1d(self.channels, 1, kernel_size=1, padding=0, bias=False)
-        
-        # 2. Cross-modal Attentions
-        self.trans_imu_all = self.get_network(self_type='imu_all', layers=3)
-        self.trans_tof_all = self.get_network(self_type='tof_all', layers=3)
-        self.trans_thm_all = self.get_network(self_type='thm_all', layers=3)
-        
-        # 3. Self Attentions
-        self.trans_final = self.get_network(self_type='policy', layers=5)
-        
-        # 4. Projection layers
-        self.proj1 = self.proj2 = nn.Linear(self.combined_dim, self.combined_dim)
-        self.out_layer = nn.Linear(self.combined_dim, self.output_dim)
 
-    def get_network(self, self_type='l', layers=-1):
-        if self_type in ['imu_all', 'tof_all', 'thm_all', 'policy']:
-            embed_dim, attn_dropout = self.d_m, self.attn_dropout
-        else:
-            raise ValueError("Unknown network type")
-        
-        return TransformerEncoder(embed_dim=embed_dim,
-                                  num_heads=self.num_heads,
-                                  layers=max(self.layers, layers),
-                                  attn_dropout=attn_dropout,
-                                  relu_dropout=self.relu_dropout,
-                                  res_dropout=self.res_dropout,
-                                  embed_dropout=self.embed_dropout,
-                                  attn_mask=self.attn_mask)
-    
-    def process_sensor_data(self, sensor_data, num_sensors):
-        """
-        Process multi-sensor data by reshaping and concatenating
-        Args:
-            sensor_data: [B, num_sensors, L, features]
-            num_sensors: number of sensors
-        Returns:
-            processed_data: [B, num_sensors * features, L]
-        """
-        B, S, L, F = sensor_data.shape
-        # Reshape to [B, S*F, L] to concatenate all sensor features
-        return sensor_data.reshape(B, S * F, L)
-            
-    def forward(self, imu_data, thm_data, tof_data):
-        """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-            tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
-            thm_data: [B, 5, L, 1] - Thermal sensor data
-        """
+        self.proj_thm = nn.Conv1d(1, d_m, kernel_size=1, padding=0, bias=False)
+
+        self.final_conv = nn.Conv1d(self.channels, 1, kernel_size=1, padding=0, bias=False)
+
+        self.trans_imu_all = self.get_network('imu_all', layers=3)
+        self.trans_tof_all = self.get_network('tof_all', layers=3)
+        self.trans_thm_all = self.get_network('thm_all', layers=3)
+
+        self.trans_final = self.get_network('policy', layers=5)
+
+        self.proj1 = self.proj2 = nn.Linear(d_m, d_m)
+        self.out_layer = nn.Linear(d_m, output_dim)
+
+    def get_network(self, self_type, layers):
+        return TransformerEncoder(
+            embed_dim=self.d_m,
+            num_heads=self.num_heads,
+            layers=max(self.layers, layers),
+            attn_dropout=self.attn_dropout,
+            relu_dropout=self.relu_dropout,
+            res_dropout=self.res_dropout,
+            embed_dropout=self.embed_dropout,
+            attn_mask=self.attn_mask,
+        )
+
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
+        # Shapes: [B, C, L, F]
         B, _, L, _ = imu_data.shape
-        
-        # Process each sensor type
-        # IMU: [B, 1, L, 7] -> [B, 7, L]
-        imu_processed = imu_data.squeeze(1).transpose(1, 2)  # [B, 7, L]
-        
-        # ToF: [B, 5, L, 64] -> [B, 320, L] (5*64=320)
-        tof_processed = self.process_sensor_data(tof_data, 5)  # [B, 320, L]
-        
-        # Thermal: [B, 5, L, 1] -> [B, 5, L]
-        thm_processed = self.process_sensor_data(thm_data, 5)  # [B, 5, L]
-        
-        # Apply projections to get same embedding dimension
-        proj_x_imu = self.proj_imu(imu_processed)  # [B, 30, L]
-        proj_x_tof = self.proj_tof(tof_processed)  # [B, 30, L]
-        proj_x_thm = self.proj_thm(thm_processed)  # [B, 30, L]
-        
-        # Transpose for transformer: [L, B, 30]
-        proj_x_imu = proj_x_imu.permute(2, 0, 1)  # [L, B, 30]
-        proj_x_tof = proj_x_tof.permute(2, 0, 1)  # [L, B, 30]
-        proj_x_thm = proj_x_thm.permute(2, 0, 1)  # [L, B, 30]
-        
-        # Concatenate all modalities: [3*L, B, 30]
-        proj_all = torch.cat([proj_x_imu, proj_x_tof, proj_x_thm], dim=0)
-        
-        # Cross-modal attention: each modality attends to all modalities
-        imu_with_all = self.trans_imu_all(proj_x_imu, proj_all, proj_all)  # [L, B, 30]
-        tof_with_all = self.trans_tof_all(proj_x_tof, proj_all, proj_all)  # [L, B, 30]
-        thm_with_all = self.trans_thm_all(proj_x_thm, proj_all, proj_all)  # [L, B, 30]
-        
-        # Concatenate attended features: [3*L, B, 30]
-        last_hs1 = torch.cat([imu_with_all, tof_with_all, thm_with_all], dim=0)
-        
-        # Final self-attention and reshape: [B, 3*L, 30]
-        last_hs2 = self.trans_final(last_hs1).permute(1, 0, 2)
-        
-        # Reduce sequence dimension: [B, 3, 30] -> [B, 1, 30] -> [B, 30]
-        last_hs2_reshaped = last_hs2.view(B, 3, L, 30).mean(dim=2)  # Average over time
-        last_hs = self.final_conv(last_hs2_reshaped.transpose(1, 2)).squeeze(1)  # [B, 30]
-        
-        # Final classification
-        output = self.out_layer(last_hs)
-        
-        return output
+
+        imu = imu_data[:, 0]       # [B, L, 7]
+        tof = tof_data.reshape(B * 5, L, 64)
+        thm = thm_data.reshape(B * 5, L, 1)
+
+        imu = self.proj_imu(imu.transpose(1, 2))       # [B, d_m, L]
+        tof = self.proj_tof(tof.transpose(1, 2))       # [B*5, d_m, L]
+        thm = self.proj_thm(thm.transpose(1, 2))       # [B*5, d_m, L]
+
+        imu = imu.permute(2, 0, 1)                     # [L, B, d_m]
+        tof = tof.view(L, B, 5, self.d_m).permute(0, 2, 1, 3).reshape(L, B * 5, self.d_m)
+        thm = thm.view(L, B, 5, self.d_m).permute(0, 2, 1, 3).reshape(L, B * 5, self.d_m)
+
+        all_modal = torch.cat([imu, tof, thm], dim=1)
+
+        imu_out = self.trans_imu_all(imu, all_modal, all_modal)
+        tof_out = self.trans_tof_all(tof, all_modal, all_modal)
+        thm_out = self.trans_thm_all(thm, all_modal, all_modal)
+
+        merged = torch.cat([imu_out, tof_out, thm_out], dim=1)
+        merged = self.trans_final(merged).permute(1, 0, 2)  # [B_all, L, d_m]
+        final_out = self.final_conv(merged).squeeze(1)      # [B, d_m]
+        output = self.out_layer(final_out)
+
+        return output, final_out

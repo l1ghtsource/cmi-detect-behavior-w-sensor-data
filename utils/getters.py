@@ -19,6 +19,10 @@ from models.timemil import (
     MultiSensor_TimeMIL_v1, TimeMIL_SingleSensor_Singlebranch_v1,
     MultiSensor_TimeMIL_v2, TimeMIL_SingleSensor_Multibranch_v1
 )
+from models.husformer import (
+    SingleSensor_HUSFORMER_v1,
+    MultiSensor_HUSFORMER_v1, MultiSensor_HUSFORMER_v2
+)
 from configs.config import cfg
 
 def get_optimizer(params):
@@ -39,7 +43,7 @@ def get_optimizer(params):
         raise Exception('stick your finger in your ass')
 
 def get_ts_dataset():
-    if cfg.selected_model in ('timemil', 'decomposewhar'): # datasex is compatitable for decopmosewhar and timemil !! so i'm happy today
+    if cfg.selected_model not in ('baseline'): # datasex is compatitable for decopmosewhar and timemil !! so i'm happy today
         return TS_CMIDataset_DecomposeWHAR_Megasensor if cfg.use_megasensor else TS_CMIDataset_DecomposeWHAR
     return TS_CMIDataset
 
@@ -86,6 +90,19 @@ def get_ts_model_and_params(imu_only):
                 'max_seq_len': cfg.seq_len,
                 'dropout': cfg.timemil_dropout
             }
+    elif cfg.selected_model == 'husformer':
+        if imu_only: # only imu sensor
+            model_cls = SingleSensor_HUSFORMER_v1
+            params = {
+                'output_dim': cfg.main_num_classes,
+            }
+            return model_cls, params
+        else: # multi sensor model
+            model_cls = MultiSensor_HUSFORMER_v2
+            params = {
+                'output_dim': cfg.main_num_classes,
+            }
+            return model_cls, params
     elif cfg.selected_model == 'baseline':
         if imu_only: # only imu sensor
             model_cls = TS_IMUModel

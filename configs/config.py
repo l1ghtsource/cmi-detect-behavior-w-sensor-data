@@ -42,7 +42,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
-cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'baseline']
+cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'husformer', 'baseline']
 
 # --- target things ---
 cfg.main_weight = 1.0
