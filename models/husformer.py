@@ -231,7 +231,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
                  attn_mask=False,
                  output_dim=18,
                  d_m=256):
-        super(MultiSensor_HUSFORMER_v1, self).__init__()
+        super(MultiSensor_HUSFORMER_v2, self).__init__()
 
         self.d_m = d_m
         self.num_heads = num_heads
