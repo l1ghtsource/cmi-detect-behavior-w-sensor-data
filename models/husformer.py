@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from modules.transformer import TransformerEncoder
 
-# TODO: test it
+# orig -> https://arxiv.org/pdf/2209.15182 !!!
 
 class Original_HUSFORMERModel(nn.Module):
     def __init__(self, hyp_params):
@@ -95,7 +95,7 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
                  embed_dropout=0.1,
                  attn_mask=False,
                  output_dim=18,
-                 d_m=256):
+                 d_m=64):
         super(MultiSensor_HUSFORMER_v1, self).__init__()
 
         self.d_m = d_m
@@ -125,6 +125,7 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
 
         self.proj1 = self.proj2 = nn.Linear(d_m, d_m)
         self.out_layer = nn.Linear(d_m, output_dim)
+        self.out_layer2 = nn.Linear(d_m, 2)
 
     def get_network(self, self_type, layers):
         return TransformerEncoder(
@@ -164,8 +165,9 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
         merged = self.trans_final(merged).permute(1, 0, 2)  # [B_all, L, d_m]
         final_out = self.final_conv(merged).squeeze(1)      # [B, d_m]
         output = self.out_layer(final_out)
+        output2 = self.out_layer2(final_out)
 
-        return output, final_out
+        return output, output2
     
 # imu only modification 
 class SingleSensor_HUSFORMER_v1(nn.Module):
@@ -195,6 +197,7 @@ class SingleSensor_HUSFORMER_v1(nn.Module):
         self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
         self.trans = self.get_network('imu_only', layers)
         self.out_layer = nn.Linear(d_m, output_dim)
+        self.out_layer2 = nn.Linear(d_m, 2)
 
     def get_network(self, self_type, layers):
         return TransformerEncoder(
@@ -216,7 +219,8 @@ class SingleSensor_HUSFORMER_v1(nn.Module):
         out = self.trans(imu).permute(1, 0, 2)         # [B, L, d_m]
         out = out.mean(dim=1)                          # simple pooling
         output = self.out_layer(out)
-        return output, out
+        output2 = self.out_layer2(out)
+        return output, output2
 
 # imu + tof + thm modification (tof as 2d)
 class MultiSensor_HUSFORMER_v2(nn.Module):
@@ -230,7 +234,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
                  embed_dropout=0.1,
                  attn_mask=False,
                  output_dim=18,
-                 d_m=256):
+                 d_m=64):
         super(MultiSensor_HUSFORMER_v2, self).__init__()
 
         self.d_m = d_m
@@ -255,14 +259,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
 
         # Projection layers for modalities
         self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
-        self.proj_tof = nn.Sequential(
-            nn.Conv2d(self.orig_d_tof, 16, kernel_size=3, padding=1, bias=False),  # 8x8 -> 8x8
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1, bias=False),  # 8x8 -> 8x8
-            nn.AdaptiveAvgPool2d((4, 4)),  # 8x8 -> 4x4
-            nn.Conv2d(32, self.d_m, kernel_size=4, padding=0, bias=False)  # 4x4 -> 1x1
-        )
-
+        self.proj_tof = nn.Conv2d(1, d_m, kernel_size=(3, 3), padding=1, bias=False)
         self.proj_thm = nn.Conv1d(1, d_m, kernel_size=1, padding=0, bias=False)
 
         self.final_conv = nn.Conv1d(self.channels, 1, kernel_size=1, padding=0, bias=False)
@@ -275,6 +272,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
 
         self.proj1 = self.proj2 = nn.Linear(d_m, d_m)
         self.out_layer = nn.Linear(d_m, output_dim)
+        self.out_layer2 = nn.Linear(d_m, 2)
 
     def get_network(self, self_type, layers):
         return TransformerEncoder(
@@ -289,20 +287,23 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         )
 
     def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
-        # Shapes: [B, C, L, F]
         B, _, L, _ = imu_data.shape
 
-        imu = imu_data[:, 0]       # [B, L, 7]
-        tof = tof_data.reshape(B * 5, L, 64)
-        thm = thm_data.reshape(B * 5, L, 1)
+        imu = imu_data[:, 0]                     # [B, L, 7]
+        thm = thm_data.reshape(B * 5, L, 1)      # [B*5, L, 1]
 
-        imu = self.proj_imu(imu.transpose(1, 2))       # [B, d_m, L]
-        tof = self.proj_tof(tof.transpose(1, 2))       # [B*5, d_m, L]
-        thm = self.proj_thm(thm.transpose(1, 2))       # [B*5, d_m, L]
+        # ToF: [B, 5, L, 64] → [B*5*L, 8, 8]
+        tof = tof_data.reshape(B * 5 * L, 8, 8).unsqueeze(1)  # [B*5*L, 1, 8, 8]
+        tof = self.proj_tof(tof)                             # [B*5*L, d_m, 8, 8]
+        tof = torch.mean(tof, dim=[2, 3])                    # Global avg pooling → [B*5*L, d_m]
+        tof = tof.view(B * 5, L, self.d_m).transpose(1, 2)   # [B*5, d_m, L]
 
-        imu = imu.permute(2, 0, 1)                     # [L, B, d_m]
-        tof = tof.view(L, B, 5, self.d_m).permute(0, 2, 1, 3).reshape(L, B * 5, self.d_m)
-        thm = thm.view(L, B, 5, self.d_m).permute(0, 2, 1, 3).reshape(L, B * 5, self.d_m)
+        imu = self.proj_imu(imu.transpose(1, 2))             # [B, d_m, L]
+        thm = self.proj_thm(thm.transpose(1, 2))             # [B*5, d_m, L]
+
+        imu = imu.permute(2, 0, 1)                           # [L, B, d_m]
+        tof = tof.permute(2, 0, 1)                           # [L, B*5, d_m]
+        thm = thm.permute(2, 0, 1)                           # [L, B*5, d_m]
 
         all_modal = torch.cat([imu, tof, thm], dim=1)
 
@@ -311,8 +312,10 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         thm_out = self.trans_thm_all(thm, all_modal, all_modal)
 
         merged = torch.cat([imu_out, tof_out, thm_out], dim=1)
-        merged = self.trans_final(merged).permute(1, 0, 2)  # [B_all, L, d_m]
-        final_out = self.final_conv(merged).squeeze(1)      # [B, d_m]
-        output = self.out_layer(final_out)
+        merged = self.trans_final(merged).permute(1, 0, 2)   # [B_all, L, d_m]
 
-        return output, final_out
+        final_out = self.final_conv(merged).squeeze(1)       # [B, d_m]
+        output = self.out_layer(final_out)
+        output2 = self.out_layer2(final_out)
+
+        return output, output2
