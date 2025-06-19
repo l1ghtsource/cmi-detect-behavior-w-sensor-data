@@ -59,6 +59,13 @@ def apply_symmetry(data): # TODO: fix it??
     transformed['rot_z'] = -transformed['rot_z']
     return transformed
 
+def fe(df):
+    df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
+    df['acc_mag_jerk'] = df.groupby('sequence_id')['acc_mag'].diff().fillna(0)
+    df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
+    df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
+    return df
+
 def fast_seq_agg(df):
     sc = cfg.static_cols
     seq_cols = [c for c in df.columns if c not in sc + ['sequence_counter', 'row_id']]

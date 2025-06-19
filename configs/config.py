@@ -68,6 +68,7 @@ cfg.use_pad_mask = True # mask padding values
 cfg.use_world_coords = False # sensor coord -> world coord + remove g
 cfg.only_remove_g = False # only remove g in sensor coord (can't be used w/ use_world_coords)
 cfg.use_hand_symm = False # mirror left -> right
+cfg.apply_fe = False # some feature engineering
 cfg.imu_only = True # use only imu sensor
 
 # --- im ds cfg ---

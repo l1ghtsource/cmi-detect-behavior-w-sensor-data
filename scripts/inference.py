@@ -24,6 +24,7 @@ from utils.data_preproc import (
     convert_to_world_coordinates, 
     apply_symmetry,
     remove_gravity_from_acc,
+    fe,
     get_rev_mapping
 )
 from utils.tta import apply_tta
@@ -43,6 +44,9 @@ if cfg.only_remove_g: # can't be used w/ use_world_coords
 if cfg.use_hand_symm:
     right_handed_mask = train['handedness'] == 1
     train.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(train.loc[right_handed_mask, cfg.imu_cols])
+
+if cfg.apply_fe:
+    train = fe(train)
 
 train = le(train)
 train_seq = fast_seq_agg(train)
@@ -86,6 +90,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     if cfg.use_hand_symm and use_imu_only:
         right_handed_mask = test_df['handedness'] == 1
         test_df.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(test_df.loc[right_handed_mask, cfg.imu_cols])
+
+    if cfg.apply_fe:
+        test_df = fe(test_df)
 
     processed_df_for_dataset = fast_seq_agg(test_df) 
 

@@ -33,7 +33,8 @@ from utils.data_preproc import (
     le, 
     convert_to_world_coordinates, 
     remove_gravity_from_acc,
-    apply_symmetry
+    apply_symmetry,
+    fe
 )
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
@@ -68,6 +69,9 @@ if cfg.only_remove_g: # can't be used w/ use_world_coords
 if cfg.use_hand_symm and cfg.imu_only:
     right_handed_mask = train['handedness'] == 1
     train.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(train.loc[right_handed_mask, cfg.imu_cols])
+
+if cfg.apply_fe:
+    train = fe(train)
 
 train = le(train)
 train_seq = fast_seq_agg(train)
