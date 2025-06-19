@@ -94,7 +94,7 @@ class MultiResidualBiGRU_SingleSensor_v1(nn.Module):
             nn.Linear(hidden_size // 2, 2)
         )
 
-    def forward(self, imu_data, pad_mask=None):
+    def forward(self, imu_data, pad_mask=None, h=None):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
