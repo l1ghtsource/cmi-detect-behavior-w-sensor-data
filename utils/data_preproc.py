@@ -22,7 +22,8 @@ def convert_to_world_coordinates(df):
 
     return df_world
 
-def apply_symmetry(data):
+# https://stackoverflow.com/questions/32438252/efficient-way-to-apply-mirror-effect-on-quaternion-rotation
+def apply_symmetry(data): # TODO: fix it??
     transformed = data.copy()
     transformed['acc_z'] = -transformed['acc_z']
     transformed['acc_y'] = -transformed['acc_y']
@@ -78,6 +79,27 @@ def le(df):
         "Write name on leg": 17,
     }
 
+    mapper_main_collapsed = {
+        "Above ear - pull hair": 0,
+        "Cheek - pinch skin": 1,
+        "Eyebrow - pull hair": 2,
+        "Eyelash - pull hair": 3, 
+        "Forehead - pull hairline": 4,
+        "Forehead - scratch": 5,
+        "Neck - pinch skin": 6, 
+        "Neck - scratch": 7,
+        "Drink from bottle/cup": 8,
+        "Feel around in tray and pull out an object": 8,
+        "Glasses on/off": 8,
+        "Pinch knee/leg skin": 8, 
+        "Pull air toward your face": 8,
+        "Scratch knee/leg skin": 8,
+        "Text on phone": 8,
+        "Wave hello": 8,
+        "Write name in air": 8,
+        "Write name on leg": 8,
+    }
+
     mapper_orientation = {
         'Seated Straight': 0,
         'Seated Lean Non Dom - FACE DOWN': 1,
@@ -103,6 +125,7 @@ def le(df):
     }
 
     df[cfg.main_target] = df[cfg.main_target].map(mapper_main)
+    df[cfg.main_clpsd_target] = df[cfg.main_target].map(mapper_main_collapsed)
     df[cfg.orientation_aux_target] = df[cfg.orientation_aux_target].map(mapper_orientation)
     df[cfg.seq_type_aux_target] = df[cfg.seq_type_aux_target].map(mapper_seq_type)
     df[cfg.behavior_aux_target] = df[cfg.behavior_aux_target].map(mapper_behaviour)
