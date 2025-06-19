@@ -4,8 +4,6 @@ import torch.nn.functional as F
 
 # https://www.kaggle.com/code/jsday96/parkinsons-overlapping-se-unet-frequency-domain
 
-# TODO: test it
-
 class Conv1dBlockSE(nn.Module):
     def __init__(self, channels, kernel_size=3, stride=1, padding=1, reduction=16, dropout=0):
         super(Conv1dBlockSE, self).__init__()
@@ -128,9 +126,7 @@ class SE_Unet_SingleSensor_v1(nn.Module):
     def __init__(
             self, 
             in_channels=7,
-            num_classes_target=18,
-            num_classes_aux=4, 
-            num_classes_aux2=2,
+            num_classes=18,
             model_width_coef=32, 
             reduction=16, 
             use_second_se=False, 
@@ -160,9 +156,9 @@ class SE_Unet_SingleSensor_v1(nn.Module):
 
         self.bottleneck = Conv1dBlock(features*16, features*32, dropout=center_dropout)
 
-        self.upconv5 = nn.ConvTranspose1d(features*32, features*16, kernel_size=2, stride=2)
+        self.upconv5 = nn.ConvTranspose1d(features*32, features*16, kernel_size=2, stride=2, output_padding=1)
         self.decoder5 = Conv1dBlockPreprocessedSE(features*32, features*16, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.upconv4 = nn.ConvTranspose1d(features*16, features*8, kernel_size=2, stride=2)
+        self.upconv4 = nn.ConvTranspose1d(features*16, features*8, kernel_size=2, stride=2, output_padding=1)
         self.decoder4 = Conv1dBlockPreprocessedSE(features*16, features*8, reduction, use_second_se, preprocessor_dropout, se_dropout)
         self.upconv3 = nn.ConvTranspose1d(features*8, features*4, kernel_size=2, stride=2)
         self.decoder3 = Conv1dBlockPreprocessedSE(features*8, features*4, reduction, use_second_se, preprocessor_dropout, se_dropout)
@@ -176,31 +172,27 @@ class SE_Unet_SingleSensor_v1(nn.Module):
         self.global_avg_pool = nn.AdaptiveAvgPool1d(1)
         self.global_max_pool = nn.AdaptiveMaxPool1d(1)
         
-        self.classifier_target = nn.Sequential(
+        self.classifier1 = nn.Sequential(
             nn.Linear(features * 2, features),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(features, features//2),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(features//2, num_classes_target)
+            nn.Linear(features//2, num_classes)
         )
         
-        self.classifier_aux = nn.Sequential(
-            nn.Linear(features * 2, features//2),
+        self.classifier2 = nn.Sequential(
+            nn.Linear(features * 2, features),
             nn.ReLU(),
-            nn.Dropout(0.4),
-            nn.Linear(features//2, num_classes_aux)
-        )
-        
-        self.classifier_aux2 = nn.Sequential(
-            nn.Linear(features * 2, features//4),
+            nn.Dropout(0.5),
+            nn.Linear(features, features//2),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(features//4, num_classes_aux2)
+            nn.Linear(features//2, 2)
         )
 
-    def forward(self, imu_data):
+    def forward(self, imu_data, pad_mask=None):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
@@ -238,11 +230,10 @@ class SE_Unet_SingleSensor_v1(nn.Module):
         pooled_features = torch.cat([avg_pooled, max_pooled], dim=1)  # [B, features*2, 1]
         features = pooled_features.squeeze(-1)  # [B, features*2]
         
-        target_logits = self.classifier_target(features)      # [B, 18]
-        aux_logits = self.classifier_aux(features)            # [B, 4]
-        aux2_logits = self.classifier_aux2(features)          # [B, 2]
-        
-        return target_logits, aux_logits, aux2_logits
+        target_logits1 = self.classifier1(features)      # [B, 18]
+        target_logits2 = self.classifier2(features)      # [B, 2]
+
+        return target_logits1, target_logits2
     
 class MultiSensorAttention(nn.Module):
     def __init__(self, embed_dim, num_heads=4):
@@ -300,9 +291,8 @@ class MultiSensor_SE_Unet_v1(nn.Module):
             se_dropout=0,
             initial_dropout=0,
             center_dropout=0,
-            num_classes_target=18,
-            num_classes_aux=4, 
-            num_classes_aux2=2):
+            num_classes=18
+        ):
         super(MultiSensor_SE_Unet_v1, self).__init__()
 
         features = model_width_coef
@@ -358,28 +348,24 @@ class MultiSensor_SE_Unet_v1(nn.Module):
             fusion_dim=fusion_dim
         )
         
-        self.classifier_target = nn.Sequential(
+        self.classifier1 = nn.Sequential(
             nn.Linear(fusion_dim, fusion_dim//2),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(fusion_dim//2, fusion_dim//4),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(fusion_dim//4, num_classes_target)
+            nn.Linear(fusion_dim//4, num_classes)
         )
         
-        self.classifier_aux = nn.Sequential(
-            nn.Linear(fusion_dim, fusion_dim//4),
+        self.classifier2 = nn.Sequential(
+            nn.Linear(fusion_dim, fusion_dim//2),
             nn.ReLU(),
-            nn.Dropout(0.4),
-            nn.Linear(fusion_dim//4, num_classes_aux)
-        )
-        
-        self.classifier_aux2 = nn.Sequential(
-            nn.Linear(fusion_dim, fusion_dim//8),
+            nn.Dropout(0.5),
+            nn.Linear(fusion_dim//2, fusion_dim//4),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(fusion_dim//8, num_classes_aux2)
+            nn.Linear(fusion_dim//4, 2)
         )
 
     def process_single_sensor_stack(self, sensor_data, encoder1, pool1, encoder2, pool2, encoder3, avg_pool, max_pool):
@@ -403,7 +389,7 @@ class MultiSensor_SE_Unet_v1(nn.Module):
         stacked_features = torch.stack(sensor_features, dim=1)
         return stacked_features
 
-    def forward(self, imu_data, thm_data, tof_data):
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
@@ -443,8 +429,7 @@ class MultiSensor_SE_Unet_v1(nn.Module):
         
         fused_features = self.sensor_fusion(imu_features, tof_features, thm_features)
         
-        target_logits = self.classifier_target(fused_features)
-        aux_logits = self.classifier_aux(fused_features)
-        aux2_logits = self.classifier_aux2(fused_features)
+        target_logits1 = self.classifier1(fused_features)
+        target_logits2 = self.classifier2(fused_features)
         
-        return target_logits, aux_logits, aux2_logits
+        return target_logits1, target_logits2
