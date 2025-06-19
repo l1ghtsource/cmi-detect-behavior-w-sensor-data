@@ -274,6 +274,18 @@ def get_prefix(imu_only):
     if cfg.use_pad_mask:
         prefix_parts.append('use_pad_mask')
 
+    if cfg.use_world_coords:
+        prefix_parts.append('use_world_coords')
+
+    if cfg.only_remove_g:
+        prefix_parts.append('only_remove_g')
+
+    if cfg.use_hand_symm:
+        prefix_parts.append('use_hand_symm')
+
+    if cfg.apply_fe:
+        prefix_parts.append('apply_fe')
+
     if cfg.use_lookahead:
         prefix_parts.append('lookahead')
 
