@@ -29,6 +29,9 @@ from models.medformer import (
 from models.harmamba import (
     MultiSensor_HARMamba_v1, HARMamba_SingleSensor_v1
 )
+from models.modern_tcn import (
+    MultiSensor_ModernTCN_v1, ModernTCN_SingleSensor_v1
+)
 from configs.config import cfg
 
 def get_optimizer(params):
@@ -133,6 +136,19 @@ def get_ts_model_and_params(imu_only):
             model_cls = MultiSensor_Medformer_v1
             params = {
                 'num_classes': cfg.main_num_classes,
+            }
+            return model_cls, params
+    elif cfg.selected_model == 'moderntcn':
+        if imu_only: # only imu sensor
+            model_cls = ModernTCN_SingleSensor_v1
+            params = {
+                'class_num': cfg.main_num_classes,
+            }
+            return model_cls, params
+        else: # multi sensor model
+            model_cls = MultiSensor_ModernTCN_v1
+            params = {
+                'class_num': cfg.main_num_classes,
             }
             return model_cls, params
     elif cfg.selected_model == 'baseline':

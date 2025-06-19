@@ -2,11 +2,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import math
-from layers.RevIN import RevIN
 from modules.modern_tcn_layers import series_decomp, Flatten_Head
 from modules.revin import RevIN
-
-# TODO: test it
+from configs.config import cfg
 
 class LayerNorm(nn.Module):
 
@@ -382,3 +380,266 @@ class Model(nn.Module):
         te = None
         x = self.model(x, te)
         return x
+    
+class ModernTCN_SingleSensor_v1(nn.Module):
+    def __init__(self, 
+                 task_name='classification',
+                 patch_size=3, #3
+                 patch_stride=1, #1
+                 stem_ratio=1,
+                 downsample_ratio=2,
+                 ffn_ratio=4, #4
+                 num_blocks=[2, 2],
+                 large_size=[71, 71], #11
+                 small_size=[7, 7], #3
+                 dims=[128, 256], #64,128
+                 dw_dims=[128, 256], #64,128
+                 nvars=7,
+                 small_kernel_merged=False,
+                 backbone_dropout=0.1,
+                 head_dropout=0.1,
+                 use_multi_scale=True,
+                 revin=True,
+                 affine=True,
+                 subtract_last=False,
+                 seq_len=cfg.seq_len,
+                 individual=False,
+                 target_window=96,
+                 class_drop=0.1,
+                 class_num=18):
+        super(ModernTCN_SingleSensor_v1, self).__init__()
+        
+        self.task_name = task_name
+        self.class_drop = class_drop
+        self.class_num = class_num
+        self.nvars = nvars
+        self.seq_len = seq_len
+        
+        self.revin = revin
+        if self.revin: 
+            self.revin_layer = RevIN(nvars, affine=affine, subtract_last=subtract_last)
+        
+        self.downsample_layers = nn.ModuleList()
+        stem = nn.Sequential(
+            nn.Conv1d(1, dims[0], kernel_size=patch_size, stride=patch_stride),
+            nn.BatchNorm1d(dims[0])
+        )
+        self.downsample_layers.append(stem)
+        
+        self.num_stage = len(num_blocks)
+        self.stages = nn.ModuleList()
+        for stage_idx in range(self.num_stage):
+            stage = Stage(
+                ffn_ratio=ffn_ratio,
+                num_blocks=num_blocks[stage_idx],
+                large_size=large_size[stage_idx],
+                small_size=small_size[stage_idx],
+                dmodel=dims[stage_idx],
+                dw_model=dw_dims[stage_idx],
+                nvars=nvars,
+                small_kernel_merged=small_kernel_merged,
+                drop=backbone_dropout
+            )
+            self.stages.append(stage)
+            
+            if stage_idx < self.num_stage - 1:
+                downsample_layer = nn.Sequential(
+                    nn.BatchNorm1d(dims[stage_idx]),
+                    nn.Conv1d(dims[stage_idx], dims[stage_idx+1], 
+                              kernel_size=downsample_ratio, stride=downsample_ratio),
+                )
+                self.downsample_layers.append(downsample_layer)
+        
+        self.head_nf = dims[-1] * (seq_len // patch_stride) // (downsample_ratio ** (self.num_stage - 1))
+        self.head = Flatten_Head(
+            individual=individual,
+            n_vars=nvars,
+            nf=self.head_nf,
+            target_window=target_window,
+            head_dropout=head_dropout
+        )
+        
+        if self.task_name == 'classification':
+            self.act_class = F.gelu
+            self.class_dropout = nn.Dropout(class_drop)
+            self.head_class1 = nn.Linear(nvars * self.head_nf, class_num)
+            self.head_class2 = nn.Linear(nvars * self.head_nf, 2)
+
+    def forward_feature(self, x):
+        B, M, D, N = x.shape
+        
+        for i in range(self.num_stage):
+            x = x.reshape(B * M, D, N)
+            if i == 0:
+                pad_len = self.downsample_layers[0][0].kernel_size[0] - self.downsample_layers[0][0].stride[0]
+                x = F.pad(x, (0, pad_len), "constant", 0)
+            x = self.downsample_layers[i](x)
+            _, D, N = x.shape
+            x = x.reshape(B, M, D, N)
+            
+            x = self.stages[i](x)
+        return x
+
+    def classification(self, x):
+        if self.revin:
+            x = x.permute(0, 2, 3, 1)  # [B, M, D, N] -> [B, D, N, M]
+            x = self.revin_layer(x, 'norm')
+            x = x.permute(0, 3, 1, 2)  # [B, M, D, N]
+        
+        x = self.forward_feature(x)
+        
+        x = self.act_class(x)
+        x = self.class_dropout(x)
+        x = x.reshape(x.shape[0], -1)
+        x1 = self.head_class1(x)
+        x2 = self.head_class2(x)
+        return x1, x2
+
+    def forward(self, imu_data, pad_mask=None):
+        """
+        Args:
+            imu_data: [B, 1, seq_len, n_vars]
+        """
+        x = imu_data.permute(0, 3, 1, 2)  # [B, n_vars, 1, seq_len]
+        
+        if self.task_name == 'classification':
+            return self.classification(x)
+        
+        return x
+
+    def structural_reparam(self):
+        for m in self.modules():
+            if hasattr(m, 'merge_kernel'):
+                m.merge_kernel()
+
+class SensorAttention(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, input_dim // 2)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(input_dim // 2, 1)
+    
+    def forward(self, x):
+        # x: [B, num_sensors, D]
+        scores = self.fc2(self.act(self.fc1(x)))  # [B, num_sensors, 1]
+        weights = F.softmax(scores, dim=1)
+        return (x * weights).sum(dim=1)  # [B, D]
+
+class MultiSensor_ModernTCN_v1(nn.Module):
+    def __init__(self, class_num=18):
+        super().__init__()
+        
+        base_params = {
+            'task_name': 'feature_extraction',
+            'revin': False,
+            'patch_size': 1,
+            'patch_stride': 1,
+            'downsample_ratio': 2,
+            'ffn_ratio': 1,
+            'small_kernel_merged': False,
+            'backbone_dropout': 0.1
+        }
+
+        imu_params = {
+            **base_params,
+            'num_blocks': [1, 1],
+            'large_size': [51, 51],
+            'small_size': [5, 5],
+            'dims': [62, 128],
+            'dw_dims': [62, 128]
+        }
+
+        tof_params = {
+            **base_params,
+            'num_blocks': [1, 1],
+            'large_size': [51, 51],
+            'small_size': [5, 5],
+            'dims': [62, 128],
+            'dw_dims': [62, 128]
+        }
+
+        thm_params = {
+            **base_params,
+            'num_blocks': [1, 1],
+            'large_size': [51, 51],
+            'small_size': [5, 5],
+            'dims': [62, 128],
+            'dw_dims': [62, 128]
+        }
+        
+        self.imu_branch = ModernTCN_SingleSensor_v1(
+            in_channels=7,
+            nvars=1,
+            **imu_params
+        )
+        
+        self.tof_branch = ModernTCN_SingleSensor_v1(
+            in_channels=64,
+            nvars=5,
+            **tof_params
+        )
+        
+        self.thm_branch = ModernTCN_SingleSensor_v1(
+            in_channels=1,
+            nvars=5,
+            **thm_params
+        )
+        
+        self.D_imu = imu_params['dims'][-1]
+        self.D_tof = tof_params['dims'][-1]
+        self.D_thm = thm_params['dims'][-1]
+        
+        self.tof_attn = SensorAttention(self.D_tof)
+        self.thm_attn = SensorAttention(self.D_thm)
+        
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=128,
+            num_heads=4,
+            batch_first=True
+        )
+        
+        self.classifier1 = nn.Sequential(
+            nn.Linear(self.D_imu + self.D_tof + self.D_thm, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, class_num)
+        )
+        self.classifier2 = nn.Sequential(
+            nn.Linear(self.D_imu + self.D_tof + self.D_thm, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 2)
+        )
+
+    def forward(self, imu_data, tof_data, thm_data, pad_mask=None):
+        imu_data = imu_data.permute(0, 1, 3, 2)  # [B, 1, 7, L]
+        imu_feat = self.imu_branch.forward_feature(imu_data)
+        imu_feat = imu_feat.mean(dim=3)  # [B, 1, D_imu]
+        imu_feat = imu_feat.squeeze(1)   # [B, D_imu]
+        
+        tof_data = tof_data.permute(0, 1, 3, 2)  # [B, 5, 64, L]
+        tof_feat = self.tof_branch.forward_feature(tof_data)
+        tof_feat = tof_feat.mean(dim=3)  # [B, 5, D_tof]
+        tof_feat = self.tof_attn(tof_feat)  # [B, D_tof]
+        
+        thm_data = thm_data.permute(0, 1, 3, 2)  # [B, 5, 1, L]
+        thm_feat = self.thm_branch.forward_feature(thm_data)
+        thm_feat = thm_feat.mean(dim=3)  # [B, 5, D_thm]
+        thm_feat = self.thm_attn(thm_feat)  # [B, D_thm]
+        
+        combined = torch.cat([
+            imu_feat.unsqueeze(1), 
+            tof_feat.unsqueeze(1), 
+            thm_feat.unsqueeze(1)
+        ], dim=1)  # [B, 3, D_imu+D_tof+D_thm]
+        
+        attn_output, _ = self.cross_attn(
+            query=combined,
+            key=combined,
+            value=combined
+        )
+        attn_output = attn_output.mean(dim=1)  # [B, D_imu+D_tof+D_thm]
+        x1 = self.classifier1(attn_output)
+        x2 = self.classifier2(attn_output)
+        
+        return x1, x2
