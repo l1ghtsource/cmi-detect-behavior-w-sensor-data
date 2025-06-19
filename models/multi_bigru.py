@@ -1,14 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from configs.config import cfg
 
 # https://www.kaggle.com/competitions/tlvmc-parkinsons-freezing-gait-prediction/discussion/416410
-
-# hidden_size: 128;
-# n_layers: 3;
-# bidir: True.
-
-# TODO: test it
 
 class ResidualBiGRU(nn.Module):
     def __init__(self, hidden_size, n_layers=1, bidir=True):
@@ -51,14 +46,12 @@ class ResidualBiGRU(nn.Module):
     
 class MultiResidualBiGRU_SingleSensor_v1(nn.Module):
     def __init__(self, 
-                 seq_len,
+                 seq_len=cfg.seq_len,
                  n_imu_vars=7,
                  hidden_size=128, 
                  n_layers=3, 
                  bidir=True,
-                 target_classes=18,
-                 aux_target_classes=4,
-                 aux2_target_classes=2,
+                 num_classes=18,
                  dropout=0.1):
         super(MultiResidualBiGRU_SingleSensor_v1, self).__init__()
 
@@ -91,24 +84,17 @@ class MultiResidualBiGRU_SingleSensor_v1(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, target_classes)
+            nn.Linear(hidden_size // 2, num_classes)
         )
         
-        self.aux_target_head = nn.Sequential(
+        self.target_head2 = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, aux_target_classes)
-        )
-        
-        self.aux2_target_head = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, aux2_target_classes)
+            nn.Linear(hidden_size // 2, 2)
         )
 
-    def forward(self, imu_data, h=None):
+    def forward(self, imu_data, pad_mask=None):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
@@ -141,11 +127,10 @@ class MultiResidualBiGRU_SingleSensor_v1(nn.Module):
         pooled_features = torch.cat([avg_pooled, max_pooled], dim=1)  # (B, hidden_size*2)
         features = self.feature_fusion(pooled_features)  # (B, hidden_size)
         
-        target_logits = self.target_head(features)        # (B, 18)
-        aux_target_logits = self.aux_target_head(features)    # (B, 4)
-        aux2_target_logits = self.aux2_target_head(features)  # (B, 2)
+        target_logits = self.target_head(features)
+        target_logits2 = self.target_head2(features)
         
-        return target_logits, aux_target_logits, aux2_target_logits
+        return target_logits, target_logits2
     
 class SensorProcessor(nn.Module):
     def __init__(self, input_size, hidden_size, n_layers=2, bidir=True, dropout=0.1):
@@ -263,13 +248,11 @@ class CrossSensorFusion(nn.Module):
 
 class MultiSensor_MultiResidualBiGRU_v1(nn.Module):
     def __init__(self, 
-                 seq_len,
+                 seq_len=cfg.seq_len,
                  hidden_size=128, 
                  n_layers=2, 
                  bidir=True,
-                 target_classes=18,
-                 aux_target_classes=4,
-                 aux2_target_classes=2,
+                 num_classes=18,
                  dropout=0.1):
         super(MultiSensor_MultiResidualBiGRU_v1, self).__init__()
 
@@ -323,24 +306,16 @@ class MultiSensor_MultiResidualBiGRU_v1(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, target_classes)
+            nn.Linear(hidden_size // 2, num_classes)
         )
-        
-        self.aux_target_head = nn.Sequential(
+        self.target_head2 = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, aux_target_classes)
-        )
-        
-        self.aux2_target_head = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, aux2_target_classes)
+            nn.Linear(hidden_size // 2, 2)
         )
 
-    def forward(self, imu_data, thm_data, tof_data):
+    def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         """
         Args:
             imu_data: [B, 1, L, 7] - IMU sensor data
@@ -396,7 +371,6 @@ class MultiSensor_MultiResidualBiGRU_v1(nn.Module):
         fused_features = self.feature_fusion(all_features)  # (B, hidden_size)
         
         target_logits = self.target_head(fused_features)
-        aux_target_logits = self.aux_target_head(fused_features)
-        aux2_target_logits = self.aux2_target_head(fused_features)
+        target_logits2 = self.target_head2(fused_features)
         
-        return target_logits, aux_target_logits, aux2_target_logits
+        return target_logits, target_logits2
