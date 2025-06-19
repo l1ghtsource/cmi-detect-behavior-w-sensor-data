@@ -32,6 +32,7 @@ from utils.data_preproc import (
     fast_seq_agg, 
     le, 
     convert_to_world_coordinates, 
+    remove_gravity_from_acc,
     apply_symmetry
 )
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
@@ -60,6 +61,9 @@ train = train.merge(train_demographics, how='left', on='subject')
 
 if cfg.use_world_coords:
     train = convert_to_world_coordinates(train)
+
+if cfg.only_remove_g: # can't be used w/ use_world_coords
+    train = remove_gravity_from_acc(train)
 
 if cfg.use_hand_symm and cfg.imu_only:
     right_handed_mask = train['handedness'] == 1

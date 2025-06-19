@@ -22,6 +22,34 @@ def convert_to_world_coordinates(df):
 
     return df_world
 
+# idea from https://www.kaggle.com/code/rktqwe/lb-0-77-linear-accel-tf-bilstm-gru-attention/notebook (remove only g from acc)
+def remove_gravity_from_acc(df):
+    acc_values = df[['acc_x', 'acc_y', 'acc_z']].values
+    quat_values = df[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
+
+    df_copy = df.copy()
+
+    num_samples = acc_values.shape[0]
+    linear_accel = np.zeros_like(acc_values)
+    
+    gravity_world = np.array([0, 0, 9.81])
+
+    for i in range(num_samples):
+        if np.all(np.isnan(quat_values[i])) or np.all(np.isclose(quat_values[i], 0)):
+            linear_accel[i, :] = acc_values[i, :] 
+            continue
+        try:
+            rotation = R.from_quat(quat_values[i])
+            gravity_sensor_frame = rotation.apply(gravity_world, inverse=True)
+            linear_accel[i, :] = acc_values[i, :] - gravity_sensor_frame
+        except ValueError as e:
+             print(f'{e=}')
+             linear_accel[i, :] = acc_values[i, :]
+
+    df_copy[['acc_x', 'acc_y', 'acc_z']] = linear_accel
+             
+    return df_copy
+
 # https://stackoverflow.com/questions/32438252/efficient-way-to-apply-mirror-effect-on-quaternion-rotation
 def apply_symmetry(data): # TODO: fix it??
     transformed = data.copy()

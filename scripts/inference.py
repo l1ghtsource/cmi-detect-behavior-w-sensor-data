@@ -23,6 +23,7 @@ from utils.data_preproc import (
     le, 
     convert_to_world_coordinates, 
     apply_symmetry,
+    remove_gravity_from_acc,
     get_rev_mapping
 )
 from utils.tta import apply_tta
@@ -35,6 +36,9 @@ train = pd.read_csv(cfg.train_path)
 
 if cfg.use_world_coords:
     train = convert_to_world_coordinates(train)
+
+if cfg.only_remove_g: # can't be used w/ use_world_coords
+    train = remove_gravity_from_acc(train)
 
 if cfg.use_hand_symm:
     right_handed_mask = train['handedness'] == 1
@@ -75,6 +79,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
     if cfg.use_world_coords:
         test_df = convert_to_world_coordinates(test_df)
+
+    if cfg.only_remove_g: # can't be used w/ use_world_coords
+        test_df = remove_gravity_from_acc(test_df)
 
     if cfg.use_hand_symm and use_imu_only:
         right_handed_mask = test_df['handedness'] == 1
