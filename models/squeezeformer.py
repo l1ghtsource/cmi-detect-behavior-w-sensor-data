@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# TODO: test it
-
 class GLU(nn.Module):
     def __init__(self):
         super().__init__()
@@ -65,19 +63,24 @@ class TransformerEncoder(nn.Module):
         return x
 
 class ECA(nn.Module):
-    def __init__(self, kernel_size=5):
+    def __init__(self, kernel_size: int = 5):
         super().__init__()
-        self.kernel_size = kernel_size
-        self.conv = nn.Conv1d(1, 1, kernel_size=kernel_size, 
-                             stride=1, padding=kernel_size//2, bias=False)
-    
-    def forward(self, inputs):
-        # inputs shape: (batch, seq_len, channels)
-        nn_out = F.adaptive_avg_pool1d(inputs.transpose(1, 2), 1)  # (batch, channels, 1)
-        nn_out = nn_out.transpose(1, 2)  # (batch, 1, channels)
-        nn_out = self.conv(nn_out.transpose(1, 2))  # (batch, 1, channels)
-        nn_out = torch.sigmoid(nn_out.transpose(1, 2))  # (batch, 1, channels)
-        return inputs * nn_out
+        self.conv = nn.Conv1d(
+            in_channels=1,
+            out_channels=1,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+            bias=False,
+        )
+
+    def forward(self, x):
+        # x: (B, T, C)
+        y = F.adaptive_avg_pool1d(x.transpose(1, 2), 1)  # (B, C, 1)
+        y = y.transpose(1, 2)  # (B, 1, C)
+        y = self.conv(y)  # (B, 1, C)
+        y = torch.sigmoid(y)  # (B, 1, C)
+        return x * y  # broadcasting
 
 class HeadDense(nn.Module):
     def __init__(self, head_dim):
@@ -154,7 +157,7 @@ class Conv1DBlockSqueezeformer(nn.Module):
         return x
 
 class Squeezeformer_SingleSensor_v1(nn.Module):
-    def __init__(self, dim=384, head_dim=2048):
+    def __init__(self, dim=256, head_dim=512, num_classes=18):
         super().__init__()
         
         self.input_dense = nn.Linear(7, dim, bias=False)
@@ -193,7 +196,7 @@ class Squeezeformer_SingleSensor_v1(nn.Module):
         self.head_dense = HeadDense(head_dim)
         self.head_mlp = GLUMlp(head_dim * 2, head_dim)
         
-        self.label1_head = nn.Linear(head_dim, 18)  # 18 
+        self.label1_head = nn.Linear(head_dim, num_classes) # 18 
         self.label2_head = nn.Linear(head_dim, 2)   # 2 
         
         self.dropout = nn.Dropout(0.1)
@@ -345,9 +348,9 @@ class CrossModalAttention(nn.Module):
     def forward(self, imu_features, tof_features, thm_features, pad_mask=None):
         """
         Args:
-            imu_features: [B, L, embed_dim] - агрегированные IMU признаки
-            tof_features: [B, L, embed_dim] - агрегированные ToF признаки  
-            thm_features: [B, L, embed_dim] - агрегированные THM признаки
+            imu_features: [B, L, embed_dim]
+            tof_features: [B, L, embed_dim]
+            thm_features: [B, L, embed_dim]
             pad_mask: [B, L] - padding mask (1=valid, 0=padding)
         """
         B, L, embed_dim = imu_features.shape
@@ -402,7 +405,7 @@ class CrossModalAttention(nn.Module):
         return fused_features
 
 class Squeezeformer_MultiSensor_v1(nn.Module):
-    def __init__(self, embed_dim=384, num_heads=8, head_dim=2048):
+    def __init__(self, embed_dim=256, num_heads=48, head_dim=512, num_classes=18):
         super().__init__()
         self.embed_dim = embed_dim
         
@@ -432,8 +435,8 @@ class Squeezeformer_MultiSensor_v1(nn.Module):
         self.head_mlp = GLUMlp(head_dim * 2, head_dim)
         self.dropout = nn.Dropout(0.1)
         
-        self.label1_head = nn.Linear(head_dim, 18)  # 18 классов
-        self.label2_head = nn.Linear(head_dim, 2)   # 2 класса
+        self.label1_head = nn.Linear(head_dim, num_classes)  # 18
+        self.label2_head = nn.Linear(head_dim, 2)   # 2
         
     def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         """

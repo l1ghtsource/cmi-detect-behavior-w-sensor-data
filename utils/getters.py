@@ -38,6 +38,9 @@ from models.multi_bigru import (
 from models.se_unet import (
     SE_Unet_SingleSensor_v1, MultiSensor_SE_Unet_v1
 )
+from models.squeezeformer import (
+    Squeezeformer_MultiSensor_v1, Squeezeformer_SingleSensor_v1
+)
 from configs.config import cfg
 
 def get_optimizer(params):
@@ -179,6 +182,19 @@ def get_ts_model_and_params(imu_only):
             return model_cls, params
         else: # multi sensor model
             model_cls = MultiSensor_SE_Unet_v1
+            params = {
+                'num_classes': cfg.main_num_classes,
+            }
+            return model_cls, params
+    elif cfg.selected_model == 'squeezeformer':
+        if imu_only: # only imu sensor
+            model_cls = Squeezeformer_SingleSensor_v1
+            params = {
+                'num_classes': cfg.main_num_classes,
+            }
+            return model_cls, params
+        else: # multi sensor model
+            model_cls = Squeezeformer_MultiSensor_v1
             params = {
                 'num_classes': cfg.main_num_classes,
             }

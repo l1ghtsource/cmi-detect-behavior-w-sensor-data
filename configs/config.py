@@ -44,7 +44,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
-cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'moderntcn', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'baseline']
+cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'moderntcn', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'baseline']
 
 # --- target things ---
 cfg.main_weight = 1.0
