@@ -51,11 +51,11 @@ def remove_gravity_from_acc(df):
     return df_copy
 
 # https://stackoverflow.com/questions/32438252/efficient-way-to-apply-mirror-effect-on-quaternion-rotation
-def apply_symmetry(data): # TODO: fix it??
+def apply_symmetry_y(data): # TODO: test it?? its can be wrong..
     transformed = data.copy()
+    transformed['acc_x'] = -transformed['acc_x']
     transformed['acc_z'] = -transformed['acc_z']
-    transformed['acc_y'] = -transformed['acc_y']
-    transformed['rot_y'] = -transformed['rot_y']
+    transformed['rot_x'] = -transformed['rot_x']
     transformed['rot_z'] = -transformed['rot_z']
     return transformed
 
