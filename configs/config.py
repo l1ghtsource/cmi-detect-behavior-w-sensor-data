@@ -13,7 +13,7 @@ cfg.test_demographics_path = '/kaggle/input/cmi-detect-behavior-with-sensor-data
 # --- cols and data info ---
 cfg.demo_bin_cols = ['adult_child', 'sex', 'handedness']
 cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
-cfg.imu_cols = ['acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z']
+cfg.imu_cols = ['acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z'] + ['acc_mag', 'acc_mag_jerk', 'rot_angle', 'rot_angle_vel']
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
 cfg.num_tof_sensors = 5
@@ -68,7 +68,7 @@ cfg.use_pad_mask = True # mask padding values
 cfg.use_world_coords = False # sensor coord -> world coord + remove g
 cfg.only_remove_g = False # only remove g in sensor coord (can't be used w/ use_world_coords)
 cfg.use_hand_symm = False # mirror left -> right
-cfg.apply_fe = False # some feature engineering
+cfg.apply_fe = True # some feature engineering
 cfg.imu_only = True # use only imu sensor
 
 # --- im ds cfg ---
@@ -95,7 +95,7 @@ cfg.num_m_layers = 1
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
-cfg.imu_vars = 7
+cfg.imu_vars = 11 #7
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
 cfg.dwhar_ver = '1'
