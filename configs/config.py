@@ -68,7 +68,7 @@ cfg.use_pad_mask = True # mask padding values
 cfg.use_world_coords = False # sensor coord -> world coord + remove g
 cfg.only_remove_g = False # only remove g in sensor coord (can't be used w/ use_world_coords)
 cfg.use_hand_symm = False # mirror left -> right
-cfg.apply_fe = True # some feature engineering
+cfg.apply_fe = False # some feature engineering
 cfg.imu_only = True # use only imu sensor
 
 # --- im ds cfg ---
@@ -95,7 +95,7 @@ cfg.num_m_layers = 1
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
-cfg.imu_vars = 11 #7
+cfg.imu_vars = 7 if not cfg.apply_fe else 11
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
 cfg.dwhar_ver = '1'
@@ -115,7 +115,7 @@ cfg.im_pretrained = True
 # --- train params ---
 cfg.bs = 128
 cfg.n_epochs = 50
-cfg.patience = 7
+cfg.patience = 10
 cfg.lr = 1e-3
 cfg.weight_decay = 3e-4
 cfg.num_warmup_steps_ratio = 0.03
@@ -126,14 +126,14 @@ cfg.use_sam = False
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 2
-cfg.jitter_proba = 0.6
+cfg.max_augmentations_per_sample = 3
+cfg.jitter_proba = 0.8
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
-cfg.magnitude_warp_proba = 0.4
+cfg.magnitude_warp_proba = 0.5
 cfg.magnitude_warp_sensors = ['imu', 'thm']
-cfg.time_warp_proba = 0.3
+cfg.time_warp_proba = 0 #0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
-cfg.scaling_proba = 0.1
+cfg.scaling_proba = 0.3
 cfg.scaling_sensors = ['imu', 'thm']
 
 # --- mixup ---
@@ -147,152 +147,32 @@ cfg.ema_decay = 0.999
 
 # --- inference params ---
 cfg.weights_pathes = {
-    'imu_only': {
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_resnet_7branches': {
-            'weight': 895.7572691,
-            'prefix': 'timemil_ver1_resnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': False,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'resnet',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_resnet_1branch': {
-            'weight': 91.88802719,
-            'prefix': 'timemil_ver1_resnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': True,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'resnet',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_effnet_7branches': {
-            'weight': 406.48007812,
-            'prefix': 'timemil_ver1_efficientnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': False,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'efficientnet',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_effnet_1branch': {
-            'weight': 245.86609582,
-            'prefix': 'timemil_ver1_efficientnet_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': True,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'efficientnet',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_inception_7branches': {
-            'weight': 94.62517775,
-            'prefix': 'timemil_ver1_inception_time_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': False,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'inception_time',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_inception_1branch': {
-            'weight': 745.34457709,
-            'prefix': 'timemil_ver1_inception_time_imu_only_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': True,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'inception_time',
-            }
-        },
-    },
-    'imu+tof+thm': {
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_resnet_multi_3branches': {
-            'weight': 427.88332544,
-            'prefix': 'timemil_ver1_resnet_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': False,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'resnet',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_effnet_multi_3branches': {
-            'weight': 527.91607931,
-            'prefix': 'timemil_ver1_effnet_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': False,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'efficientnet',
-            }
-        },
-        '/kaggle/input/timemil-soupchik-imu-16-06/timemil_inception_multi_3branches': {
-            'weight': 693.26744422,
-            'prefix': 'timemil_ver1_inception_time_seq_len120_use_pad_mask_lookahead_adamw_ls0.05_',
-            'timemil_singlebranch': False,
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-                'mDim': 256, 
-                'max_seq_len': 120,
-                'dropout': 0.0,
-                'timemil_extractor': 'inception_time',
-            }
-        },
-    }
+    'imu_only': {},
+    'imu+tof+thm': {}
 }
 cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..
 cfg.override_non_target = False
-# cfg.tta_strategies = {}
 cfg.tta_strategies = {
-    'jitter': {
-        'sigma': 0.03,
-        'sensors': ['imu', 'thm', 'tof']
-    },
-    'scaling': {
-        'sigma': 0.03,
-        'sensors': ['imu', 'thm']
-    },
-    'magnitude_warp': {
-        'sigma': 0.07, 
-        'knot': 3,
-        'sensors': ['imu', 'thm']
-    },
-    'time_warp': {
-        'sigma': 0.05, 
-        'knot': 3,
-        'sensors': ['imu', 'tof', 'thm']
-    },
+    # 'jitter': {
+    #     'sigma': 0.03,
+    #     'sensors': ['imu', 'thm', 'tof']
+    # },
+    # 'scaling': {
+    #     'sigma': 0.03,
+    #     'sensors': ['imu', 'thm']
+    # },
+    # 'magnitude_warp': {
+    #     'sigma': 0.07, 
+    #     'knot': 3,
+    #     'sensors': ['imu', 'thm']
+    # },
+    # 'time_warp': {
+    #     'sigma': 0.05, 
+    #     'knot': 3,
+    #     'sensors': ['imu', 'tof', 'thm']
+    # },
 }
 
 # --- logging ---
