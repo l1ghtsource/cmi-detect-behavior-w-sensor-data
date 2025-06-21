@@ -2,8 +2,10 @@ import random
 import numpy as np
 import pandas as pd
 import torch
+from scipy.spatial.transform import Rotation as R
 from torch.utils.data import Dataset
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
+from data.moda import moda_augmentation
 from utils.denoising import apply_denoising
 from configs.config import cfg
 
@@ -153,24 +155,140 @@ class TS_CMIDataset(Dataset):
     def _apply_augmentations(self, data, sensor_type):
         if not self.train:
             return data
-            
-        augmentations = []
-        if random.random() < cfg.jitter_proba and sensor_type in cfg.jitter_sensors:
-            augmentations.append(('jitter', lambda x: jitter(x, sigma=0.03)))
-        if random.random() < cfg.magnitude_warp_proba and sensor_type in cfg.magnitude_warp_sensors:
-            augmentations.append(('magnitude_warp', lambda x: magnitude_warp(x, sigma=0.15, knot=3)))
-        if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
-            augmentations.append(('time_warp', lambda x: time_warp(x, sigma=0.1, knot=3)))
-        if random.random() < cfg.scaling_proba and sensor_type in cfg.scaling_sensors:
-            augmentations.append(('scaling', lambda x: scaling(x, sigma=0.08)))
         
-        selected_augmentations = random.sample(augmentations, 
-                                            min(len(augmentations), cfg.max_augmentations_per_sample))
-        
-        for _, aug_func in selected_augmentations:
-            data = aug_func(data)
+        if sensor_type == 'imu':
+            return self._apply_imu_augmentations(data)
+        else:
+            augmentations = []
+            if random.random() < cfg.jitter_proba and sensor_type in cfg.jitter_sensors:
+                augmentations.append(('jitter', lambda x: jitter(x, sigma=0.03)))
+            if random.random() < cfg.magnitude_warp_proba and sensor_type in cfg.magnitude_warp_sensors:
+                augmentations.append(('magnitude_warp', lambda x: magnitude_warp(x, sigma=0.15, knot=3)))
+            if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
+                augmentations.append(('time_warp', lambda x: time_warp(x, sigma=0.1, knot=3)))
+            if random.random() < cfg.scaling_proba and sensor_type in cfg.scaling_sensors:
+                augmentations.append(('scaling', lambda x: scaling(x, sigma=0.08)))
             
-        return data
+            selected_augmentations = random.sample(augmentations, 
+                                                min(len(augmentations), cfg.max_augmentations_per_sample))
+            
+            for _, aug_func in selected_augmentations:
+                data = aug_func(data)
+                
+            return data
+
+    def _apply_imu_augmentations(self, data):
+        available_augmentations = []
+
+        if random.random() < cfg.moda_proba and 'imu' in cfg.moda_sensors:
+            available_augmentations.append('moda')
+        
+        if random.random() < cfg.rotation_proba and 'imu' in cfg.rotation_sensors:
+            available_augmentations.append('rotation')
+        
+        if random.random() < cfg.time_warp_proba and 'imu' in cfg.time_warp_sensors:
+            available_augmentations.append('time_warp')
+        
+        acc_only_augs = []
+        if random.random() < cfg.jitter_proba and 'imu' in cfg.jitter_sensors:
+            acc_only_augs.append('jitter')
+        if random.random() < cfg.magnitude_warp_proba and 'imu' in cfg.magnitude_warp_sensors:
+            acc_only_augs.append('magnitude_warp')
+        if random.random() < cfg.scaling_proba and 'imu' in cfg.scaling_sensors:
+            acc_only_augs.append('scaling')
+        
+        max_acc_augs = cfg.max_augmentations_per_sample - len(available_augmentations)
+        if max_acc_augs > 0 and acc_only_augs:
+            selected_acc_augs = random.sample(acc_only_augs, 
+                                            min(len(acc_only_augs), max_acc_augs))
+            available_augmentations.extend(selected_acc_augs)
+        
+        augmented_data = data.copy()
+        
+        for aug in available_augmentations:
+            if aug == 'moda':
+                try:
+                    augmented_data = moda_augmentation(augmented_data)
+                except: # missed quat (its ok)
+                    pass
+            if aug == 'rotation':
+                augmented_data = self._apply_rotation_augmentation(augmented_data)
+            elif aug == 'time_warp':
+                augmented_data = time_warp(augmented_data, sigma=0.1, knot=3)
+            elif aug == 'jitter':
+                augmented_data[:, :3] = jitter(augmented_data[:, :3], sigma=0.03)
+            elif aug == 'magnitude_warp':
+                augmented_data[:, :3] = magnitude_warp(augmented_data[:, :3], sigma=0.15, knot=3)
+            elif aug == 'scaling':
+                augmented_data[:, :3] = scaling(augmented_data[:, :3], sigma=0.08)
+        
+        return augmented_data
+    
+    def _apply_rotation_augmentation(self, data):
+        acc_data = data[:, :3]  # (seq_len, 3)
+        quat_data = data[:, 3:]  # (seq_len, 4): [w, x, y, z]
+
+        if hasattr(cfg, 'rotation_max_angle') and cfg.rotation_max_angle:
+            try:
+                acc_rotated, quat_rotated = self._simple_z_rotation(acc_data, quat_data)
+            except: # missed quat (its ok)
+                acc_rotated, quat_rotated = acc_data, quat_data
+        else:
+            try:
+                acc_rotated, quat_rotated = self._full_rotation_augmentation(acc_data, quat_data)
+            except: # missed quat (its ok)
+                acc_rotated, quat_rotated = acc_data, quat_data
+
+        augmented_data = np.concatenate([acc_rotated, quat_rotated], axis=1)
+
+        return augmented_data
+
+    def _full_rotation_augmentation(self, acc_data, quat_data):
+        random_rotation = R.random()
+        acc_rotated = random_rotation.apply(acc_data)
+
+        quat_scipy_format = quat_data[:, [1,2,3,0]]  # [rot_x, rot_y, rot_z, rot_w]
+        original_rotations = R.from_quat(quat_scipy_format)
+        rotated_rotations = random_rotation * original_rotations
+        quat_rotated_scipy = rotated_rotations.as_quat()
+
+        quat_rotated = np.column_stack([
+            quat_rotated_scipy[:, 3],  # w
+            quat_rotated_scipy[:, 0],  # x  
+            quat_rotated_scipy[:, 1],  # y
+            quat_rotated_scipy[:, 2]   # z
+        ])
+
+        return acc_rotated, quat_rotated
+
+    def _simple_z_rotation(self, acc_data, quat_data):
+        max_angle_deg = getattr(cfg, 'rotation_max_angle', 30)
+        angle = np.random.uniform(-max_angle_deg, max_angle_deg) * np.pi / 180
+        
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        rotation_matrix = np.array([
+            [cos_a, -sin_a, 0],
+            [sin_a,  cos_a, 0], 
+            [0,      0,     1]
+        ])
+        
+        acc_rotated = acc_data @ rotation_matrix.T
+        
+        z_rotation = R.from_euler('z', angle)
+        
+        quat_scipy_format = quat_data[:, [1,2,3,0]]  
+        original_rotations = R.from_quat(quat_scipy_format)
+        rotated_rotations = z_rotation * original_rotations
+        quat_rotated_scipy = rotated_rotations.as_quat()
+        
+        quat_rotated = np.column_stack([
+            quat_rotated_scipy[:, 3],  # w
+            quat_rotated_scipy[:, 0],  # x  
+            quat_rotated_scipy[:, 1],  # y
+            quat_rotated_scipy[:, 2]   # z
+        ])
+        
+        return acc_rotated, quat_rotated
     
     def _denoise_sensor_data(self, data, pad_mask):
         if cfg.denoise_data == 'none':

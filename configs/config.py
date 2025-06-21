@@ -13,7 +13,7 @@ cfg.test_demographics_path = '/kaggle/input/cmi-detect-behavior-with-sensor-data
 # --- cols and data info ---
 cfg.demo_bin_cols = ['adult_child', 'sex', 'handedness']
 cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
-cfg.imu_cols = ['acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z'] + ['acc_mag', 'acc_mag_jerk', 'rot_angle', 'rot_angle_vel']
+cfg.imu_cols = ['acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z'] #+ ['acc_mag', 'acc_mag_jerk', 'rot_angle', 'rot_angle_vel']
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
 cfg.num_tof_sensors = 5
@@ -131,10 +131,15 @@ cfg.jitter_proba = 0.8
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
 cfg.magnitude_warp_proba = 0.5
 cfg.magnitude_warp_sensors = ['imu', 'thm']
-cfg.time_warp_proba = 0 #0.5
+cfg.time_warp_proba = 0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
 cfg.scaling_proba = 0.3
 cfg.scaling_sensors = ['imu', 'thm']
+cfg.rotation_proba = 0
+cfg.rotation_sensors = ['imu']
+cfg.rotation_max_angle = 30
+cfg.moda_proba = 0
+cfg.moda_sensors = ['imu']
 
 # --- mixup ---
 cfg.use_mixup = True
