@@ -83,9 +83,10 @@ def fe(df):
             )
 
     if cfg.fe_time_pos:
-        df['time_from_start'] = df.groupby('sequence_id').cumcount() / df.groupby('sequence_id')['sequence_id'].transform('count')
+        seq_len = df.groupby('sequence_id')['sequence_id'].transform('count')
+        df['time_from_start'] = df.groupby('sequence_id').cumcount() / seq_len
         df['time_to_end'] = 1 - df['time_from_start']
-        # df['sin_time_position'] = np.sin(df['time_from_start'] * seq_len * np.pi)
+        df['sin_time_position'] = np.sin(df['time_from_start'] * seq_len * np.pi)
     
     # window_sizes = [3, 5, 10]
     # aggfuncs = ['mean', 'std', 'max', 'min']

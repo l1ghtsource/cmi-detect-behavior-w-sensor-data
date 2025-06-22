@@ -17,7 +17,7 @@ cfg.imu_cols = [
     'acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z',
     # 'XY_acc', 'XZ_acc', 'YZ_acc',
     'acc_x_lag_diff', 'acc_x_lead_diff', 'acc_x_cumsum', 'acc_y_lag_diff', 'acc_y_lead_diff', 'acc_y_cumsum', 'acc_z_lag_diff', 'acc_z_lead_diff', 'acc_z_cumsum',
-    'time_from_start', 'time_to_end'
+    'time_from_start', 'time_to_end', 'sin_time_position'
 ]
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
