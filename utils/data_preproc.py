@@ -59,20 +59,6 @@ def apply_symmetry(data): # TODO: test it?? its can be wrong..
     transformed['rot_z'] = -transformed['rot_z']
     return transformed
 
-# def rolling_agg(dt: pd.DataFrame, step: int, aggfunc: str, cols: list, back: bool = False) -> pd.DataFrame:
-#     if back:
-#         rolling = dt[cols][::-1].rolling(step, min_periods=1)
-#         suffix = f"_back_rolling_{step}_{aggfunc}"
-#     else:
-#         rolling = dt[cols].rolling(step, min_periods=1)
-#         suffix = f"_rolling_{step}_{aggfunc}"
-
-#     if aggfunc.startswith("quantile"):
-#         quantile = int(aggfunc.split("_")[1]) / 100
-#         return rolling.quantile(quantile).add_suffix(suffix)
-#     else:
-#         return rolling.agg(aggfunc).add_suffix(suffix)
-
 def fe(df):
     if cfg.fe_mag_ang:
         df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
@@ -97,50 +83,28 @@ def fe(df):
             )
 
     if cfg.fe_time_pos:
-        seq_len = len(df)
-        df['time_from_start'] = np.arange(seq_len) / seq_len
-        df['time_to_end'] = 1 - np.arange(seq_len) / seq_len
+        df['time_from_start'] = df.groupby('sequence_id').cumcount() / df.groupby('sequence_id')['sequence_id'].transform('count')
+        df['time_to_end'] = 1 - df['time_from_start']
         # df['sin_time_position'] = np.sin(df['time_from_start'] * seq_len * np.pi)
     
-    # window_sizes = [3, 5, 10, 15]
-    # aggfuncs = ["mean", "std", "max", "min", "quantile_75", "quantile_25"]
+    # window_sizes = [3, 5, 10]
+    # aggfuncs = ['mean', 'std', 'max', 'min']
+    # cols = ['acc_x', 'acc_y', 'acc_z']
     
     # for window in window_sizes:
     #     for aggfunc in aggfuncs:
-    #         df = df.join(
-    #             rolling_agg(df, window, aggfunc, cfg.imu_cols)
-    #         )
+    #         result = df.groupby('sequence_id')[cols].rolling(
+    #             window, min_periods=1
+    #         ).agg(aggfunc).reset_index(level=0, drop=True)
+    #         for col in cols:
+    #             df[f'{col}_rolling_{window}_{aggfunc}'] = result[col]
+    #         for col in cols:
+    #             df[f'{col}_back_rolling_{window}_{aggfunc}'] = (
+    #                 df.groupby('sequence_id')[col]
+    #                 .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
+    #                 .reset_index(level=0, drop=True)
+    #             )
     
-    # for window in [3, 5, 10]:
-    #     for aggfunc in ["mean", "std", "max"]:
-    #         df = df.join(
-    #             rolling_agg(df, window, aggfunc, cfg.imu_cols, back=True)
-    #         )
-    
-    # for window in [3, 5, 10]:
-    #     for aggfunc in ["mean", "std", "max"]:
-    #         df = df.join(
-    #             rolling_agg(df, window, aggfunc, jerk_cols)
-    #         )
-    
-    # sign_change_cols = []
-    # for col in jerk_cols:
-    #     sign_change_col = f'{col}_sign_change'
-    #     sign_change = (
-    #         df[col].apply(np.sign)
-    #         .diff()
-    #         .apply(np.abs)
-    #         .divide(2)
-    #         .fillna(0)
-    #     )
-    #     df[sign_change_col] = sign_change
-    #     sign_change_cols.append(sign_change_col)
-    
-    # for window in [3, 5, 10]:
-    #     df = df.join(
-    #         rolling_agg(df, window, "sum", sign_change_cols)
-    #     )
-
     return df
 
 def fast_seq_agg(df):
