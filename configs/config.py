@@ -21,7 +21,7 @@ cfg.tof_vector_length = 64
 cfg.static_cols = [
     'sequence_id', 'sequence_type', 'gesture', 'orientation', 'subject',
     'adult_child', 'age', 'sex', 'handedness',
-    'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm'#, 'gesture_clpsd'
+    'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm', 'gesture_clpsd'
 ]
 
 # --- train/infer flags ---
@@ -67,6 +67,8 @@ cfg.use_world_coords = False # sensor coord -> world coord + remove g
 cfg.only_remove_g = False # only remove g in sensor coord (can't be used w/ use_world_coords)
 cfg.use_hand_symm = False # mirror left -> right
 cfg.apply_fe = False # some feature engineering
+cfg.fe_col_diff = False # x-y, x-z, y-z
+cfg.fe_time_pos = False # info about time pos in !orig! ts (before pad&trunc)
 cfg.imu_only = True # use only imu sensor
 
 # --- im ds cfg ---
@@ -155,7 +157,7 @@ cfg.weights_pathes = {
 }
 cfg.is_soft = True
 cfg.use_entmax = False
-cfg.entmax_alpha = 1.25 # 1.05 SMALL ALPHA IS A KEY FOR ENTMAX ??? who knows..
+cfg.entmax_alpha = 1.25
 cfg.override_non_target = False
 cfg.tta_strategies = {
     # 'jitter': {

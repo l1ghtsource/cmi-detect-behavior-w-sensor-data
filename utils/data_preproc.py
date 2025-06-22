@@ -79,10 +79,17 @@ def fe(df):
     df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
     df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
 
-    seq_len = len(df)
-    df['time_position'] = np.arange(seq_len) / seq_len
-    df['time_from_start'] = np.arange(seq_len)
-    df['time_to_end'] = seq_len - np.arange(seq_len)
+    if cfg.fe_col_diff:
+        df['X_Y'] = df['acc_x'] - df['acc_y']
+        df['X_Z'] = df['acc_x'] - df['acc_z']
+        df['Y_Z'] = df['acc_y'] - df['acc_z']
+
+    if cfg.fe_time_pos:
+        seq_len = len(df)
+        df['time_position'] = np.arange(seq_len) / seq_len
+        df['time_from_start'] = np.arange(seq_len)
+        df['time_to_end'] = seq_len - np.arange(seq_len)
+        df['sin_time_position'] = np.sin(df['time_position'] * np.pi)
 
     # for shift in [1, 2, 3, -1, -2]:
     #     if shift > 0:
