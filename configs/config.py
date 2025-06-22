@@ -54,7 +54,7 @@ cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'moderntcn', 'harm
 # --- target things ---
 cfg.main_weight = 1.0
 cfg.orientation_aux_weight = 0
-cfg.seq_type_aux_weight = 0.5
+cfg.seq_type_aux_weight = 0 # 0.5
 cfg.main_clpsd_weight = 0
 cfg.behavior_aux_weight = 0
 cfg.phase_aux_weight = 0
