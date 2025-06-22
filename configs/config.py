@@ -15,6 +15,7 @@ cfg.demo_bin_cols = ['adult_child', 'sex', 'handedness']
 cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
 cfg.imu_cols = [
     'acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z',
+    # 'acc_mag', 'rot_mag', 'rot_angle',
     # 'XY_acc', 'XZ_acc', 'YZ_acc',
     'acc_x_lag_diff', 'acc_x_lead_diff', 'acc_x_cumsum', 'acc_y_lag_diff', 'acc_y_lead_diff', 'acc_y_cumsum', 'acc_z_lag_diff', 'acc_z_lead_diff', 'acc_z_cumsum',
     'time_from_start', 'time_to_end', 'sin_time_position'
@@ -54,7 +55,7 @@ cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'moderntcn', 'harm
 # --- target things ---
 cfg.main_weight = 1.0
 cfg.orientation_aux_weight = 0
-cfg.seq_type_aux_weight = 0 # 0.5
+cfg.seq_type_aux_weight = 0.5
 cfg.main_clpsd_weight = 0
 cfg.behavior_aux_weight = 0
 cfg.phase_aux_weight = 0
