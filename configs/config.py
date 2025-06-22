@@ -18,7 +18,31 @@ cfg.imu_cols = [
     # 'acc_mag', 'rot_mag', 'rot_angle',
     # 'XY_acc', 'XZ_acc', 'YZ_acc',
     'acc_x_lag_diff', 'acc_x_lead_diff', 'acc_x_cumsum', 'acc_y_lag_diff', 'acc_y_lead_diff', 'acc_y_cumsum', 'acc_z_lag_diff', 'acc_z_lead_diff', 'acc_z_cumsum',
-    'time_from_start', 'time_to_end', 'sin_time_position'
+    'time_from_start', 'time_to_end', 'sin_time_position',
+    # 'acc_x_rolling_3_mean', 'acc_x_back_rolling_3_mean', 'acc_y_rolling_3_mean',
+    # 'acc_y_back_rolling_3_mean', 'acc_z_rolling_3_mean', 'acc_z_back_rolling_3_mean',
+    # 'acc_x_rolling_3_std', 'acc_x_back_rolling_3_std', 'acc_y_rolling_3_std',
+    # 'acc_y_back_rolling_3_std', 'acc_z_rolling_3_std', 'acc_z_back_rolling_3_std',
+    # 'acc_x_rolling_3_max', 'acc_x_back_rolling_3_max', 'acc_y_rolling_3_max',
+    # 'acc_y_back_rolling_3_max', 'acc_z_rolling_3_max', 'acc_z_back_rolling_3_max',
+    # 'acc_x_rolling_3_min', 'acc_x_back_rolling_3_min', 'acc_y_rolling_3_min',
+    # 'acc_y_back_rolling_3_min', 'acc_z_rolling_3_min', 'acc_z_back_rolling_3_min',
+    # 'acc_x_rolling_5_mean', 'acc_x_back_rolling_5_mean', 'acc_y_rolling_5_mean',
+    # 'acc_y_back_rolling_5_mean', 'acc_z_rolling_5_mean', 'acc_z_back_rolling_5_mean',
+    # 'acc_x_rolling_5_std', 'acc_x_back_rolling_5_std', 'acc_y_rolling_5_std',
+    # 'acc_y_back_rolling_5_std', 'acc_z_rolling_5_std', 'acc_z_back_rolling_5_std',
+    # 'acc_x_rolling_5_max', 'acc_x_back_rolling_5_max', 'acc_y_rolling_5_max',
+    # 'acc_y_back_rolling_5_max', 'acc_z_rolling_5_max', 'acc_z_back_rolling_5_max',
+    # 'acc_x_rolling_5_min', 'acc_x_back_rolling_5_min', 'acc_y_rolling_5_min',
+    # 'acc_y_back_rolling_5_min', 'acc_z_rolling_5_min', 'acc_z_back_rolling_5_min',
+    # 'acc_x_rolling_10_mean', 'acc_x_back_rolling_10_mean', 'acc_y_rolling_10_mean',
+    # 'acc_y_back_rolling_10_mean', 'acc_z_rolling_10_mean', 'acc_z_back_rolling_10_mean',
+    # 'acc_x_rolling_10_std', 'acc_x_back_rolling_10_std', 'acc_y_rolling_10_std',
+    # 'acc_y_back_rolling_10_std', 'acc_z_rolling_10_std', 'acc_z_back_rolling_10_std',
+    # 'acc_x_rolling_10_max', 'acc_x_back_rolling_10_max', 'acc_y_rolling_10_max',
+    # 'acc_y_back_rolling_10_max', 'acc_z_rolling_10_max', 'acc_z_back_rolling_10_max',
+    # 'acc_x_rolling_10_min', 'acc_x_back_rolling_10_min', 'acc_y_rolling_10_min',
+    # 'acc_y_back_rolling_10_min', 'acc_z_rolling_10_min', 'acc_z_back_rolling_10_min'
 ]
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
@@ -77,6 +101,7 @@ cfg.fe_mag_ang = False # magnitude and rot angle
 cfg.fe_col_diff = False # x-y, x-z, y-z
 cfg.lag_lead_cum = True # lag, lead, cumsum for sensor data
 cfg.fe_time_pos = True # info about time pos in !orig! ts (before pad&trunc)
+cfg.use_windows = False # some rolling stats 
 cfg.imu_only = True # use only imu sensor
 
 # --- im ds cfg ---

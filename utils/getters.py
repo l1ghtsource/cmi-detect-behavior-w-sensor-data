@@ -294,6 +294,9 @@ def get_prefix(imu_only):
 
     if cfg.lag_lead_cum:
         prefix_parts.append('lag_lead_cum')
+
+    if cfg.use_windows:
+        prefix_parts.append('use_windows')
     
     prefix_parts.append(cfg.optim_type)
 

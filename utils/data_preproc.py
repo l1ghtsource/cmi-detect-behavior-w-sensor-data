@@ -87,24 +87,24 @@ def fe(df):
         df['time_from_start'] = df.groupby('sequence_id').cumcount() / seq_len
         df['time_to_end'] = 1 - df['time_from_start']
         df['sin_time_position'] = np.sin(df['time_from_start'] * seq_len * np.pi)
-    
-    # window_sizes = [3, 5, 10]
-    # aggfuncs = ['mean', 'std', 'max', 'min']
-    # cols = ['acc_x', 'acc_y', 'acc_z']
-    
-    # for window in window_sizes:
-    #     for aggfunc in aggfuncs:
-    #         result = df.groupby('sequence_id')[cols].rolling(
-    #             window, min_periods=1
-    #         ).agg(aggfunc).reset_index(level=0, drop=True)
-    #         for col in cols:
-    #             df[f'{col}_rolling_{window}_{aggfunc}'] = result[col]
-    #         for col in cols:
-    #             df[f'{col}_back_rolling_{window}_{aggfunc}'] = (
-    #                 df.groupby('sequence_id')[col]
-    #                 .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
-    #                 .reset_index(level=0, drop=True)
-    #             )
+
+    if cfg.use_windows:
+        window_sizes = [3, 5, 10]
+        aggfuncs = ['mean', 'std', 'max', 'min']
+        cols = ['acc_x', 'acc_y', 'acc_z']
+        
+        for window in window_sizes:
+            for aggfunc in aggfuncs:
+                result = df.groupby('sequence_id')[cols].rolling(
+                    window, min_periods=1
+                ).agg(aggfunc).reset_index(level=0, drop=True)
+                for col in cols:
+                    df[f'{col}_rolling_{window}_{aggfunc}'] = result[col]
+                    df[f'{col}_back_rolling_{window}_{aggfunc}'] = (
+                        df.groupby('sequence_id')[col]
+                        .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
+                        .reset_index(level=0, drop=True)
+                    )
     
     return df
 
