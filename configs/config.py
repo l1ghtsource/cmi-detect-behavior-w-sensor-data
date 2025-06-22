@@ -21,7 +21,7 @@ cfg.tof_vector_length = 64
 cfg.static_cols = [
     'sequence_id', 'sequence_type', 'gesture', 'orientation', 'subject',
     'adult_child', 'age', 'sex', 'handedness',
-    'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm'
+    'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm'#, 'gesture_clpsd'
 ]
 
 # --- train/infer flags ---
@@ -62,8 +62,6 @@ cfg.norm_ts = True # normalize time-series (z-score)
 cfg.denoise_data = 'none' # ['none', 'wavelet', 'savgol', 'butter']
 cfg.use_demo = False # use demography data
 cfg.use_stats_vectors = False # use some global seq stats
-cfg.use_diff = False # a_i+1 - a_i
-cfg.use_time_pos = False # abs position info
 cfg.use_pad_mask = True # mask padding values
 cfg.use_world_coords = False # sensor coord -> world coord + remove g
 cfg.only_remove_g = False # only remove g in sensor coord (can't be used w/ use_world_coords)

@@ -51,7 +51,7 @@ def remove_gravity_from_acc(df):
     return df_copy
 
 # https://stackoverflow.com/questions/32438252/efficient-way-to-apply-mirror-effect-on-quaternion-rotation
-def apply_symmetry_y(data): # TODO: test it?? its can be wrong..
+def apply_symmetry(data): # TODO: test it?? its can be wrong..
     transformed = data.copy()
     transformed['acc_x'] = -transformed['acc_x']
     transformed['acc_z'] = -transformed['acc_z']
@@ -195,24 +195,24 @@ def le(df):
     }
 
     mapper_main_collapsed = {
-        "Above ear - pull hair": 0,
-        "Cheek - pinch skin": 1,
-        "Eyebrow - pull hair": 2,
-        "Eyelash - pull hair": 3, 
-        "Forehead - pull hairline": 4,
-        "Forehead - scratch": 5,
-        "Neck - pinch skin": 6, 
-        "Neck - scratch": 7,
-        "Drink from bottle/cup": 8,
-        "Feel around in tray and pull out an object": 8,
-        "Glasses on/off": 8,
-        "Pinch knee/leg skin": 8, 
-        "Pull air toward your face": 8,
-        "Scratch knee/leg skin": 8,
-        "Text on phone": 8,
-        "Wave hello": 8,
-        "Write name in air": 8,
-        "Write name on leg": 8,
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3, 
+        4: 4,
+        5: 5,
+        6: 6, 
+        7: 7,
+        8: 8,
+        9: 8,
+        10: 8,
+        11: 8, 
+        12: 8,
+        13: 8,
+        14: 8,
+        15: 8,
+        16: 8,
+        17: 8,
     }
 
     mapper_orientation = {

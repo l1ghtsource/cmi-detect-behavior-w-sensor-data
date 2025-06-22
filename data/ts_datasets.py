@@ -21,6 +21,7 @@ class TS_CMIDataset(Dataset):
         orientation_aux_target=cfg.orientation_aux_target, 
         seq_type_aux_target=cfg.seq_type_aux_target, 
         behavior_aux_target=cfg.behavior_aux_target,
+        main_clpsd_target=cfg.main_clpsd_target,
         phase_aux_target=cfg.phase_aux_target,
         train=True, 
         norm_stats=None
@@ -29,6 +30,7 @@ class TS_CMIDataset(Dataset):
         self.seq_len = seq_len
         self.main_target = main_target
         self.orientation_aux_target = orientation_aux_target
+        self.main_clpsd_target = main_clpsd_target
         self.seq_type_aux_target = seq_type_aux_target
         self.behavior_aux_target = behavior_aux_target
         self.phase_aux_target = phase_aux_target
@@ -349,15 +351,6 @@ class TS_CMIDataset(Dataset):
         
         return np.array(demo_bin, dtype=np.float32), np.array(demo_cont, dtype=np.float32)
     
-    def _generate_time_positions(self):
-        positions = np.arange(1, self.seq_len + 1) / self.seq_len
-        return positions
-    
-    def _compute_sensor_diff(self, sensor_data):
-        diff_data = np.zeros_like(sensor_data)
-        diff_data[1:] = sensor_data[1:] - sensor_data[:-1]
-        return diff_data
-    
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         
@@ -372,18 +365,6 @@ class TS_CMIDataset(Dataset):
             'pad_mask': torch.tensor(pad_mask, dtype=torch.float32),
         }
 
-        if cfg.use_time_pos:
-            time_pos = self._generate_time_positions()
-            features['time_pos'] = torch.tensor(time_pos, dtype=torch.float32)
-
-        if cfg.use_diff:
-            imu_diff = self._compute_sensor_diff(imu_data)
-            thm_diff = self._compute_sensor_diff(thm_data) 
-            tof_diff = self._compute_sensor_diff(tof_data)
-            features['imu_diff'] = torch.tensor(imu_diff, dtype=torch.float32)
-            features['thm_diff'] = torch.tensor(thm_diff, dtype=torch.float32)
-            features['tof_diff'] = torch.tensor(tof_diff, dtype=torch.float32)
-
         if cfg.use_demo:
             demo_bin, demo_cont = self._prepare_demographic_data(row)
             features['demography_bin'] = torch.tensor(demo_bin, dtype=torch.float32)
@@ -397,6 +378,7 @@ class TS_CMIDataset(Dataset):
         
         if self.has_target:
             features['main_target'] = torch.tensor(row[self.main_target], dtype=torch.long)
+            features['main_clpsd_target'] = torch.tensor(row[self.main_clpsd_target], dtype=torch.long)
             features['orientation_aux_target'] = torch.tensor(row[self.orientation_aux_target], dtype=torch.long)
             features['seq_type_aux_target'] = torch.tensor(row[self.seq_type_aux_target], dtype=torch.long)
         
@@ -412,11 +394,12 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         orientation_aux_target=cfg.orientation_aux_target, 
         seq_type_aux_target=cfg.seq_type_aux_target, 
         behavior_aux_target=cfg.behavior_aux_target,
+        main_clpsd_target=cfg.main_clpsd_target,
         phase_aux_target=cfg.phase_aux_target,
         train=True, 
         norm_stats=None
     ):
-        super().__init__(dataframe, seq_len, main_target, orientation_aux_target, seq_type_aux_target, behavior_aux_target, phase_aux_target, train, norm_stats)
+        super().__init__(dataframe, seq_len, main_target, orientation_aux_target, seq_type_aux_target, behavior_aux_target, main_clpsd_target, phase_aux_target, train, norm_stats)
     
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -433,14 +416,6 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
             'pad_mask': pad_mask,
         }
 
-        if cfg.use_time_pos:
-            result['time_pos'] = features['time_pos'] # (seq_len,)
-
-        if cfg.use_diff:
-            result['imu_diff'] = features['imu_diff'].unsqueeze(0) # (1, seq_len, 7)
-            result['thm_diff'] = features['thm_diff'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
-            result['tof_diff'] = features['tof_diff'].view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64) 
-
         if cfg.use_demo:
             result['demography_bin'] = features['demography_bin'] # (3,)
             result['demography_cont'] = features['demography_cont'] # (4,)
@@ -451,6 +426,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         
         if self.has_target:
             result['main_target'] = features['main_target']
+            result['main_clpsd_target'] = features['main_clpsd_target']
             result['orientation_aux_target'] = features['orientation_aux_target']
             result['seq_type_aux_target'] = features['seq_type_aux_target']
             
@@ -466,11 +442,12 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         orientation_aux_target=cfg.orientation_aux_target, 
         seq_type_aux_target=cfg.seq_type_aux_target, 
         behavior_aux_target=cfg.behavior_aux_target,
+        main_clpsd_target=cfg.main_clpsd_target,
         phase_aux_target=cfg.phase_aux_target,
         train=True, 
         norm_stats=None
     ):
-        super().__init__(dataframe, seq_len, main_target, orientation_aux_target, seq_type_aux_target, behavior_aux_target, phase_aux_target, train, norm_stats)
+        super().__init__(dataframe, seq_len, main_target, orientation_aux_target, seq_type_aux_target, behavior_aux_target, main_clpsd_target, phase_aux_target, train, norm_stats)
 
     def __getitem__(self, idx):
         features = super().__getitem__(idx)
@@ -489,16 +466,6 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
             'pad_mask': mask_input,
         }
 
-        if cfg.use_time_pos:
-            result['time_pos'] = features['time_pos'] # (seq_len,)
-
-        if cfg.use_diff:
-            result['megasensor_diff'] = torch.cat([
-                features['imu_diff'], # (seq_len, 7)
-                features['thm_diff'], # (seq_len, 5) 
-                features['tof_diff']  # (seq_len, 320)
-            ], dim=1) # (seq_len, 332)
-
         if cfg.use_demo:
             result['demography_bin'] = features['demography_bin'] # (3)
             result['demography_cont'] = features['demography_cont'] # (4)
@@ -509,6 +476,7 @@ class TS_CMIDataset_DecomposeWHAR_Megasensor(TS_CMIDataset):
         
         if self.has_target:
             result['main_target'] = features['main_target']
+            result['main_clpsd_target'] = features['main_clpsd_target']
             result['orientation_aux_target'] = features['orientation_aux_target']
             result['seq_type_aux_target'] = features['seq_type_aux_target']
             
