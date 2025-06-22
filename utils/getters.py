@@ -231,12 +231,6 @@ def forward_model(model, batch, imu_only):
     if cfg.use_demo:
         inputs.append(batch['demography_bin'])
         inputs.append(batch['demography_cont'])
-    if cfg.use_time_pos:
-        inputs.append(batch['time_pos'])
-    if cfg.use_diff:
-        inputs.append(batch['imu_diff'])
-        inputs.append(batch['thm_diff'])
-        inputs.append(batch['tof_diff'])
     if cfg.use_pad_mask:
         inputs.append(batch['pad_mask'])
     return model(*inputs)
@@ -264,12 +258,6 @@ def get_prefix(imu_only):
 
     if cfg.use_stats_vectors:
         prefix_parts.append('use_stats_vectors')
-
-    if cfg.use_diff:
-        prefix_parts.append('use_diff')
-
-    if cfg.use_time_pos:
-        prefix_parts.append('use_time_pos')
 
     if cfg.use_pad_mask:
         prefix_parts.append('use_pad_mask')
