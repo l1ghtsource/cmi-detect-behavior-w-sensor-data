@@ -74,43 +74,33 @@ def apply_symmetry(data): # TODO: test it?? its can be wrong..
 #         return rolling.agg(aggfunc).add_suffix(suffix)
 
 def fe(df):
-    df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2) # TODO: add rot mag and rot mag jerk
-    df['acc_mag_jerk'] = df.groupby('sequence_id')['acc_mag'].diff().fillna(0)
-    df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
-    df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
+    if cfg.fe_mag_ang:
+        df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
+        df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
+        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
 
     if cfg.fe_col_diff:
-        df['X_Y'] = df['acc_x'] - df['acc_y']
-        df['X_Z'] = df['acc_x'] - df['acc_z']
-        df['Y_Z'] = df['acc_y'] - df['acc_z']
+        df['XY_acc'] = df['acc_x'] - df['acc_y']
+        df['XZ_acc'] = df['acc_x'] - df['acc_z']
+        df['YZ_acc'] = df['acc_y'] - df['acc_z']
+        # df['XY_rot'] = df['rot_x'] - df['rot_y']
+        # df['XZ_rot'] = df['rot_x'] - df['rot_z']
+        # df['YZ_rot'] = df['rot_y'] - df['rot_z']
+
+    if cfg.lag_lead_cum: # haha cum
+        for c in ['acc_x', 'acc_y', 'acc_z']:
+            df[f'{c}_lag_diff'] = df.groupby('sequence_id')[c].diff() # add 2, 3
+            df[f'{c}_lead_diff'] = df.groupby('sequence_id')[c].diff(-1) # add -2, -3
+            df[f'{c}_cumsum'] = df.groupby('sequence_id')[c].cumsum()
+            df[f'{c}_cumsum'] = df.groupby('sequence_id')[f'{c}_cumsum'].transform(
+                lambda x: (x - x.mean()) / (x.std() + 1e-6)
+            )
 
     if cfg.fe_time_pos:
         seq_len = len(df)
-        df['time_position'] = np.arange(seq_len) / seq_len
-        df['time_from_start'] = np.arange(seq_len)
-        df['time_to_end'] = seq_len - np.arange(seq_len)
-        df['sin_time_position'] = np.sin(df['time_position'] * np.pi)
-
-    # for shift in [1, 2, 3, -1, -2]:
-    #     if shift > 0:
-    #         suffix_name = f"_lag_{shift}"
-    #         fill_data = df[cfg.imu_cols].iloc[:shift]
-    #     else:
-    #         suffix_name = f"_lead_{abs(shift)}"
-    #         fill_data = df[cfg.imu_cols].iloc[shift:]
-        
-    #     df = df.join(
-    #         df[cfg.imu_cols]
-    #         .shift(shift)
-    #         .fillna(fill_data)
-    #         .add_suffix(suffix_name)
-    #     )
-    
-    # jerk_cols = []
-    # for col in cfg.imu_cols:
-    #     jerk_col = f'{col}_jerk'
-    #     df[jerk_col] = df[col].diff().fillna(0)
-    #     jerk_cols.append(jerk_col)
+        df['time_from_start'] = np.arange(seq_len) / seq_len
+        df['time_to_end'] = 1 - np.arange(seq_len) / seq_len
+        # df['sin_time_position'] = np.sin(df['time_from_start'] * seq_len * np.pi)
     
     # window_sizes = [3, 5, 10, 15]
     # aggfuncs = ["mean", "std", "max", "min", "quantile_75", "quantile_25"]

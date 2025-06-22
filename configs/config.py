@@ -13,7 +13,12 @@ cfg.test_demographics_path = '/kaggle/input/cmi-detect-behavior-with-sensor-data
 # --- cols and data info ---
 cfg.demo_bin_cols = ['adult_child', 'sex', 'handedness']
 cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
-cfg.imu_cols = ['acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z'] #+ ['acc_mag', 'acc_mag_jerk', 'rot_angle', 'rot_angle_vel']
+cfg.imu_cols = [
+    'acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z',
+    # 'XY_acc', 'XZ_acc', 'YZ_acc',
+    'acc_x_lag_diff', 'acc_x_lead_diff', 'acc_x_cumsum', 'acc_y_lag_diff', 'acc_y_lead_diff', 'acc_y_cumsum', 'acc_z_lag_diff', 'acc_z_lead_diff', 'acc_z_cumsum',
+    'time_from_start', 'time_to_end'
+]
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
 cfg.num_tof_sensors = 5
@@ -58,7 +63,7 @@ cfg.use_orientation_aux_target_weighting = False
 cfg.use_seq_type_aux_target_weighting = False
 
 # --- ts ds cfg ---
-cfg.norm_ts = True # normalize time-series (z-score)
+cfg.norm_ts = False # normalize time-series (z-score)
 cfg.denoise_data = 'none' # ['none', 'wavelet', 'savgol', 'butter']
 cfg.use_demo = False # use demography data
 cfg.use_stats_vectors = False # use some global seq stats
@@ -66,9 +71,11 @@ cfg.use_pad_mask = True # mask padding values
 cfg.use_world_coords = False # sensor coord -> world coord + remove g
 cfg.only_remove_g = False # only remove g in sensor coord (can't be used w/ use_world_coords)
 cfg.use_hand_symm = False # mirror left -> right
-cfg.apply_fe = False # some feature engineering
+cfg.apply_fe = True # some feature engineering
+cfg.fe_mag_ang = False # magnitude and rot angle
 cfg.fe_col_diff = False # x-y, x-z, y-z
-cfg.fe_time_pos = False # info about time pos in !orig! ts (before pad&trunc)
+cfg.lag_lead_cum = True # lag, lead, cumsum for sensor data
+cfg.fe_time_pos = True # info about time pos in !orig! ts (before pad&trunc)
 cfg.imu_only = True # use only imu sensor
 
 # --- im ds cfg ---
@@ -95,7 +102,7 @@ cfg.num_m_layers = 1
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
-cfg.imu_vars = 7 if not cfg.apply_fe else 11
+cfg.imu_vars = len(cfg.imu_cols)
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
 cfg.dwhar_ver = '1'
@@ -126,14 +133,14 @@ cfg.use_sam = False
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 3
-cfg.jitter_proba = 0.8
+cfg.max_augmentations_per_sample = 0 #3
+cfg.jitter_proba = 0 #0.8
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
-cfg.magnitude_warp_proba = 0.5
+cfg.magnitude_warp_proba = 0 #0.5
 cfg.magnitude_warp_sensors = ['imu', 'thm']
-cfg.time_warp_proba = 0.5
+cfg.time_warp_proba = 0 #0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
-cfg.scaling_proba = 0.3
+cfg.scaling_proba = 0 #0.3
 cfg.scaling_sensors = ['imu', 'thm']
 cfg.rotation_proba = 0
 cfg.rotation_sensors = ['imu']
@@ -142,8 +149,8 @@ cfg.moda_proba = 0
 cfg.moda_sensors = ['imu']
 
 # --- mixup ---
-cfg.use_mixup = True
-cfg.mixup_proba = 0.7
+cfg.use_mixup = False #True
+cfg.mixup_proba = 0 #0.7
 cfg.mixup_alpha = 0.4
 
 # --- ema ---

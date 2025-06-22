@@ -271,9 +271,6 @@ def get_prefix(imu_only):
     if cfg.use_hand_symm:
         prefix_parts.append('use_hand_symm')
 
-    if cfg.apply_fe:
-        prefix_parts.append('apply_fe')
-
     if cfg.use_lookahead:
         prefix_parts.append('lookahead')
 
@@ -285,6 +282,18 @@ def get_prefix(imu_only):
 
     if cfg.use_seq_type_aux_target_weighting:
         prefix_parts.append('seq_type_aux_target_weighting')
+
+    if cfg.fe_mag_ang:
+        prefix_parts.append('fe_mag_ang')
+    
+    if cfg.fe_col_diff:
+        prefix_parts.append('fe_col_diff')
+
+    if cfg.fe_time_pos:
+        prefix_parts.append('fe_time_pos')
+
+    if cfg.lag_lead_cum:
+        prefix_parts.append('lag_lead_cum')
     
     prefix_parts.append(cfg.optim_type)
 
