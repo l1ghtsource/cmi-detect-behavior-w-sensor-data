@@ -163,7 +163,7 @@ class TS_CMIDataset(Dataset):
         else:
             augmentations = []
             if random.random() < cfg.jitter_proba and sensor_type in cfg.jitter_sensors:
-                augmentations.append(('jitter', lambda x: jitter(x, sigma=0.03)))
+                augmentations.append(('jitter', lambda x: jitter(x, sigma=0.05)))
             if random.random() < cfg.magnitude_warp_proba and sensor_type in cfg.magnitude_warp_sensors:
                 augmentations.append(('magnitude_warp', lambda x: magnitude_warp(x, sigma=0.15, knot=3)))
             if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
@@ -206,7 +206,7 @@ class TS_CMIDataset(Dataset):
             available_augmentations.extend(selected_acc_augs)
         
         augmented_data = data.copy()
-        
+
         for aug in available_augmentations:
             if aug == 'moda':
                 try:
@@ -218,7 +218,7 @@ class TS_CMIDataset(Dataset):
             elif aug == 'time_warp':
                 augmented_data = time_warp(augmented_data, sigma=0.1, knot=3)
             elif aug == 'jitter':
-                augmented_data[:, :3] = jitter(augmented_data[:, :3], sigma=0.03)
+                augmented_data[:, :3] = jitter(augmented_data[:, :3], sigma=0.05)
             elif aug == 'magnitude_warp':
                 augmented_data[:, :3] = magnitude_warp(augmented_data[:, :3], sigma=0.15, knot=3)
             elif aug == 'scaling':
@@ -228,7 +228,8 @@ class TS_CMIDataset(Dataset):
     
     def _apply_rotation_augmentation(self, data):
         acc_data = data[:, :3]  # (seq_len, 3)
-        quat_data = data[:, 3:]  # (seq_len, 4): [w, x, y, z]
+        quat_data = data[:, 3:7]  # (seq_len, 4): [w, x, y, z]
+        remaining_data = data[:, 7:] if data.shape[1] > 7 else None
 
         if hasattr(cfg, 'rotation_max_angle') and cfg.rotation_max_angle:
             try:
@@ -241,7 +242,10 @@ class TS_CMIDataset(Dataset):
             except: # missed quat (its ok)
                 acc_rotated, quat_rotated = acc_data, quat_data
 
-        augmented_data = np.concatenate([acc_rotated, quat_rotated], axis=1)
+        if remaining_data is not None:
+            augmented_data = np.concatenate([acc_rotated, quat_rotated, remaining_data], axis=1)
+        else:
+            augmented_data = np.concatenate([acc_rotated, quat_rotated], axis=1)
 
         return augmented_data
 
@@ -312,7 +316,58 @@ class TS_CMIDataset(Dataset):
                 denoised_data[valid_indices, feature_idx] = denoised_valid
         
         return denoised_data
+    
+    def _generate_features(self, data, sequence_length):
+        acc_x, acc_y, acc_z = data[:, 0], data[:, 1], data[:, 2]
+        rot_x, rot_y, rot_z, rot_w = data[:, 3], data[:, 4], data[:, 5], data[:, 6]
+        
+        additional_features = []
+        
+        if cfg.fe_mag_ang:
+            acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
+            rot_mag = np.sqrt(rot_x ** 2 + rot_y ** 2 + rot_z ** 2)
+            rot_angle = 2 * np.arccos(np.clip(rot_w, -1, 1))
+            
+            additional_features.extend([acc_mag, rot_mag, rot_angle])
+        
+        if cfg.fe_col_diff:
+            XY_acc = acc_x - acc_y
+            XZ_acc = acc_x - acc_z
+            YZ_acc = acc_y - acc_z
+            
+            additional_features.extend([XY_acc, XZ_acc, YZ_acc])
 
+        if cfg.fe_col_prod:
+            prods = []
+            for acc_col in [acc_x, acc_y, acc_z]:
+                for rot_col in [rot_x, rot_y, rot_z]:
+                    prods.append(acc_col * rot_col)
+            
+            additional_features.extend(prods)
+        
+        if cfg.lag_lead_cum:
+            for i, acc_col in enumerate([acc_x, acc_y, acc_z]):
+                lag_diff = np.zeros_like(acc_col)
+                lag_diff[1:] = acc_col[1:] - acc_col[:-1]
+                
+                lead_diff = np.zeros_like(acc_col)
+                lead_diff[:-1] = acc_col[:-1] - acc_col[1:]
+                
+                cumsum = np.cumsum(acc_col)
+                cumsum_mean = np.mean(cumsum)
+                cumsum_std = np.std(cumsum) + 1e-6
+                cumsum_norm = (cumsum - cumsum_mean) / cumsum_std
+                
+                additional_features.extend([lag_diff, lead_diff, cumsum_norm])
+        
+        if additional_features:
+            additional_features = np.column_stack(additional_features)  # (seq_len, n_new_features)
+            enhanced_data = np.concatenate([data, additional_features], axis=1)
+        else:
+            enhanced_data = data
+        
+        return enhanced_data
+    
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
         data_stacked, padding_mask = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
 
@@ -321,9 +376,12 @@ class TS_CMIDataset(Dataset):
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
 
-        data_stacked = self._normalize_sensor_data(data_stacked, sensor_type) # (seq_len, len(sensor_cols))
+        if sensor_type == 'imu':
+            data_stacked = self._generate_features(data_stacked, self.seq_len)
 
-        return data_stacked, padding_mask 
+        data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
+
+        return data_stacked, padding_mask
     
     def _prepare_demographic_data(self, row):
         demo_bin = []

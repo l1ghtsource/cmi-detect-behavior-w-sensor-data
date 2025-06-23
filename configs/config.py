@@ -14,35 +14,9 @@ cfg.test_demographics_path = '/kaggle/input/cmi-detect-behavior-with-sensor-data
 cfg.demo_bin_cols = ['adult_child', 'sex', 'handedness']
 cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
 cfg.imu_cols = [
-    'acc_x', 'acc_y', 'acc_z', 'rot_w', 'rot_x', 'rot_y', 'rot_z',
-    # 'acc_mag', 'rot_mag', 'rot_angle',
-    # 'XY_acc', 'XZ_acc', 'YZ_acc',
-    'acc_x_lag_diff', 'acc_x_lead_diff', 'acc_x_cumsum', 'acc_y_lag_diff', 'acc_y_lead_diff', 'acc_y_cumsum', 'acc_z_lag_diff', 'acc_z_lead_diff', 'acc_z_cumsum',
-    'time_from_start', 'time_to_end', 'sin_time_position',
-    # 'acc_x_rolling_3_mean', 'acc_x_back_rolling_3_mean', 'acc_y_rolling_3_mean',
-    # 'acc_y_back_rolling_3_mean', 'acc_z_rolling_3_mean', 'acc_z_back_rolling_3_mean',
-    # 'acc_x_rolling_3_std', 'acc_x_back_rolling_3_std', 'acc_y_rolling_3_std',
-    # 'acc_y_back_rolling_3_std', 'acc_z_rolling_3_std', 'acc_z_back_rolling_3_std',
-    # 'acc_x_rolling_3_max', 'acc_x_back_rolling_3_max', 'acc_y_rolling_3_max',
-    # 'acc_y_back_rolling_3_max', 'acc_z_rolling_3_max', 'acc_z_back_rolling_3_max',
-    # 'acc_x_rolling_3_min', 'acc_x_back_rolling_3_min', 'acc_y_rolling_3_min',
-    # 'acc_y_back_rolling_3_min', 'acc_z_rolling_3_min', 'acc_z_back_rolling_3_min',
-    # 'acc_x_rolling_5_mean', 'acc_x_back_rolling_5_mean', 'acc_y_rolling_5_mean',
-    # 'acc_y_back_rolling_5_mean', 'acc_z_rolling_5_mean', 'acc_z_back_rolling_5_mean',
-    # 'acc_x_rolling_5_std', 'acc_x_back_rolling_5_std', 'acc_y_rolling_5_std',
-    # 'acc_y_back_rolling_5_std', 'acc_z_rolling_5_std', 'acc_z_back_rolling_5_std',
-    # 'acc_x_rolling_5_max', 'acc_x_back_rolling_5_max', 'acc_y_rolling_5_max',
-    # 'acc_y_back_rolling_5_max', 'acc_z_rolling_5_max', 'acc_z_back_rolling_5_max',
-    # 'acc_x_rolling_5_min', 'acc_x_back_rolling_5_min', 'acc_y_rolling_5_min',
-    # 'acc_y_back_rolling_5_min', 'acc_z_rolling_5_min', 'acc_z_back_rolling_5_min',
-    # 'acc_x_rolling_10_mean', 'acc_x_back_rolling_10_mean', 'acc_y_rolling_10_mean',
-    # 'acc_y_back_rolling_10_mean', 'acc_z_rolling_10_mean', 'acc_z_back_rolling_10_mean',
-    # 'acc_x_rolling_10_std', 'acc_x_back_rolling_10_std', 'acc_y_rolling_10_std',
-    # 'acc_y_back_rolling_10_std', 'acc_z_rolling_10_std', 'acc_z_back_rolling_10_std',
-    # 'acc_x_rolling_10_max', 'acc_x_back_rolling_10_max', 'acc_y_rolling_10_max',
-    # 'acc_y_back_rolling_10_max', 'acc_z_rolling_10_max', 'acc_z_back_rolling_10_max',
-    # 'acc_x_rolling_10_min', 'acc_x_back_rolling_10_min', 'acc_y_rolling_10_min',
-    # 'acc_y_back_rolling_10_min', 'acc_z_rolling_10_min', 'acc_z_back_rolling_10_min'
+    'acc_x', 'acc_y', 'acc_z',
+    'rot_w', 'rot_x', 'rot_y', 'rot_z',
+    'time_from_start', 'time_to_end', 'sin_time_position'
 ]
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
@@ -101,8 +75,19 @@ cfg.fe_mag_ang = False # magnitude and rot angle
 cfg.fe_col_diff = False # x-y, x-z, y-z
 cfg.lag_lead_cum = True # lag, lead, cumsum for sensor data
 cfg.fe_time_pos = True # info about time pos in !orig! ts (before pad&trunc)
+cfg.fe_col_prod = True # acc(x/y/z) * rot(x/y/z)
 cfg.use_windows = False # some rolling stats 
 cfg.imu_only = True # use only imu sensor
+cfg.imu_add = 0 # new features
+
+if cfg.fe_mag_ang:
+    cfg.imu_add += 3
+if cfg.fe_col_diff:
+    cfg.imu_add += 3
+if cfg.lag_lead_cum:
+    cfg.imu_add += 9
+if cfg.fe_col_prod:
+    cfg.imu_add += 9
 
 # --- im ds cfg ---
 cfg.im_size = 160
@@ -128,7 +113,7 @@ cfg.num_m_layers = 1
 cfg.imu_num_sensor = 1
 cfg.thm_num_sensor = 5
 cfg.tof_num_sensor = 5
-cfg.imu_vars = len(cfg.imu_cols)
+cfg.imu_vars = len(cfg.imu_cols) + cfg.imu_add
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
 cfg.dwhar_ver = '1'
@@ -159,8 +144,8 @@ cfg.use_sam = False
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 0 #3
-cfg.jitter_proba = 0 #0.8
+cfg.max_augmentations_per_sample = 2 #3
+cfg.jitter_proba = 0.5
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
 cfg.magnitude_warp_proba = 0 #0.5
 cfg.magnitude_warp_sensors = ['imu', 'thm']
@@ -168,7 +153,7 @@ cfg.time_warp_proba = 0 #0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
 cfg.scaling_proba = 0 #0.3
 cfg.scaling_sensors = ['imu', 'thm']
-cfg.rotation_proba = 0
+cfg.rotation_proba = 0.5
 cfg.rotation_sensors = ['imu']
 cfg.rotation_max_angle = 30
 cfg.moda_proba = 0

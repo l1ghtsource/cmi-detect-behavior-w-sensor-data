@@ -15,7 +15,7 @@ from scipy.interpolate import CubicSpline
 # feature_dim: for each observation, the dimension of deatures.
 #####################
 
-def jitter(x, sigma=0.03, prikol='gauss'):
+def jitter(x, sigma=0.05, prikol='gauss'):
     # https://arxiv.org/pdf/1706.00527.pdf
     if prikol == 'laplace':
         return x + np.random.laplace(loc=0., scale=sigma, size=x.shape) # laplace instead of gauss ??

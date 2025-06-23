@@ -297,6 +297,9 @@ def get_prefix(imu_only):
 
     if cfg.use_windows:
         prefix_parts.append('use_windows')
+
+    if cfg.fe_col_prod:
+        prefix_parts.append('fe_col_prod')
     
     prefix_parts.append(cfg.optim_type)
 

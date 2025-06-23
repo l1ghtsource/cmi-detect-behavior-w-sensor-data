@@ -60,27 +60,27 @@ def apply_symmetry(data): # TODO: test it?? its can be wrong..
     return transformed
 
 def fe(df):
-    if cfg.fe_mag_ang:
-        df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
-        df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
-        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
+    # if cfg.fe_mag_ang:
+    #     df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
+    #     df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
+    #     df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
 
-    if cfg.fe_col_diff:
-        df['XY_acc'] = df['acc_x'] - df['acc_y']
-        df['XZ_acc'] = df['acc_x'] - df['acc_z']
-        df['YZ_acc'] = df['acc_y'] - df['acc_z']
-        # df['XY_rot'] = df['rot_x'] - df['rot_y']
-        # df['XZ_rot'] = df['rot_x'] - df['rot_z']
-        # df['YZ_rot'] = df['rot_y'] - df['rot_z']
+    # if cfg.fe_col_diff:
+    #     df['XY_acc'] = df['acc_x'] - df['acc_y']
+    #     df['XZ_acc'] = df['acc_x'] - df['acc_z']
+    #     df['YZ_acc'] = df['acc_y'] - df['acc_z']
+    #     # df['XY_rot'] = df['rot_x'] - df['rot_y']
+    #     # df['XZ_rot'] = df['rot_x'] - df['rot_z']
+    #     # df['YZ_rot'] = df['rot_y'] - df['rot_z']
 
-    if cfg.lag_lead_cum: # haha cum
-        for c in ['acc_x', 'acc_y', 'acc_z']:
-            df[f'{c}_lag_diff'] = df.groupby('sequence_id')[c].diff() # add 2, 3
-            df[f'{c}_lead_diff'] = df.groupby('sequence_id')[c].diff(-1) # add -2, -3
-            df[f'{c}_cumsum'] = df.groupby('sequence_id')[c].cumsum()
-            df[f'{c}_cumsum'] = df.groupby('sequence_id')[f'{c}_cumsum'].transform(
-                lambda x: (x - x.mean()) / (x.std() + 1e-6)
-            )
+    # if cfg.lag_lead_cum: # haha cum
+    #     for c in ['acc_x', 'acc_y', 'acc_z']:
+    #         df[f'{c}_lag_diff'] = df.groupby('sequence_id')[c].diff() # add 2, 3
+    #         df[f'{c}_lead_diff'] = df.groupby('sequence_id')[c].diff(-1) # add -2, -3
+    #         df[f'{c}_cumsum'] = df.groupby('sequence_id')[c].cumsum()
+    #         df[f'{c}_cumsum'] = df.groupby('sequence_id')[f'{c}_cumsum'].transform(
+    #             lambda x: (x - x.mean()) / (x.std() + 1e-6)
+    #         )
 
     if cfg.fe_time_pos:
         seq_len = df.groupby('sequence_id')['sequence_id'].transform('count')
@@ -88,23 +88,23 @@ def fe(df):
         df['time_to_end'] = 1 - df['time_from_start']
         df['sin_time_position'] = np.sin(df['time_from_start'] * seq_len * np.pi)
 
-    if cfg.use_windows:
-        window_sizes = [3, 5, 10]
-        aggfuncs = ['mean', 'std', 'max', 'min']
-        cols = ['acc_x', 'acc_y', 'acc_z']
+    # if cfg.use_windows:
+    #     window_sizes = [3, 5, 10]
+    #     aggfuncs = ['mean', 'std', 'max', 'min']
+    #     cols = ['acc_x', 'acc_y', 'acc_z']
         
-        for window in window_sizes:
-            for aggfunc in aggfuncs:
-                result = df.groupby('sequence_id')[cols].rolling(
-                    window, min_periods=1
-                ).agg(aggfunc).reset_index(level=0, drop=True)
-                for col in cols:
-                    df[f'{col}_rolling_{window}_{aggfunc}'] = result[col]
-                    df[f'{col}_back_rolling_{window}_{aggfunc}'] = (
-                        df.groupby('sequence_id')[col]
-                        .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
-                        .reset_index(level=0, drop=True)
-                    )
+    #     for window in window_sizes:
+    #         for aggfunc in aggfuncs:
+    #             result = df.groupby('sequence_id')[cols].rolling(
+    #                 window, min_periods=1
+    #             ).agg(aggfunc).reset_index(level=0, drop=True)
+    #             for col in cols:
+    #                 df[f'{col}_rolling_{window}_{aggfunc}'] = result[col]
+    #                 df[f'{col}_back_rolling_{window}_{aggfunc}'] = (
+    #                     df.groupby('sequence_id')[col]
+    #                     .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
+    #                     .reset_index(level=0, drop=True)
+    #                 )
     
     return df
 
