@@ -8,12 +8,16 @@ def moda_augmentation(data, drift_params=None):
         drift_params = _generate_moda_params(data.shape[0])
     
     acc_data = data[:, :3]  # (seq_len, 3)
-    quat_data = data[:, 3:]  # (seq_len, 4): [w, x, y, z]
+    quat_data = data[:, 3:7]  # (seq_len, 4): [w, x, y, z]
+    remaining_data = data[:, 7:] if data.shape[1] > 7 else None
     
     acc_augmented = _apply_moda_to_acceleration(acc_data, drift_params)
     quat_augmented = _apply_moda_to_rotation(quat_data, drift_params)
     
-    augmented_data = np.concatenate([acc_augmented, quat_augmented], axis=1)
+    if remaining_data is not None:
+        augmented_data = np.concatenate([acc_augmented, quat_augmented, remaining_data], axis=1)
+    else:
+        augmented_data = np.concatenate([acc_augmented, quat_augmented], axis=1)
     
     return augmented_data
 
