@@ -122,7 +122,7 @@ cfg.dwhar_ver = '1'
 cfg.timemil_dim = 256
 cfg.timemil_dropout = 0.0
 cfg.timemil_ver = '1'
-cfg.timemil_extractor = 'letmecook' # ['inception_time', 'resnet', 'efficientnet', 'inception_resnet', 'letmecook']
+cfg.timemil_extractor = 'inception_time' # ['inception_time', 'resnet', 'efficientnet', 'inception_resnet', 'letmecook', 'inception_time2']
 cfg.timemil_singlebranch = True
 
 # --- im model ---

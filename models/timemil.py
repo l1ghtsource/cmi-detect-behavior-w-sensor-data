@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from modules.inceptiontime import InceptionTimeFeatureExtractor
+from modules.inceptiontime import InceptionTimeFeatureExtractor, EnhancedInceptionTimeFeatureExtractor # shit
 from modules.inceptiontime_replacers import (
     Resnet1DFeatureExtractor, 
     EfficientNet1DFeatureExtractor, 
@@ -207,6 +207,10 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             self.imu_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.tof_vars)  
             self.thm_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars) 
+        if timemil_extractor == 'inception_time2':
+            self.imu_feature_extractor = EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
+            self.tof_feature_extractor = EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.tof_vars)  
+            self.thm_feature_extractor = EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars) 
         elif timemil_extractor == 'resnet':
             self.imu_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.tof_vars)  
@@ -394,6 +398,8 @@ class TimeMIL_SingleSensor_Singlebranch_v1(nn.Module):
         # Define feature extractor for IMU sensor only
         if timemil_extractor == 'inception_time':
             self.imu_feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
+        if timemil_extractor == 'inception_time2':
+            self.imu_feature_extractor = EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars)
         elif timemil_extractor == 'resnet':
             self.imu_feature_extractor = Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
         elif timemil_extractor == 'efficientnet':
@@ -552,6 +558,8 @@ class TimeMIL_SingleSensor_Multibranch_v1(nn.Module):
         for i in range(self.num_imu_channels):
             if timemil_extractor == 'inception_time':
                 extractor = InceptionTimeFeatureExtractor(n_in_channels=1)  # Single channel
+            if timemil_extractor == 'inception_time2':
+                extractor = EnhancedInceptionTimeFeatureExtractor(n_in_channels=1)
             elif timemil_extractor == 'resnet':
                 extractor = Resnet1DFeatureExtractor(n_in_channels=1)
             elif timemil_extractor == 'efficientnet':
@@ -822,6 +830,19 @@ class MultiSensor_TimeMIL_v2(nn.Module):
             )
             self.thm_processor = SensorProcessor(
                 InceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars),
+                mDim, max_seq_len, cfg.thm_num_sensor
+            )
+        if timemil_extractor == 'inception_time2':
+            self.imu_processor = SensorProcessor(
+                EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars),
+                mDim, max_seq_len, cfg.imu_num_sensor
+            )
+            self.tof_processor = SensorProcessor(
+                EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.tof_vars),
+                mDim, max_seq_len, cfg.tof_num_sensor
+            )
+            self.thm_processor = SensorProcessor(
+                EnhancedInceptionTimeFeatureExtractor(n_in_channels=cfg.thm_vars),
                 mDim, max_seq_len, cfg.thm_num_sensor
             )
         elif timemil_extractor == 'resnet':
