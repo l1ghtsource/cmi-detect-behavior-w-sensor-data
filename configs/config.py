@@ -80,6 +80,7 @@ cfg.use_windows = False # some rolling stats
 cfg.fe_angles = False # add xy yz zx angles
 cfg.fe_euler = False # euler angles from quat
 cfg.fe_freq_wavelet = False # freq and wavelet features from acc
+cfg.fe_gravity = False # gravity vector [vx, vy, vz]
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 
@@ -97,6 +98,8 @@ if cfg.fe_euler:
     cfg.imu_add += 3
 if cfg.fe_freq_wavelet:
     cfg.imu_add += 21
+if cfg.fe_gravity:
+    cfg.imu_add += 6
 
 # --- im ds cfg ---
 cfg.im_size = 160

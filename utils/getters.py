@@ -309,6 +309,9 @@ def get_prefix(imu_only):
 
     if cfg.fe_freq_wavelet:
         prefix_parts.append('fe_freq_wavelet')
+
+    if cfg.fe_gravity:
+        prefix_parts.append('fe_gravity')
     
     prefix_parts.append(cfg.optim_type)
 
