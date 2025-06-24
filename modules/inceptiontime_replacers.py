@@ -4,6 +4,39 @@ from torch import nn
 from modules.conv_block import manual_pad
 from modules.inceptiontime import InceptionBlock
 
+class LetMeCookFeatureExtractor(nn.Module):
+    def __init__(
+        self,
+        n_in_channels: int,
+        out_channels: int = 32,
+        padding_mode: str = "replicate",
+    ):
+        super().__init__()
+        self.n_in_channels = n_in_channels
+        
+        self.instance_encoder = nn.Sequential(
+            MultiScaleConv1d(
+                n_in_channels, 
+                out_channels, 
+                kernel_sizes=[3, 5, 7]
+            ), # out_channels * 3
+            ResidualSEBlock(
+                out_channels * 3, 
+                out_channels * 4, 
+                kernel_size=3, 
+                pool_size=1,
+                dropout=0.2
+            ),  # out_channels * 4
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        min_len = 21
+        if x.shape[-1] >= min_len:
+            return self.instance_encoder(x)
+        else:
+            padded_x = manual_pad(x, min_len)
+            return self.instance_encoder(padded_x)
+
 class XDD_InceptionResnet_FeatureExtractor(nn.Module):
     def __init__(
         self,
@@ -727,3 +760,103 @@ class AdaptiveFeatureFusion(nn.Module):
         attended_features = x * attention_weights
         
         return self.final_conv(attended_features)
+    
+class MultiScaleConv1d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_sizes=[3, 5, 7], padding_mode="replicate"):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for ks in kernel_sizes:
+            self.convs.append(nn.Sequential(
+                nn.Conv1d(
+                    in_channels, 
+                    out_channels, 
+                    ks, 
+                    padding="same",
+                    padding_mode=padding_mode,
+                    bias=False
+                ),
+                nn.BatchNorm1d(out_channels),
+                nn.ReLU(inplace=True)
+            ))
+        
+    def forward(self, x):
+        outputs = [conv(x) for conv in self.convs]
+        return torch.cat(outputs, dim=1)
+
+class ResidualSEBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pool_size=2, dropout=0.3, padding_mode="replicate"):
+        super().__init__()
+        self.conv1 = nn.Conv1d(
+            in_channels, 
+            out_channels, 
+            kernel_size, 
+            padding="same",
+            padding_mode=padding_mode,
+            bias=False
+        )
+        self.bn1 = nn.BatchNorm1d(out_channels)
+        
+        self.conv2 = nn.Conv1d(
+            out_channels, 
+            out_channels, 
+            kernel_size, 
+            padding="same",
+            padding_mode=padding_mode,
+            bias=False
+        )
+        self.bn2 = nn.BatchNorm1d(out_channels)
+        
+        self.se = EnhancedSEBlock(out_channels, reduction=8)
+        
+        self.shortcut = nn.Sequential()
+        if in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv1d(
+                    in_channels, 
+                    out_channels, 
+                    1, 
+                    padding="same",
+                    padding_mode=padding_mode,
+                    bias=False
+                ),
+                nn.BatchNorm1d(out_channels)
+            )
+        
+        self.pool = nn.MaxPool1d(pool_size) if pool_size > 1 else nn.Identity()
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x):
+        shortcut = self.shortcut(x)
+        
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        
+        out = self.se(out)
+        
+        out += shortcut
+        out = F.relu(out)
+        
+        out = self.pool(out)
+        out = self.dropout(out)
+        
+        return out
+    
+class EnhancedSEBlock(nn.Module):
+    def __init__(self, channels, reduction=8):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.max_pool = nn.AdaptiveMaxPool1d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(channels * 2, channels // reduction, bias=False),
+            nn.SiLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        b, c, _ = x.size()
+        avg_y = self.avg_pool(x).view(b, c)
+        max_y = self.max_pool(x).view(b, c)
+        y = torch.cat([avg_y, max_y], dim=1)
+        y = self.excitation(y).view(b, c, 1)
+        return x * y.expand_as(x)

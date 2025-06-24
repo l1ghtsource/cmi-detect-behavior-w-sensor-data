@@ -122,7 +122,7 @@ cfg.dwhar_ver = '1'
 cfg.timemil_dim = 256
 cfg.timemil_dropout = 0.0
 cfg.timemil_ver = '1'
-cfg.timemil_extractor = 'inception_time' # ['inception_time', 'resnet', 'efficientnet', 'inception_resnet']
+cfg.timemil_extractor = 'letmecook' # ['inception_time', 'resnet', 'efficientnet', 'inception_resnet', 'letmecook']
 cfg.timemil_singlebranch = True
 
 # --- im model ---
@@ -147,9 +147,9 @@ cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', '
 cfg.max_augmentations_per_sample = 3
 cfg.jitter_proba = 0.5
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
-cfg.magnitude_warp_proba = 0 #0.5
+cfg.magnitude_warp_proba = 0 #0.3
 cfg.magnitude_warp_sensors = ['imu', 'thm']
-cfg.time_warp_proba = 0 #0.5
+cfg.time_warp_proba = 0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
 cfg.scaling_proba = 0 #0.3
 cfg.scaling_sensors = ['imu', 'thm']
