@@ -91,40 +91,40 @@ def time_warp(x, sigma=0.2, knot=4):
     output =  ret
     return np.squeeze(output, axis=0)
 
-# def window_slice(x, reduce_ratio=0.9):
-#     # https://halshs.archives-ouvertes.fr/halshs-01357973/document
+def window_slice(x, reduce_ratio=0.9):
+    # https://halshs.archives-ouvertes.fr/halshs-01357973/document
 
-#     x = np.expand_dims(x, axis=0)
-#     target_len = np.ceil(reduce_ratio*x.shape[1]).astype(int)
-#     if target_len >= x.shape[1]:
-#         return x
-#     starts = np.random.randint(low=0, high=x.shape[1]-target_len, size=(x.shape[0])).astype(int)
-#     ends = (target_len + starts).astype(int)
+    x = np.expand_dims(x, axis=0)
+    target_len = np.ceil(reduce_ratio*x.shape[1]).astype(int)
+    if target_len >= x.shape[1]:
+        return x
+    starts = np.random.randint(low=0, high=x.shape[1]-target_len, size=(x.shape[0])).astype(int)
+    ends = (target_len + starts).astype(int)
     
-#     ret = np.zeros_like(x)
-#     for i, pat in enumerate(x):
-#         for dim in range(x.shape[2]):
-#             ret[i,:,dim] = np.interp(np.linspace(0, target_len, num=x.shape[1]), np.arange(target_len), pat[starts[i]:ends[i],dim]).T
-#     output =  ret
-#     return np.squeeze(output, axis=0)
+    ret = np.zeros_like(x)
+    for i, pat in enumerate(x):
+        for dim in range(x.shape[2]):
+            ret[i,:,dim] = np.interp(np.linspace(0, target_len, num=x.shape[1]), np.arange(target_len), pat[starts[i]:ends[i],dim]).T
+    output =  ret
+    return np.squeeze(output, axis=0)
 
-# def window_warp(x, window_ratio=0.1, scales=[0.5, 2.]):
-#     # https://halshs.archives-ouvertes.fr/halshs-01357973/document 
-#     x = np.expand_dims(x, axis=0)
-#     warp_scales = np.random.choice(scales, x.shape[0])
-#     warp_size = np.ceil(window_ratio*x.shape[1]).astype(int)
-#     window_steps = np.arange(warp_size)
+def window_warp(x, window_ratio=0.1, scales=[0.5, 2.]):
+    # https://halshs.archives-ouvertes.fr/halshs-01357973/document 
+    x = np.expand_dims(x, axis=0)
+    warp_scales = np.random.choice(scales, x.shape[0])
+    warp_size = np.ceil(window_ratio*x.shape[1]).astype(int)
+    window_steps = np.arange(warp_size)
         
-#     window_starts = np.random.randint(low=1, high=x.shape[1]-warp_size-1, size=(x.shape[0])).astype(int)
-#     window_ends = (window_starts + warp_size).astype(int)
+    window_starts = np.random.randint(low=1, high=x.shape[1]-warp_size-1, size=(x.shape[0])).astype(int)
+    window_ends = (window_starts + warp_size).astype(int)
             
-#     ret = np.zeros_like(x)
-#     for i, pat in enumerate(x):
-#         for dim in range(x.shape[2]):
-#             start_seg = pat[:window_starts[i],dim]
-#             window_seg = np.interp(np.linspace(0, warp_size-1, num=int(warp_size*warp_scales[i])), window_steps, pat[window_starts[i]:window_ends[i],dim])
-#             end_seg = pat[window_ends[i]:,dim]
-#             warped = np.concatenate((start_seg, window_seg, end_seg))                
-#             ret[i,:,dim] = np.interp(np.arange(x.shape[1]), np.linspace(0, x.shape[1]-1., num=warped.size), warped).T
-#     output =  ret
-#     return np.squeeze(output, axis=0)
+    ret = np.zeros_like(x)
+    for i, pat in enumerate(x):
+        for dim in range(x.shape[2]):
+            start_seg = pat[:window_starts[i],dim]
+            window_seg = np.interp(np.linspace(0, warp_size-1, num=int(warp_size*warp_scales[i])), window_steps, pat[window_starts[i]:window_ends[i],dim])
+            end_seg = pat[window_ends[i]:,dim]
+            warped = np.concatenate((start_seg, window_seg, end_seg))                
+            ret[i,:,dim] = np.interp(np.arange(x.shape[1]), np.linspace(0, x.shape[1]-1., num=warped.size), warped).T
+    output =  ret
+    return np.squeeze(output, axis=0)
