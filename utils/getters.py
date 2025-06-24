@@ -300,6 +300,15 @@ def get_prefix(imu_only):
 
     if cfg.fe_col_prod:
         prefix_parts.append('fe_col_prod')
+
+    if cfg.fe_angles:
+        prefix_parts.append('fe_angles')
+
+    if cfg.fe_euler:
+        prefix_parts.append('fe_euler')
+
+    if cfg.fe_freq_wavelet:
+        prefix_parts.append('fe_freq_wavelet')
     
     prefix_parts.append(cfg.optim_type)
 
