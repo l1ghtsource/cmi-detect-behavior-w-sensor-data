@@ -75,19 +75,28 @@ cfg.fe_mag_ang = False # magnitude and rot angle
 cfg.fe_col_diff = False # x-y, x-z, y-z
 cfg.lag_lead_cum = True # lag, lead, cumsum for sensor data
 cfg.fe_time_pos = True # info about time pos in !orig! ts (before pad&trunc)
-cfg.fe_col_prod = True # acc(x/y/z) * rot(x/y/z)
+cfg.fe_col_prod = False # acc(x/y/z) * rot(x/y/z)
 cfg.use_windows = False # some rolling stats 
+cfg.fe_angles = False # add xy yz zx angles
+cfg.fe_euler = False # euler angles from quat
+cfg.fe_freq_wavelet = False # freq and wavelet features from acc
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 
 if cfg.fe_mag_ang:
-    cfg.imu_add += 3
+    cfg.imu_add += 4
 if cfg.fe_col_diff:
     cfg.imu_add += 3
 if cfg.lag_lead_cum:
     cfg.imu_add += 9
 if cfg.fe_col_prod:
     cfg.imu_add += 9
+if cfg.fe_angles:
+    cfg.imu_add += 4
+if cfg.fe_euler:
+    cfg.imu_add += 3
+if cfg.fe_freq_wavelet:
+    cfg.imu_add += 21
 
 # --- im ds cfg ---
 cfg.im_size = 160

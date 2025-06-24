@@ -2,6 +2,7 @@ import random
 import numpy as np
 import pandas as pd
 import torch
+import pywt
 from scipy.spatial.transform import Rotation as R
 from torch.utils.data import Dataset
 from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
@@ -327,8 +328,9 @@ class TS_CMIDataset(Dataset):
             acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
             rot_mag = np.sqrt(rot_x ** 2 + rot_y ** 2 + rot_z ** 2)
             rot_angle = 2 * np.arccos(np.clip(rot_w, -1, 1))
+            tilt = np.arccos(acc_z / acc_mag)
             
-            additional_features.extend([acc_mag, rot_mag, rot_angle])
+            additional_features.extend([acc_mag, rot_mag, rot_angle, tilt])
         
         if cfg.fe_col_diff:
             XY_acc = acc_x - acc_y
@@ -359,7 +361,44 @@ class TS_CMIDataset(Dataset):
                 cumsum_norm = (cumsum - cumsum_mean) / cumsum_std
                 
                 additional_features.extend([lag_diff, lead_diff, cumsum_norm])
-        
+
+        if cfg.fe_angles:
+            acc_angle_xy = np.arctan2(acc_y, acc_x)
+            acc_angle_xz = np.arctan2(acc_z, acc_x)
+            acc_angle_yz = np.arctan2(acc_z, acc_y)
+            acc_direction_change = np.abs(np.diff(acc_angle_xy, prepend=acc_angle_xy[0]))
+
+            additional_features.extend([acc_angle_xy, acc_angle_xz, acc_angle_yz, acc_direction_change])
+
+        # take it from https://oduerr.github.io/gesture/ypr_calculations.html
+        if cfg.fe_euler:
+            roll = np.arctan2(2 * (rot_w * rot_x + rot_y * rot_z), 1 - 2 * (rot_x ** 2 + rot_y ** 2))
+            pitch = np.arcsin(np.clip(2 * (rot_w * rot_y - rot_z * rot_x), -1, 1))
+            yaw = np.arctan2(2 * (rot_w * rot_z + rot_x * rot_y), 1 - 2 * (rot_y ** 2 + rot_z ** 2))
+
+            additional_features.extend([roll, pitch, yaw])
+
+        if cfg.fe_freq_wavelet:
+            freq_wavelet_features = []
+            
+            for signal in [acc_x, acc_y, acc_z]:
+                fft_coeffs = np.fft.rfft(signal)
+                fft_magnitude = np.abs(fft_coeffs)
+                freq_wavelet_features.extend(fft_magnitude[:3])
+            
+            for signal in [acc_x, acc_y, acc_z]:
+                coeffs = pywt.wavedec(signal, 'db1', level=2)
+                cA2, cD2, cD1 = coeffs
+                freq_wavelet_features.extend([
+                    np.mean(cA2), np.std(cA2),
+                    np.mean(cD2), np.std(cD2)
+                ])
+            
+            freq_wavelet_array = np.array(freq_wavelet_features)
+            freq_wavelet_repeated = np.tile(freq_wavelet_array, (sequence_length, 1))
+            
+            additional_features.extend([freq_wavelet_repeated[:, i] for i in range(freq_wavelet_repeated.shape[1])])
+
         if additional_features:
             additional_features = np.column_stack(additional_features)  # (seq_len, n_new_features)
             enhanced_data = np.concatenate([data, additional_features], axis=1)
