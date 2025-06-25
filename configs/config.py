@@ -156,14 +156,14 @@ cfg.use_sam = False
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 3
+cfg.max_augmentations_per_sample = 4
 cfg.jitter_proba = 0.5
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
-cfg.magnitude_warp_proba = 0 #0.3
+cfg.magnitude_warp_proba = 0.3
 cfg.magnitude_warp_sensors = ['imu', 'thm']
 cfg.time_warp_proba = 0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
-cfg.scaling_proba = 0 #0.3
+cfg.scaling_proba = 0.3
 cfg.scaling_sensors = ['imu', 'thm']
 cfg.rotation_proba = 0.5
 cfg.rotation_sensors = ['imu']
