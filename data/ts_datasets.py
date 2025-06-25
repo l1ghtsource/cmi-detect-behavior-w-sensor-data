@@ -404,10 +404,7 @@ class TS_CMIDataset(Dataset):
             gravity_y = 2 * (rot_w * rot_x + rot_y * rot_z)  
             gravity_z = rot_w ** 2 - rot_x ** 2 - rot_y ** 2 + rot_z ** 2
             
-            gravity_magnitude = np.sqrt(gravity_x ** 2 + gravity_y ** 2 + gravity_z ** 2)
-            tilt_angle = np.arccos(np.clip(gravity_z / gravity_magnitude, -1, 1))
             acc_vertical = acc_x * gravity_x + acc_y * gravity_y + acc_z * gravity_z
-            
             acc_horizontal_x = acc_x - acc_vertical * gravity_x
             acc_horizontal_y = acc_y - acc_vertical * gravity_y
             acc_horizontal_z = acc_z - acc_vertical * gravity_z
@@ -415,7 +412,6 @@ class TS_CMIDataset(Dataset):
             
             additional_features.extend([
                 gravity_x, gravity_y, gravity_z,
-                tilt_angle,
                 acc_vertical,
                 acc_horizontal_mag
             ])

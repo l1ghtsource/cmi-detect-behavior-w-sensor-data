@@ -99,7 +99,7 @@ if cfg.fe_euler:
 if cfg.fe_freq_wavelet:
     cfg.imu_add += 21
 if cfg.fe_gravity:
-    cfg.imu_add += 6
+    cfg.imu_add += 5
 
 # --- im ds cfg ---
 cfg.im_size = 160
