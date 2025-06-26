@@ -5,7 +5,16 @@ import torch
 import pywt
 from scipy.spatial.transform import Rotation as R
 from torch.utils.data import Dataset
-from data.ts_augmentations import jitter, magnitude_warp, time_warp, scaling
+from data.ts_augmentations import (
+    jitter, 
+    magnitude_warp,
+    time_warp, 
+    scaling,
+    window_slice,
+    window_warp,
+    permutation,
+    rotation
+)
 from data.moda import moda_augmentation
 from utils.denoising import apply_denoising
 from configs.config import cfg
@@ -159,6 +168,18 @@ class TS_CMIDataset(Dataset):
         if not self.train:
             return data
         
+        n_applied = 0
+        
+        if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
+            data = time_warp(data, sigma=0.1, knot=3)
+            n_applied += 1
+        if random.random() < cfg.window_slice_proba and sensor_type in cfg.window_slice_sensors:
+            data = window_slice(data, reduce_ratio=0.9)
+            n_applied += 1
+        if random.random() < cfg.permutation_proba and sensor_type in cfg.permutation_sensors:
+            data = permutation(data, max_segments=5, seg_mode="equal")
+            n_applied += 1
+        
         if sensor_type == 'imu':
             return self._apply_imu_augmentations(data)
         else:
@@ -167,13 +188,13 @@ class TS_CMIDataset(Dataset):
                 augmentations.append(('jitter', lambda x: jitter(x, sigma=0.05)))
             if random.random() < cfg.magnitude_warp_proba and sensor_type in cfg.magnitude_warp_sensors:
                 augmentations.append(('magnitude_warp', lambda x: magnitude_warp(x, sigma=0.15, knot=3)))
-            if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
-                augmentations.append(('time_warp', lambda x: time_warp(x, sigma=0.1, knot=3)))
             if random.random() < cfg.scaling_proba and sensor_type in cfg.scaling_sensors:
                 augmentations.append(('scaling', lambda x: scaling(x, sigma=0.08)))
+            if random.random() < cfg.window_warp_proba and sensor_type in cfg.window_warp_sensors:
+                augmentations.append(('window_warp', lambda x: window_warp(x, window_ratio=0.1, scales=[0.5, 2.])))
             
             selected_augmentations = random.sample(augmentations, 
-                                                min(len(augmentations), cfg.max_augmentations_per_sample))
+                                                min(len(augmentations), cfg.max_augmentations_per_sample - n_applied))
             
             for _, aug_func in selected_augmentations:
                 data = aug_func(data)
@@ -189,9 +210,6 @@ class TS_CMIDataset(Dataset):
         if random.random() < cfg.rotation_proba and 'imu' in cfg.rotation_sensors:
             available_augmentations.append('rotation')
         
-        if random.random() < cfg.time_warp_proba and 'imu' in cfg.time_warp_sensors:
-            available_augmentations.append('time_warp')
-        
         acc_only_augs = []
         if random.random() < cfg.jitter_proba and 'imu' in cfg.jitter_sensors:
             acc_only_augs.append('jitter')
@@ -199,6 +217,8 @@ class TS_CMIDataset(Dataset):
             acc_only_augs.append('magnitude_warp')
         if random.random() < cfg.scaling_proba and 'imu' in cfg.scaling_sensors:
             acc_only_augs.append('scaling')
+        if random.random() < cfg.window_warp_proba and 'imu' in cfg.window_warp_sensors:
+            acc_only_augs.append('window_warp')
         
         max_acc_augs = cfg.max_augmentations_per_sample - len(available_augmentations)
         if max_acc_augs > 0 and acc_only_augs:
@@ -216,14 +236,14 @@ class TS_CMIDataset(Dataset):
                     pass
             if aug == 'rotation':
                 augmented_data = self._apply_rotation_augmentation(augmented_data)
-            elif aug == 'time_warp':
-                augmented_data = time_warp(augmented_data, sigma=0.1, knot=3)
             elif aug == 'jitter':
                 augmented_data[:, :3] = jitter(augmented_data[:, :3], sigma=0.05)
             elif aug == 'magnitude_warp':
                 augmented_data[:, :3] = magnitude_warp(augmented_data[:, :3], sigma=0.15, knot=3)
             elif aug == 'scaling':
                 augmented_data[:, :3] = scaling(augmented_data[:, :3], sigma=0.08)
+            elif aug == 'window_warp':
+                augmented_data[:, :3] = window_warp(augmented_data[:, :3], window_ratio=0.1, scales=[0.5, 2.])
         
         return augmented_data
     
