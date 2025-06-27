@@ -6,7 +6,8 @@ from modules.inceptiontime_replacers import (
     Resnet1DFeatureExtractor, 
     EfficientNet1DFeatureExtractor, 
     XDD_InceptionResnet_FeatureExtractor, # broken
-    LetMeCookFeatureExtractor
+    LetMeCookFeatureExtractor,
+    DenseNet1DFeatureExtractor
 )
 from modules.nystrom_attention import NystromAttention
 from configs.config import cfg
@@ -227,6 +228,10 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             self.imu_feature_extractor = LetMeCookFeatureExtractor(n_in_channels=cfg.imu_vars)
             self.tof_feature_extractor = LetMeCookFeatureExtractor(n_in_channels=cfg.tof_vars)  
             self.thm_feature_extractor = LetMeCookFeatureExtractor(n_in_channels=cfg.thm_vars) 
+        elif timemil_extractor == 'densenet':
+            self.imu_feature_extractor = DenseNet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
+            self.tof_feature_extractor = DenseNet1DFeatureExtractor(n_in_channels=cfg.tof_vars)  
+            self.thm_feature_extractor = DenseNet1DFeatureExtractor(n_in_channels=cfg.thm_vars) 
 
         # 128 cuz InceptionModule do x4 for out_dim !!
         total_features = (cfg.imu_num_sensor + cfg.tof_num_sensor + cfg.thm_num_sensor) * 128  # 1408 total features
@@ -408,6 +413,8 @@ class TimeMIL_SingleSensor_Singlebranch_v1(nn.Module):
             self.imu_feature_extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=cfg.imu_vars)
         elif timemil_extractor == 'letmecook':
             self.imu_feature_extractor = LetMeCookFeatureExtractor(n_in_channels=cfg.imu_vars)
+        elif timemil_extractor == 'densenet':
+            self.imu_feature_extractor = DenseNet1DFeatureExtractor(n_in_channels=cfg.imu_vars)
 
         # 128 cuz InceptionModule do x4 for out_dim !!
         # Only 1 IMU sensor with cfg.imu_vars channels -> 128 features
@@ -568,7 +575,9 @@ class TimeMIL_SingleSensor_Multibranch_v1(nn.Module):
                 extractor = XDD_InceptionResnet_FeatureExtractor(n_in_channels=1)
             elif timemil_extractor == 'letmecook':
                 extractor = LetMeCookFeatureExtractor(n_in_channels=1)
-            
+            elif timemil_extractor == 'densenet':
+                extractor = DenseNet1DFeatureExtractor(n_in_channels=1)
+
             self.imu_channel_extractors.append(extractor)
 
         base_dim = mDim // self.num_imu_channels
@@ -895,6 +904,19 @@ class MultiSensor_TimeMIL_v2(nn.Module):
             )
             self.thm_processor = SensorProcessor(
                 LetMeCookFeatureExtractor(n_in_channels=cfg.thm_vars),
+                mDim, max_seq_len, cfg.thm_num_sensor
+            )
+        elif timemil_extractor == 'densenet':
+            self.imu_processor = SensorProcessor(
+                DenseNet1DFeatureExtractor(n_in_channels=cfg.imu_vars),
+                mDim, max_seq_len, cfg.imu_num_sensor
+            )
+            self.tof_processor = SensorProcessor(
+                DenseNet1DFeatureExtractor(n_in_channels=cfg.tof_vars),
+                mDim, max_seq_len, cfg.tof_num_sensor
+            )
+            self.thm_processor = SensorProcessor(
+                DenseNet1DFeatureExtractor(n_in_channels=cfg.thm_vars),
                 mDim, max_seq_len, cfg.thm_num_sensor
             )
 

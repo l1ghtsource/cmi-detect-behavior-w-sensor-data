@@ -4,6 +4,45 @@ from torch import nn
 from modules.conv_block import manual_pad
 from modules.inceptiontime import InceptionBlock
 
+class DenseNet1DFeatureExtractor(nn.Module):
+    def __init__(
+        self,
+        n_in_channels: int,
+        out_channels: int = 32,
+        padding_mode: str = "replicate",
+        growth_rate: int = 12,
+        num_layers: int = 6,
+    ):
+        super().__init__()
+        self.n_in_channels = n_in_channels
+        self.instance_encoder = nn.Sequential(
+            DenseBlock1D(
+                n_in_channels, 
+                growth_rate=growth_rate, 
+                num_layers=num_layers, 
+                padding_mode=padding_mode
+            ),
+            # Transition layer to match output channels
+            nn.Conv1d(
+                in_channels=n_in_channels + growth_rate * num_layers,
+                out_channels=out_channels * 4,
+                kernel_size=1,
+                padding="same",
+                padding_mode=padding_mode,
+            ),
+            nn.BatchNorm1d(out_channels * 4),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # PyTorch doesn't like replicate padding if the input tensor is too small, so pad manually to min length
+        min_len = 21
+        if x.shape[-1] >= min_len:
+            return self.instance_encoder(x)
+        else:
+            padded_x = manual_pad(x, min_len)
+            return self.instance_encoder(padded_x)
+
 class LetMeCookFeatureExtractor(nn.Module):
     def __init__(
         self,
@@ -860,3 +899,88 @@ class EnhancedSEBlock(nn.Module):
         y = torch.cat([avg_y, max_y], dim=1)
         y = self.excitation(y).view(b, c, 1)
         return x * y.expand_as(x)
+    
+class DenseBlock1D(nn.Module):
+    """1D DenseNet block where each layer receives inputs from all preceding layers."""
+    def __init__(
+        self,
+        in_channels: int,
+        growth_rate: int = 12,
+        num_layers: int = 6,
+        padding_mode: str = "replicate",
+    ):
+        super().__init__()
+        self.num_layers = num_layers
+        self.dense_layers = nn.ModuleList()
+        
+        for i in range(num_layers):
+            layer_in_channels = in_channels + i * growth_rate
+            self.dense_layers.append(
+                DenseLayer1D(
+                    in_channels=layer_in_channels,
+                    growth_rate=growth_rate,
+                    padding_mode=padding_mode,
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        features = [x]
+        
+        for layer in self.dense_layers:
+            # Concatenate all previous feature maps
+            layer_input = torch.cat(features, dim=1)
+            new_features = layer(layer_input)
+            features.append(new_features)
+        
+        # Return concatenation of all features
+        return torch.cat(features, dim=1)
+
+class DenseLayer1D(nn.Module):
+    """Individual layer in a DenseNet block."""
+    def __init__(
+        self,
+        in_channels: int,
+        growth_rate: int,
+        padding_mode: str = "replicate",
+        bottleneck: bool = True,
+    ):
+        super().__init__()
+        
+        if bottleneck:
+            # Bottleneck design: 1x1 conv -> 3x3 conv
+            self.layer = nn.Sequential(
+                nn.BatchNorm1d(in_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv1d(
+                    in_channels=in_channels,
+                    out_channels=4 * growth_rate,
+                    kernel_size=1,
+                    padding="same",
+                    padding_mode=padding_mode,
+                ),
+                nn.BatchNorm1d(4 * growth_rate),
+                nn.ReLU(inplace=True),
+                nn.Conv1d(
+                    in_channels=4 * growth_rate,
+                    out_channels=growth_rate,
+                    kernel_size=3,
+                    padding="same",
+                    padding_mode=padding_mode,
+                ),
+            )
+        else:
+            # Simple design: just 3x3 conv
+            self.layer = nn.Sequential(
+                nn.BatchNorm1d(in_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv1d(
+                    in_channels=in_channels,
+                    out_channels=growth_rate,
+                    kernel_size=3,
+                    padding="same",
+                    padding_mode=padding_mode,
+                ),
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.layer(x)
