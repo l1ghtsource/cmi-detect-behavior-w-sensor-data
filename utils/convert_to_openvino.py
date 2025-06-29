@@ -35,12 +35,12 @@ def create_example_input(sensor_type):
     if sensor_type == 'imu_only':
         return {
             'imu_data': torch.randn(1, cfg.seq_len, len(cfg.imu_cols)),
-            'attention_mask': torch.ones(cfg.seq_len,)
+            'pad_mask': torch.ones(cfg.seq_len,)
         }
     else:
         return {
             'imu_data': torch.randn(1, cfg.seq_len, len(cfg.imu_cols)),
             'tof_data': torch.randn(5, cfg.seq_len, len(cfg.tof_cols)),
             'thm_data': torch.randn(5, cfg.seq_len, len(cfg.thm_cols)),
-            'attention_mask': torch.ones(cfg.seq_len,)
+            'pad_mask': torch.ones(cfg.seq_len,)
         }

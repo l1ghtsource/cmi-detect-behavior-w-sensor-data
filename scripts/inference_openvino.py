@@ -3,6 +3,7 @@ import polars as pl
 import numpy as np
 from scipy.stats import mode
 
+import openvino as ov
 import torch
 from torch.utils.data import DataLoader
 from entmax import entmax_bisect
@@ -112,16 +113,12 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     all_model_predictions_aux2 = []
     model_weights = []
 
+    core = ov.Core()
+
     w_key = 'imu_only' if use_imu_only else 'imu+tof+thm'
     for weights_path, params in cfg.weights_pathes[w_key].items():
         print(f'{params=}')
         model_weights.append(params['weight'])
-        if use_imu_only:
-            TSModel = TimeMIL_SingleSensor_Singlebranch_v1 if params['timemil_singlebranch'] else TimeMIL_SingleSensor_Multibranch_v1
-        else:
-            TSModel = MultiSensor_TimeMIL_v1 if params['timemil_ver'] == '1' else MultiSensor_TimeMIL_v2
-
-        model = TSModel(**params['model_params']).to(device)
 
         current_model_fold_logits = []
         current_model_fold_logits_aux2 = []
@@ -130,46 +127,41 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
         for i in range(cfg.n_splits):
             print(f'model: {weights_path}, fold={i+1}')
-            model_path = f'{weights_path}/{params["prefix"]}model_fold{i}.pt'
-            model.load_state_dict(torch.load(model_path, map_location=device))
-
-            if cfg.use_ema:
-                model_path = f'{weights_path}/{params["prefix"]}model_ema_fold{i}.pt'
-                ema_state_dict = torch.load(model_path, map_location=device)
-                for name, param in model.named_parameters():
-                    if name in ema_state_dict:
-                        param.data = ema_state_dict[name]
-                
-            model.eval()
+            
+            ov_model_path = f'{weights_path}/{params["prefix"]}model_fold{i}_openvino.xml'
+            compiled_model = core.compile_model(ov_model_path, device_name='GPU')
             
             current_fold_batch_logits = []
             current_fold_batch_logits_aux2 = []
-            with torch.no_grad():
-                for batch in test_loader:
-                    for key in batch.keys():
-                        batch[key] = batch[key].to(device)
-                    if not use_tta:
-                        outputs, aux2_outputs = forward_model(model, batch, imu_only=use_imu_only)
-                        current_fold_batch_logits.append(outputs.cpu().numpy())
-                        current_fold_batch_logits_aux2.append(aux2_outputs.cpu().numpy())
-                    else:
-                        for key in batch.keys():
-                            batch[key] = batch[key].cpu()
-                        augmented_batches = apply_tta(batch, cfg.tta_strategies)
-                        for key in batch.keys():
-                            batch[key] = batch[key].to(device)
-                        batch_tta_logits = []
-                        batch_tta_logits_aux2 = []
-                        for aug_batch in augmented_batches:
-                            for key in aug_batch.keys():
-                                aug_batch[key] = aug_batch[key].to(device)
-                            outputs, aux2_outputs = forward_model(model, aug_batch, imu_only=use_imu_only)
-                            batch_tta_logits.append(outputs.cpu().numpy())
-                            batch_tta_logits_aux2.append(aux2_outputs.cpu().numpy())
-                        avg_tta_logits = np.mean(batch_tta_logits, axis=0)
-                        avg_tta_logits_aux2 = np.mean(batch_tta_logits_aux2, axis=0)
-                        current_fold_batch_logits.append(avg_tta_logits)
-                        current_fold_batch_logits_aux2.append(avg_tta_logits_aux2)
+            
+            for batch in test_loader:
+                inputs = prepare_openvino_inputs(batch, use_imu_only)
+                
+                if not use_tta:
+                    outputs = compiled_model(inputs)
+                    main_output = outputs[compiled_model.output(0)]
+                    aux2_output = outputs[compiled_model.output(1)]
+                    
+                    current_fold_batch_logits.append(main_output)
+                    current_fold_batch_logits_aux2.append(aux2_output)
+                else:
+                    augmented_batches = apply_tta(batch, cfg.tta_strategies)
+                    batch_tta_logits = []
+                    batch_tta_logits_aux2 = []
+                    
+                    for aug_batch in augmented_batches:
+                        aug_inputs = prepare_openvino_inputs(aug_batch, use_imu_only)
+                        outputs = compiled_model(aug_inputs)
+                        main_output = outputs[compiled_model.output(0)]
+                        aux2_output = outputs[compiled_model.output(1)]
+                        
+                        batch_tta_logits.append(main_output)
+                        batch_tta_logits_aux2.append(aux2_output)
+                    
+                    avg_tta_logits = np.mean(batch_tta_logits, axis=0)
+                    avg_tta_logits_aux2 = np.mean(batch_tta_logits_aux2, axis=0)
+                    current_fold_batch_logits.append(avg_tta_logits)
+                    current_fold_batch_logits_aux2.append(avg_tta_logits_aux2)
 
             concatenated_fold_logits = np.concatenate(current_fold_batch_logits, axis=0)
             concatenated_fold_logits_aux2 = np.concatenate(current_fold_batch_logits_aux2, axis=0)
@@ -179,12 +171,12 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
             
             if not cfg.is_soft:
                 if cfg.use_entmax:
-                    logits_tensor = torch.tensor(concatenated_fold_logits, device=device)
+                    logits_tensor = torch.tensor(concatenated_fold_logits)
                     entmax_probs = entmax_bisect(logits_tensor, alpha=cfg.entmax_alpha, dim=1)
-                    predicted_indices_for_fold = torch.argmax(entmax_probs, dim=1).cpu().numpy()
-                    logits_tensor_aux2 = torch.tensor(concatenated_fold_logits_aux2, device=device)
+                    predicted_indices_for_fold = torch.argmax(entmax_probs, dim=1).numpy()
+                    logits_tensor_aux2 = torch.tensor(concatenated_fold_logits_aux2)
                     entmax_probs_aux2 = entmax_bisect(logits_tensor_aux2, alpha=cfg.entmax_alpha, dim=1)
-                    predicted_indices_for_fold_aux2 = torch.argmax(entmax_probs_aux2, dim=1).cpu().numpy()
+                    predicted_indices_for_fold_aux2 = torch.argmax(entmax_probs_aux2, dim=1).numpy()
                 else:
                     predicted_indices_for_fold = np.argmax(concatenated_fold_logits, axis=1)
                     predicted_indices_for_fold_aux2 = np.argmax(concatenated_fold_logits_aux2, axis=1)
@@ -215,14 +207,14 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         
         final_averaged_logits = np.sum(all_model_averaged_logits * model_weights[:, np.newaxis, np.newaxis], axis=0)
         final_averaged_logits_aux2 = np.sum(all_model_averaged_logits_aux2 * model_weights[:, np.newaxis, np.newaxis], axis=0)
-
+        
         if cfg.use_entmax:
-            final_logits_tensor = torch.tensor(final_averaged_logits, device=device)
+            final_logits_tensor = torch.tensor(final_averaged_logits)
             entmax_probs = entmax_bisect(final_logits_tensor, alpha=cfg.entmax_alpha, dim=1)
-            majority_vote_indices = torch.argmax(entmax_probs, dim=1).cpu().numpy()
-            final_logits_tensor_aux2 = torch.tensor(final_averaged_logits_aux2, device=device)
+            majority_vote_indices = torch.argmax(entmax_probs, dim=1).numpy()
+            final_logits_tensor_aux2 = torch.tensor(final_averaged_logits_aux2)
             entmax_probs_aux2 = entmax_bisect(final_logits_tensor_aux2, alpha=cfg.entmax_alpha, dim=1)
-            majority_vote_indices_aux2 = torch.argmax(entmax_probs_aux2, dim=1).cpu().numpy()
+            majority_vote_indices_aux2 = torch.argmax(entmax_probs_aux2, dim=1).numpy()
         else:
             majority_vote_indices = np.argmax(final_averaged_logits, axis=1)
             majority_vote_indices_aux2 = np.argmax(final_averaged_logits_aux2, axis=1)
@@ -244,3 +236,17 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         final_labels = [reverse_mapping[class_idx] for class_idx in majority_vote_indices]
 
     return final_labels[0]
+
+def prepare_openvino_inputs(batch, use_imu_only):
+    inputs = {}
+    
+    if use_imu_only:
+        inputs['imu_data'] = batch['imu_data'].numpy()
+        inputs['pad_mask'] = batch['pad_mask'].numpy()
+    else:
+        inputs['imu_data'] = batch['imu_data'].numpy()
+        inputs['tof_data'] = batch['tof_data'].numpy()
+        inputs['thm_data'] = batch['thm_data'].numpy()
+        inputs['pad_mask'] = batch['pad_mask'].numpy()
+    
+    return inputs
