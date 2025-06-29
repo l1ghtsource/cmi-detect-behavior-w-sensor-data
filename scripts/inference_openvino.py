@@ -32,8 +32,6 @@ from utils.tta import apply_tta
 
 # TODO: multigpu inference
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 train = pd.read_csv(cfg.train_path)
 
 if cfg.use_world_coords:
@@ -129,7 +127,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
             print(f'model: {weights_path}, fold={i+1}')
             
             ov_model_path = f'{weights_path}/{params["prefix"]}model_fold{i}_openvino.xml'
-            compiled_model = core.compile_model(ov_model_path, device_name='GPU')
+            compiled_model = core.compile_model(ov_model_path, device_name='GPU.0')
             
             current_fold_batch_logits = []
             current_fold_batch_logits_aux2 = []
