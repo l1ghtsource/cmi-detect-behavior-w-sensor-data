@@ -12,7 +12,11 @@ from sklearn.utils.class_weight import compute_class_weight
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from transformers import get_cosine_schedule_with_warmup
+from transformers import (
+    get_cosine_schedule_with_warmup,
+    get_cosine_with_hard_restarts_schedule_with_warmup,
+    get_linear_schedule_with_warmup
+)
 
 import wandb
 
@@ -324,11 +328,18 @@ def run_training_with_stratified_group_kfold():
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
         current_step = 0
 
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=num_warmup_steps,
-            num_training_steps=num_training_steps
-        )
+        scheduler_params = {
+            'optimizer': optimizer,
+            'num_warmup_steps': num_warmup_steps,
+            'num_training_steps': num_training_steps
+        }
+
+        if cfg.scheduler == 'cosine':
+            scheduler = get_cosine_schedule_with_warmup(**scheduler_params)
+        elif cfg.scheduler == 'cosine_cycle':
+            scheduler = get_cosine_schedule_with_warmup(**scheduler_params, num_cycles=4)
+        elif cfg.scheduler == 'linear':
+            scheduler = get_linear_schedule_with_warmup(**scheduler_params)  
         
         best_val_score = -np.inf
         patience_counter = 0
