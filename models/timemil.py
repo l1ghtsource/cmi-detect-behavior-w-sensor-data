@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from modules.inceptiontime import InceptionTimeFeatureExtractor, EnhancedInceptionTimeFeatureExtractor # shit
 from modules.inceptiontime_replacers import (
@@ -552,6 +553,113 @@ class TimeMIL_SingleSensor_Singlebranch_v1(nn.Module):
         logits_main = self._fc_main(x)
         logits_seq_type = self._fc_seq_type(x)
             
+        return logits_main, logits_seq_type
+
+class TimeMIL_SingleSensor_Singlebranch_StackMoreExtractors_v1(nn.Module):
+    def __init__(self, n_classes=cfg.main_num_classes, mDim=cfg.timemil_dim, max_seq_len=cfg.seq_len, dropout=cfg.timemil_dropout):
+        super().__init__()
+
+        self.extractors = nn.ModuleList([
+            InceptionTimeFeatureExtractor(n_in_channels=cfg.imu_vars),
+            Resnet1DFeatureExtractor(n_in_channels=cfg.imu_vars),
+            EfficientNet1DFeatureExtractor(n_in_channels=cfg.imu_vars),
+            DenseNet1DFeatureExtractor(n_in_channels=cfg.imu_vars),
+        ])
+
+        self.feature_proj = nn.ModuleList([
+            nn.Linear(128, mDim) for _ in range(4)
+        ])
+
+        self.pos_layers1 = nn.ModuleList([WaveletEncoding(mDim, max_seq_len, 2 * max_seq_len) for _ in range(4)])
+        self.pos_layers2 = nn.ModuleList([WaveletEncoding(mDim, max_seq_len, 2 * max_seq_len) for _ in range(4)])
+        self.transformers1 = nn.ModuleList([TransLayer(dim=mDim, dropout=dropout) for _ in range(4)])
+        self.transformers2 = nn.ModuleList([TransLayer(dim=mDim, dropout=dropout) for _ in range(4)])
+
+        self.cls_token = nn.Parameter(torch.randn(1, 1, mDim))
+
+        def make_wave_params():
+            w1 = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+            w2 = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+            w3 = torch.ones(mDim, 1) + torch.randn(mDim, 1)
+            return nn.Parameter(torch.stack([w1, torch.zeros_like(w1)], dim=0)), \
+                   nn.Parameter(torch.stack([w2, torch.zeros_like(w2)], dim=0)), \
+                   nn.Parameter(torch.stack([w3, torch.zeros_like(w3)], dim=0))
+
+        self.wave_params1 = nn.ParameterList()
+        self.wave_params2 = nn.ParameterList()
+        for _ in range(4):
+            w1, w2, w3 = make_wave_params()
+            w1_, w2_, w3_ = make_wave_params()
+            self.wave_params1.extend([w1, w2, w3])
+            self.wave_params2.extend([w1_, w2_, w3_])
+
+        self._fc_main = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, n_classes)
+        )
+
+        self._fc_seq_type = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 2),
+        )
+
+        self.alpha = nn.Parameter(torch.ones(4))
+
+        initialize_weights(self)
+
+    def apply_feature_mask(self, features, mask):
+        return features * mask.unsqueeze(1).float()
+
+    def forward(self, imu_data, pad_mask=None, warmup=False):
+        B, _, L, _ = imu_data.shape
+        sensor_data = imu_data[:, 0, :, :].transpose(1, 2)  # [B, 7, L]
+        x_all = []
+
+        for i in range(4):
+            x = self.extractors[i](sensor_data)  # [B, 128, L]
+            if pad_mask is not None:
+                x = self.apply_feature_mask(x, pad_mask)
+            x = x.transpose(1, 2)  # [B, L, 128]
+            x = self.feature_proj[i](x)  # [B, L, mDim]
+            if pad_mask is not None:
+                x = x * pad_mask.unsqueeze(-1).float()
+
+            global_token = (x * pad_mask.unsqueeze(-1).float()).sum(dim=1) / torch.clamp(pad_mask.sum(1, keepdim=True).float(), min=1.0) if pad_mask is not None else x.mean(dim=1)
+
+            cls_token = self.cls_token.expand(B, -1, -1)
+            x = torch.cat((cls_token, x), dim=1)
+
+            extended_mask = None
+            if pad_mask is not None:
+                extended_mask = torch.cat([
+                    torch.ones(B, 1, device=pad_mask.device, dtype=torch.bool),
+                    pad_mask
+                ], dim=1)
+
+            w1, w2, w3 = self.wave_params1[i*3:(i+1)*3]
+            x = self.pos_layers1[i](x, w1, w2, w3)
+            x = self.transformers1[i](x, mask=extended_mask.bool()) if extended_mask is not None else self.transformers1[i](x)
+
+            w1_, w2_, w3_ = self.wave_params2[i*3:(i+1)*3]
+            x = self.pos_layers2[i](x, w1_, w2_, w3_)
+            x = self.transformers2[i](x, mask=extended_mask.bool()) if extended_mask is not None else self.transformers2[i](x)
+
+            x = x[:, 0]  # extract cls token
+            if warmup:
+                x = 0.01 * x + 0.99 * global_token
+            x_all.append(x)
+
+        x_stack = torch.stack(x_all, dim=1)  # [B, 4, mDim]
+        alpha = F.softmax(self.alpha, dim=0)  # [4]
+        x_weighted = (alpha.view(1, 4, 1) * x_stack).sum(dim=1)  # [B, mDim]
+
+        logits_main = self._fc_main(x_weighted)
+        logits_seq_type = self._fc_seq_type(x_weighted)
+
         return logits_main, logits_seq_type
 
 class TimeMIL_SingleSensor_Multibranch_v1(nn.Module):
