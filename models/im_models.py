@@ -1,69 +1,79 @@
-import torch
 import torch.nn as nn
 import timm
+from modules.spectrogram import SpecFeatureExtractor
 from configs.config import cfg
 
 # TODO: test it
-
+    
 class IMG_CMIModel(nn.Module):
-    def __init__(
-        self,
-        encoder_name=cfg.encoder_name,
-        num_classes=cfg.main_num_classes,
-        pretrained=cfg.pretrained,
-        num_attention_heads=8,
-        dropout=0.1
-    ):
+    def __init__(self, n_classes=cfg.main_num_classes, dropout=cfg.timemil_dropout,
+                 spec_height=64, spec_hop_length=32, spec_win_length=None):
         super().__init__()
         
-        self.num_attention_heads = num_attention_heads
-        
-        self.imu_encoder = self._create_encoder(encoder_name, pretrained)
-        self.thm_encoder = self._create_encoder(encoder_name, pretrained)
-        self.tof_encoder = self._create_encoder(encoder_name, pretrained)
-        
-        self.multihead_attention = nn.MultiheadAttention(
-            embed_dim=cfg.encoder_hidden_dim,
-            num_heads=num_attention_heads,
-            dropout=dropout,
-            batch_first=True
+        self.spec_feature_extractor = SpecFeatureExtractor(
+            in_channels=cfg.imu_vars,
+            height=spec_height,
+            hop_length=spec_hop_length,
+            win_length=spec_win_length,
+            out_size=224
         )
         
-        self.layer_norm = nn.LayerNorm(cfg.encoder_hidden_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.channel_adapter = nn.Conv2d(
+            in_channels=cfg.imu_vars,
+            out_channels=3,
+            kernel_size=1,
+            bias=False
+        )
         
-        self.classifier = nn.Sequential(
-            nn.Linear(cfg.encoder_hidden_dim * 3, cfg.encoder_hidden_dim),
-            nn.GELU(),
+        self.backbone = timm.create_model(cfg.encoder_name, pretrained=True)
+        
+        feature_dim = self.backbone.classifier.in_features
+        self.backbone.classifier = nn.Identity()
+        
+        self._fc_main = nn.Sequential(
             nn.Dropout(dropout),
-            nn.Linear(cfg.encoder_hidden_dim, num_classes)
+            nn.Linear(feature_dim, feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(feature_dim // 2, n_classes)
         )
         
-    def _create_encoder(self, encoder_name, pretrained):
-        model = timm.create_model(
-            encoder_name,
-            pretrained=pretrained,
-            num_classes=0,
-            global_pool='avg'
+        self._fc_seq_type = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(feature_dim, feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(feature_dim // 2, 2)
         )
-        return model
-
-    def forward(self, imu_images, thm_images, tof_images):
-        # inputs: (batch_size, 3, H, W)
-
-        imu_features = self.imu_encoder(imu_images) # (batch_size, encoder_dim)
-        thm_features = self.thm_encoder(thm_images) # (batch_size, encoder_dim)
-        tof_features = self.tof_encoder(tof_images) # (batch_size, encoder_dim)
         
-        feature_sequence = torch.stack([imu_features, thm_features, tof_features], dim=1) # (batch_size, 3, encoder_dim)
-
-        attended_features, _ = self.multihead_attention(feature_sequence, feature_sequence, feature_sequence) # (batch_size, 3, encoder_dim)
+        self._initialize_custom_layers()
         
-        attended_features = self.layer_norm(attended_features) # (batch_size, 3, encoder_dim)
-        attended_features = self.dropout(attended_features) # (batch_size, 3, encoder_dim)
+    def _initialize_custom_layers(self):
+        """Initialize weights for custom layers"""
+        nn.init.xavier_uniform_(self.channel_adapter.weight)
         
-        combined_features = attended_features.flatten(start_dim=1) # (batch_size, 3 * encoder_dim)
+        for module in [self._fc_main, self._fc_seq_type]:
+            for layer in module:
+                if isinstance(layer, nn.Linear):
+                    nn.init.xavier_uniform_(layer.weight)
+                    if layer.bias is not None:
+                        nn.init.constant_(layer.bias, 0)
+    
+    def forward(self, imu_data, pad_mask=None, warmup=False):
+        """
+        Args:
+            imu_data: [B, 1, L, 7] - IMU sensor data
+            pad_mask: [B, L] - padding mask (optional)
+            warmup: bool - whether to use warmup strategy (optional)
+        """
+        B, _, L, _ = imu_data.shape
         
-        logits = self.classifier(combined_features) # (batch_size, num_classes)
+        sensor_data = imu_data[:, 0, :, :].transpose(1, 2)  # [B, 7, L]
+        spec_features = self.spec_feature_extractor(sensor_data)  # [B, 7, 224, 224]
+        spec_features = self.channel_adapter(spec_features)  # [B, 3, 224, 224]
+        features = self.backbone(spec_features)  # [B, 1280]
         
-        return logits
+        logits_main = self._fc_main(features)
+        logits_seq_type = self._fc_seq_type(features)
+        
+        return logits_main, logits_seq_type
