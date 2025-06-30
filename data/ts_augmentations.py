@@ -25,6 +25,7 @@ def scaling(x, sigma=0.1):
     # https://arxiv.org/pdf/1706.00527.pdf
     x = np.expand_dims(x, axis=0)
     factor = np.random.normal(loc=1., scale=sigma, size=(x.shape[0],x.shape[2]))
+    factor = np.clip(factor, 0.9, 1.1)
     output = np.multiply(x, factor[:,np.newaxis,:])
     return np.squeeze(output, axis=0)
 
