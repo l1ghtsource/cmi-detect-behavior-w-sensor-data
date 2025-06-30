@@ -1,5 +1,14 @@
 import pywt
-from scipy.signal import savgol_filter, butter, filtfilt
+from scipy.signal import savgol_filter, butter, filtfilt, firwin, convolve
+
+def firwin_denoising(x, numtaps=13, cutoff=1.0, fs=10.0, pass_zero=False):
+    if len(x) < numtaps:
+        return x.copy()
+    
+    fir_coef = firwin(numtaps, cutoff=cutoff, fs=fs, pass_zero=pass_zero)
+    filtered_signal = convolve(x, fir_coef, mode='same')
+    
+    return filtered_signal
 
 def wavelet_denoising_2(x, wavelet='db4'):
     coeffs = pywt.wavedec(x, wavelet, mode='per')
@@ -41,6 +50,8 @@ def apply_denoising(data, method):
         return butterworth_denoising(data)
     elif method == 'wavelet':
         return wavelet_denoising_2(data)
+    elif method == 'firwin':
+        return firwin_denoising(data)
     else:
         print('wtf is this bro??')
         return data.copy()

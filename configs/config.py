@@ -48,7 +48,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
-cfg.selected_model = 'panns' # ['timemil', 'decomposewhar', 'moderntcn', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline']
+cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'moderntcn', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline']
 
 # --- target things ---
 cfg.main_weight = 1.0
@@ -63,7 +63,7 @@ cfg.use_seq_type_aux_target_weighting = False
 
 # --- ts ds cfg ---
 cfg.norm_ts = False # normalize time-series (z-score)
-cfg.denoise_data = 'none' # ['none', 'wavelet', 'savgol', 'butter']
+cfg.denoise_data = 'none' # ['none', 'wavelet', 'savgol', 'butter', 'firwin']
 cfg.use_demo = False # use demography data
 cfg.use_stats_vectors = False # use some global seq stats
 cfg.use_pad_mask = True # mask padding values
