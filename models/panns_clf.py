@@ -3,12 +3,13 @@ import torch.nn as nn
 from typing import Optional, Callable
 
 from modules.panns import PANNsFeatureExtractor
+from configs.config import cfg
 
-class PANNsClassifier(nn.Module):
+class PANNsCLF_SingleSensor_v1(nn.Module):
     def __init__(self, 
-                 n_channels: int, 
-                 seq_len: int, 
-                 num_classes: int, 
+                 n_channels: int = cfg.imu_vars, 
+                 seq_len: int = cfg.seq_len, 
+                 num_classes: int = cfg.main_num_classes, 
                  base_filters: int | tuple = 128, 
                  kernel_sizes: tuple = (32, 16, 4, 2), 
                  stride: int = 4, 
@@ -60,7 +61,7 @@ class PANNsClassifier(nn.Module):
         
         return nn.Sequential(*layers)
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, pad_mask=None) -> torch.Tensor:
         x = x.squeeze(1) # (batch_size, seq_len, n_channels)
         x = x.permute(0, 2, 1) # (batch_size, n_channels, seq_len)
         
