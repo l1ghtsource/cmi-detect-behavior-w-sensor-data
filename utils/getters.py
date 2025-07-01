@@ -4,7 +4,7 @@ from optimizers.adamp import AdamP
 from optimizers.madgrad import MADGRAD
 from optimizers.adafisher import AdaFisherW
 from optimizers.ranger import Ranger
-from optimizers.muon import Muon, MuonWithAuxAdam
+from optimizers.muon import SingleDeviceMuonWithAuxAdam
 
 from data.ts_datasets import (
     TS_CMIDataset,
@@ -114,7 +114,7 @@ def get_optimizer(model):
         return Ranger(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'muonwauxadam':
         param_groups = get_muon_param_groups(model, lr_muon=cfg.lr_muon, lr_adam=cfg.lr, weight_decay=cfg.weight_decay)
-        return MuonWithAuxAdam(param_groups)
+        return SingleDeviceMuonWithAuxAdam(param_groups)
     else:
         raise Exception('stick your finger in your ass')
 
