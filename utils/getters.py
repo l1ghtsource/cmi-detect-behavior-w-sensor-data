@@ -47,24 +47,74 @@ from models.panns_clf import (
 )
 from configs.config import cfg
 
-def get_optimizer(params):
+# for timemil singlesensor siglebranch
+def get_muon_param_groups(model, lr_muon=0.02, lr_adam=3e-4, weight_decay=0.01):
+    body_modules = [
+        model.imu_feature_extractor,
+        model.feature_proj,
+        model.pos_layer,
+        model.pos_layer2, 
+        model.layer1,
+        model.layer2,
+        model.norm
+    ]
+    
+    head_modules = [
+        model._fc_main,
+        model._fc_seq_type
+    ]
+    
+    body_params = []
+    for module in body_modules:
+        body_params.extend(list(module.parameters()))
+    
+    hidden_weights = [p for p in body_params if p.ndim >= 2]
+    hidden_gains_biases = [p for p in body_params if p.ndim < 2]
+    
+    head_params = []
+    for module in head_modules:
+        head_params.extend(list(module.parameters()))
+    
+    special_params = [
+        model.cls_token,
+        model.wave1,
+        model.wave2, 
+        model.wave3,
+        model.wave1_,
+        model.wave2_,
+        model.wave3_,
+        model.alpha
+    ]
+    
+    nonhidden_params = head_params + special_params + hidden_gains_biases
+    
+    # https://github.com/KellerJordan/Muon
+    param_groups = [
+        dict(params=hidden_weights, use_muon=True,
+             lr=lr_muon, weight_decay=weight_decay),
+        dict(params=nonhidden_params, use_muon=False,
+             lr=lr_adam, betas=(0.9, 0.95), weight_decay=weight_decay),
+    ]
+    
+    return param_groups
+
+def get_optimizer(model):
     if cfg.optim_type == 'adamw':
-        return AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+        return AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     elif cfg.optim_type == 'adan':
-        return Adan(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+        return Adan(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     elif cfg.optim_type == 'adamp':
-        return AdamP(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return AdamP(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'madgrad':
-        return MADGRAD(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return MADGRAD(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'adafisherw':
-        return AdaFisherW(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return AdaFisherW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'ranger':
         print('use ranger w/o weight decay pls')
-        return Ranger(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
-    elif cfg.optim_type == 'muon':
-        return Muon(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return Ranger(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'muonwauxadam':
-        return MuonWithAuxAdam(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        param_groups = get_muon_param_groups(model, lr_muon=cfg.lr_muon, lr_adam=cfg.lr, weight_decay=cfg.weight_decay)
+        return MuonWithAuxAdam(param_groups)
     else:
         raise Exception('stick your finger in your ass')
 

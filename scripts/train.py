@@ -308,7 +308,7 @@ def run_training_with_stratified_group_kfold():
 
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
-        optimizer = get_optimizer(params=model.parameters())
+        optimizer = get_optimizer(model=model)
         if cfg.use_lookahead:
             optimizer = Lookahead(optimizer)    
         if cfg.use_sam:
