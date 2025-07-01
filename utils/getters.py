@@ -4,6 +4,7 @@ from optimizers.adamp import AdamP
 from optimizers.madgrad import MADGRAD
 from optimizers.adafisher import AdaFisherW
 from optimizers.ranger import Ranger
+from optimizers.muon import Muon, MuonWithAuxAdam
 
 from data.ts_datasets import (
     TS_CMIDataset,
@@ -60,6 +61,10 @@ def get_optimizer(params):
     elif cfg.optim_type == 'ranger':
         print('use ranger w/o weight decay pls')
         return Ranger(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+    elif cfg.optim_type == 'muon':
+        return Muon(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
+    elif cfg.optim_type == 'muonwauxadam':
+        return MuonWithAuxAdam(params, lr=cfg.lr, weight_decay=cfg.weight_decay) 
     else:
         raise Exception('stick your finger in your ass')
 
