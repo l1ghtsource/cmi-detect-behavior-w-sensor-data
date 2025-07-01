@@ -16,7 +16,9 @@ cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wris
 cfg.imu_cols = [
     'acc_x', 'acc_y', 'acc_z',
     'rot_w', 'rot_x', 'rot_y', 'rot_z',
-    'time_from_start', 'time_to_end', 'sin_time_position'
+    'time_from_start', 'time_to_end', 'sin_time_position',
+    # 'acc_x_world', 'acc_y_world', 'acc_z_world',
+    # 'acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g'
 ]
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]

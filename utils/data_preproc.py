@@ -18,7 +18,8 @@ def convert_to_world_coordinates(df):
     g = np.array([0, 0, 9.81])
     acc_world_linear = acc_world - g
 
-    df_world.loc[valid_quat_mask, ['acc_x', 'acc_y', 'acc_z']] = acc_world_linear
+    df_world[['acc_x_world', 'acc_y_world', 'acc_z_world']] = np.nan
+    df_world.loc[valid_quat_mask, ['acc_x_world', 'acc_y_world', 'acc_z_world']] = acc_world_linear
 
     return df_world
 
@@ -46,7 +47,8 @@ def remove_gravity_from_acc(df):
              print(f'{e=}')
              linear_accel[i, :] = acc_values[i, :]
 
-    df_copy[['acc_x', 'acc_y', 'acc_z']] = linear_accel
+    df_copy[['acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g']] = np.nan
+    df_copy[['acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g']] = linear_accel
              
     return df_copy
 
