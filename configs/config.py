@@ -155,7 +155,7 @@ cfg.max_norm = 2.0
 cfg.use_lookahead = True
 cfg.use_sam = False
 cfg.scheduler = 'linear' # ['cosine', 'cosine_cycle', 'linear']
-cfg.optim_type = 'muonwauxadam' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
+cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 4
