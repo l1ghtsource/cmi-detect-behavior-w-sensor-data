@@ -66,13 +66,15 @@ class TS_CMIDataset(Dataset):
             self.norm_stats = None
 
     def _compute_phase_moments(self, phase_sequence):
-        phase_processed, _ = self._pad_or_truncate(phase_sequence, self.seq_len)
+        phase_array = np.asarray(phase_sequence, dtype=np.float64)
+        phase_processed, _ = self._pad_or_truncate(phase_array, self.seq_len)
         gesture_indices = np.where(phase_processed == 2)[0]
         gesture_start = gesture_indices[0] / self.seq_len if len(gesture_indices) > 0 else 0.0 # FIXME: recalc it when use time_warp
         return gesture_start
-    
+
     def _compute_behaviour_seq(self, behaviour_sequence):
-        behaviour_processed, _ = self._pad_or_truncate(behaviour_sequence, self.seq_len)
+        behaviour_array = np.asarray(behaviour_sequence, dtype=np.float64)
+        behaviour_processed, _ = self._pad_or_truncate(behaviour_array, self.seq_len)
         return behaviour_processed
 
     def _compute_normalization_stats(self):
@@ -118,10 +120,15 @@ class TS_CMIDataset(Dataset):
     
     def _prepare_sensor_data_raw(self, row, sensor_cols, sensor_type):
         processed_series_list = []
+        original_lengths = []
+        
         for col_name in sensor_cols:
             series = row[col_name]
-            padded_truncated_series, mask = self._pad_or_truncate(series, self.seq_len)
-            processed_series_list.append(padded_truncated_series)
+            series_array = np.asarray(series, dtype=np.float64)
+            original_lengths.append(len(series_array))
+            processed_series_list.append(series_array)
+        
+        assert len(set(original_lengths)) == 1, f"inconsistent lengths in {sensor_type}: {original_lengths}"
         
         data_stacked = np.stack(processed_series_list, axis=1)
         
@@ -134,7 +141,7 @@ class TS_CMIDataset(Dataset):
                 s_filled = s.interpolate(method='linear', limit_direction='both').ffill().bfill().fillna(0.0)
                 data_stacked[:, i] = s_filled.values
         
-        return data_stacked, mask
+        return data_stacked
 
     def _normalize_sensor_data(self, data, sensor_type):
         if self.norm_stats is None or sensor_type not in self.norm_stats:
@@ -147,6 +154,27 @@ class TS_CMIDataset(Dataset):
 
     def __len__(self):
         return len(self.df)
+    
+    def _pad_or_truncate_final(self, data, target_len):
+        current_len = data.shape[0]
+        
+        if current_len > target_len:
+            # left truncation (keep the last target_len elements)
+            truncated_data = data[-target_len:]
+            mask = np.ones(target_len, dtype=bool)
+            return truncated_data, mask
+        elif current_len < target_len:
+            # left padding
+            padding_rows = np.zeros((target_len - current_len, data.shape[1]), dtype=data.dtype)
+            padded_data = np.concatenate([padding_rows, data], axis=0)
+            mask = np.concatenate([
+                np.zeros(target_len - current_len, dtype=bool), 
+                np.ones(current_len, dtype=bool)
+            ])
+            return padded_data, mask
+        
+        mask = np.ones(target_len, dtype=bool)
+        return data, mask
     
     def _pad_or_truncate(self, series_data, target_len):
         series_data = np.asarray(series_data, dtype=np.float64)
@@ -317,24 +345,19 @@ class TS_CMIDataset(Dataset):
         
         return acc_rotated, quat_rotated
     
-    def _denoise_sensor_data(self, data, pad_mask):
+    def _denoise_sensor_data(self, data):
         if cfg.denoise_data == 'none':
             return data
         
         denoised_data = data.copy()
-        valid_indices = np.where(pad_mask)[0]
-        
-        if len(valid_indices) == 0:
-            return denoised_data
         
         for feature_idx in range(data.shape[1]):
-            if len(valid_indices) > 1:
-                valid_data = data[valid_indices, feature_idx]
+            if data.shape[0] > 1:
                 denoised_valid = apply_denoising(
-                    valid_data, 
+                    data[:, feature_idx], 
                     method=cfg.denoise_data
                 )
-                denoised_data[valid_indices, feature_idx] = denoised_valid
+                denoised_data[:, feature_idx] = denoised_valid
         
         return denoised_data
     
@@ -481,18 +504,20 @@ class TS_CMIDataset(Dataset):
         return enhanced_data
     
     def _prepare_sensor_data(self, row, sensor_cols, sensor_type):
-        data_stacked, padding_mask = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
-
-        data_stacked = self._denoise_sensor_data(data_stacked, padding_mask)
-
+        data_stacked = self._prepare_sensor_data_raw(row, sensor_cols, sensor_type)
+        
+        data_stacked = self._denoise_sensor_data(data_stacked)
+        
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
-
+        
         if sensor_type == 'imu':
-            data_stacked = self._generate_features(data_stacked, self.seq_len)
-
+            data_stacked = self._generate_features(data_stacked, data_stacked.shape[0])
+        
+        data_stacked, padding_mask = self._pad_or_truncate_final(data_stacked, self.seq_len)
+        
         data_stacked = self._normalize_sensor_data(data_stacked, sensor_type)
-
+        
         return data_stacked, padding_mask
     
     def _prepare_demographic_data(self, row):
