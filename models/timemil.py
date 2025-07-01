@@ -157,7 +157,7 @@ class Original_TimeMIL(nn.Module):
             nn.Linear(mDim, n_classes)
         ) 
         
-        self.alpha = nn.Parameter(torch.ones(1))
+        # self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
         
@@ -289,7 +289,7 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             nn.Linear(mDim, 2),
         )
         
-        self.alpha = nn.Parameter(torch.ones(1))
+        # self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
 
@@ -473,7 +473,7 @@ class TimeMIL_SingleSensor_Singlebranch_v1(nn.Module):
             nn.Linear(mDim, 2),
         )
         
-        self.alpha = nn.Parameter(torch.ones(1))
+        # self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
 
@@ -760,7 +760,7 @@ class TimeMIL_SingleSensor_Multibranch_v1(nn.Module):
             nn.Linear(mDim, 2),
         )
         
-        self.alpha = nn.Parameter(torch.ones(1))
+        # self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
 
@@ -1050,7 +1050,7 @@ class MultiSensor_TimeMIL_v2(nn.Module):
             nn.Linear(mDim, 2),
         )
         
-        self.alpha = nn.Parameter(torch.ones(1))
+        # self.alpha = nn.Parameter(torch.ones(1))
         initialize_weights(self)
     
     def process_sensor_data(self, processor, sensor_data, pad_mask=None):
