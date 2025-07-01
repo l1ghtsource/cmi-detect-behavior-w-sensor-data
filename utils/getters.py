@@ -1,3 +1,4 @@
+import torch.nn as nn
 from torch.optim import AdamW
 from optimizers.adan import Adan
 from optimizers.adamp import AdamP
@@ -47,56 +48,52 @@ from models.panns_clf import (
 )
 from configs.config import cfg
 
-# for timemil singlesensor siglebranch
 def get_muon_param_groups(model, lr_muon=0.02, lr_adam=3e-4, weight_decay=0.01):
-    body_modules = [
-        model.imu_feature_extractor,
-        model.feature_proj,
-        model.pos_layer,
-        model.pos_layer2, 
-        model.layer1,
-        model.layer2,
-        model.norm
-    ]
+    linear_weights = []
+    linear_biases = []
+    other_params = []
     
-    head_modules = [
-        model._fc_main,
-        model._fc_seq_type
-    ]
+    for _, module in model.named_modules():
+        if isinstance(module, nn.Linear):
+            for _, param in module.named_parameters():
+                if param.ndim >= 2:
+                    linear_weights.append(param)
+                else:
+                    linear_biases.append(param)
     
-    body_params = []
-    for module in body_modules:
-        body_params.extend(list(module.parameters()))
+    all_linear_params = set(linear_weights + linear_biases)
+    for _, param in model.named_parameters():
+        if param not in all_linear_params:
+            other_params.append(param)
     
-    hidden_weights = [p for p in body_params if p.ndim >= 2]
-    hidden_gains_biases = [p for p in body_params if p.ndim < 2]
+    adamw_params = other_params + linear_biases
     
-    head_params = []
-    for module in head_modules:
-        head_params.extend(list(module.parameters()))
-    
-    special_params = [
-        model.cls_token,
-        model.wave1,
-        model.wave2, 
-        model.wave3,
-        model.wave1_,
-        model.wave2_,
-        model.wave3_,
-        model.alpha
-    ]
-    
-    nonhidden_params = head_params + special_params + hidden_gains_biases
-    
-    # https://github.com/KellerJordan/Muon
     param_groups = [
-        dict(params=hidden_weights, use_muon=True,
+        dict(params=linear_weights, use_muon=True,
              lr=lr_muon, weight_decay=weight_decay),
-        dict(params=nonhidden_params, use_muon=False,
+        dict(params=adamw_params, use_muon=False,
              lr=lr_adam, betas=(0.9, 0.95), weight_decay=weight_decay),
     ]
     
     return param_groups
+
+class SafeMuonWithAuxAdam(SingleDeviceMuonWithAuxAdam):
+    def step(self, closure=None):
+        for group in self.param_groups:
+            original_params = group["params"]
+            valid_params = [p for p in original_params if p.grad is not None]
+            
+            if len(valid_params) != len(original_params):
+                print(f"Warning: {len(original_params) - len(valid_params)} params have grad=None")
+            
+            group["params"] = valid_params
+        
+        result = super().step(closure)
+        
+        for group in self.param_groups:
+            pass
+            
+        return result
 
 def get_optimizer(model):
     if cfg.optim_type == 'adamw':
@@ -114,7 +111,7 @@ def get_optimizer(model):
         return Ranger(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
     elif cfg.optim_type == 'muonwauxadam':
         param_groups = get_muon_param_groups(model, lr_muon=cfg.lr_muon, lr_adam=cfg.lr, weight_decay=cfg.weight_decay)
-        return SingleDeviceMuonWithAuxAdam(param_groups)
+        return SafeMuonWithAuxAdam(param_groups)
     else:
         raise Exception('stick your finger in your ass')
 
