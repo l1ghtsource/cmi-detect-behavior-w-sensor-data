@@ -139,6 +139,13 @@ cfg.timemil_ver = '1'
 cfg.timemil_extractor = 'inception_time' # ['inception_time', 'resnet', 'efficientnet', 'inception_resnet', 'letmecook', 'inception_time2', 'densenet']
 cfg.timemil_singlebranch = True
 
+# --- convtran ---
+cfg.convtran_emb_size = 64
+cfg.convtran_num_heads = 8
+cfg.convtran_dim_ff = 256
+cfg.convtran_dropout = 0.1
+cfg.convtran_type = 'default' # ['default', 'multiscale', 'residual', 'inception']
+
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
 cfg.encoder_hidden_dim = 64

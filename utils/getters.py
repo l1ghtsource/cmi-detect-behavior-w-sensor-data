@@ -47,7 +47,9 @@ from models.panns_clf import (
     PANNsCLF_SingleSensor_v1
 )
 from models.convtran import (
-    ConvTran_SingleSensor_v1, TimeCNN_SingleSensor_v1
+    ConvTran_SingleSensor_v1, ConvTran_SingleSensor_MultiScale_v1, 
+    ConvTran_SingleSensor_Residual_v1, ConvTran_SingleSensor_Inception_v1,
+    TimeCNN_SingleSensor_v1
 )
 from configs.config import cfg
 
@@ -269,7 +271,14 @@ def get_ts_model_and_params(imu_only):
             return None
     elif cfg.selected_model == 'convtran':
         if imu_only: # only imu sensor
-            model_cls = ConvTran_SingleSensor_v1
+            if cfg.convtran_type == 'default':
+                model_cls = ConvTran_SingleSensor_v1
+            elif cfg.convtran_type == 'multiscale':
+                model_cls = ConvTran_SingleSensor_MultiScale_v1
+            elif cfg.convtran_type == 'residual':
+                model_cls = ConvTran_SingleSensor_Residual_v1
+            elif cfg.convtran_type == 'inception':
+                model_cls = ConvTran_SingleSensor_Inception_v1
             params = {
                 'num_classes': cfg.main_num_classes,
             }
@@ -335,6 +344,8 @@ def get_prefix(imu_only):
     elif model == 'timemil':
         prefix_parts.append(f'ver{cfg.timemil_ver}')
         prefix_parts.append(f'{cfg.timemil_extractor}')
+    elif model == 'convtran':
+        prefix_parts.append(f'{cfg.convtran_type}')
 
     if imu_only:
         prefix_parts.append('imu_only')
