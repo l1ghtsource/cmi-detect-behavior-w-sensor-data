@@ -215,12 +215,13 @@ class ConvTran_SingleSensor_SE_v1(nn.Module):
 
         # Embedding Layer -----------------------------------------------------------
         self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 15], padding='same'),
+                                         SE_Block(emb_size*4, reduction=8),
                                          nn.BatchNorm2d(emb_size*4),
                                          nn.GELU())
 
         self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
+                                          SE_Block(emb_size, reduction=16),
                                           nn.BatchNorm2d(emb_size),
-                                          SE_Block(emb_size),
                                           nn.GELU())
 
         self.maxpool = nn.MaxPool2d(kernel_size=(1, m), stride=(1, m))
