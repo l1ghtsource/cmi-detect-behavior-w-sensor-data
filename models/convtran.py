@@ -138,7 +138,6 @@ class ConvTran_SingleSensor_v1(nn.Module):
     def forward(self, x, pad_mask=None):
         # input is (bs, 1, T, C)
         x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
-        x = x.unsqueeze(1)
         x_src = self.embed_layer(x)
         x_src = self.embed_layer2(x_src).squeeze(2)
         x_src = self.maxpool(x_src) 
@@ -195,7 +194,6 @@ class TimeCNN_SingleSensor_v1(nn.Module):
         x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
         bs = x.shape[0]
         x = self.Norm(x)
-        out = x.unsqueeze(1)
         out = self.depthwise_conv(out).transpose(1, 2)  # (bs, C, 1, T)
         # out = out.permute(0, 2, 1, 3)  # (bs, 1, C, T)
         out = self.spatial_padding(out)
