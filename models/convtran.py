@@ -133,7 +133,8 @@ class ConvTran_SingleSensor_v1(nn.Module):
 
         self.gap = nn.AdaptiveAvgPool1d(1)
         self.flatten = nn.Flatten()
-        self.out = nn.Linear(emb_size, num_classes)
+        self.out1 = nn.Linear(emb_size, num_classes)
+        self.out2 = nn.Linear(emb_size, 2)
 
     def forward(self, x, pad_mask=None):
         # input is (bs, 1, T, C)
@@ -150,8 +151,9 @@ class ConvTran_SingleSensor_v1(nn.Module):
         out = out.permute(0, 2, 1)
         out = self.gap(out)
         out = self.flatten(out)
-        out = self.out(out)
-        return out
+        out1 = self.out1(out)
+        out2 = self.out2(out)
+        return out1, out2
 
 class TimeCNN_SingleSensor_v1(nn.Module):
     """
@@ -187,7 +189,8 @@ class TimeCNN_SingleSensor_v1(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(dim_ff, emb_size),
             nn.Dropout(dropout))
-        self.out = nn.Linear(emb_size * seq_len, num_classes)
+        self.out1 = nn.Linear(emb_size * seq_len, num_classes)
+        self.out2 = nn.Linear(emb_size * seq_len, 2)
 
     def forward(self, x, pad_mask=None):
         # input is (bs, 1, T, C)
@@ -211,5 +214,6 @@ class TimeCNN_SingleSensor_v1(nn.Module):
         out = att + self.FeedForward(att)
         out = self.LayerNorm2(out)
         out = out.view(bs, -1)  # (bs, n_spatial_filters * C * ((T // m) // m))
-        out = self.out(out)
-        return out
+        out1 = self.out1(out)
+        out2 = self.out2(out)
+        return out1, out2
