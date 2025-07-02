@@ -49,6 +49,7 @@ from models.panns_clf import (
 from models.convtran import (
     ConvTran_SingleSensor_v1, ConvTran_SingleSensor_MultiScale_v1, 
     ConvTran_SingleSensor_Residual_v1, ConvTran_SingleSensor_Inception_v1,
+    ConvTran_SingleSensor_SE_v1,
     TimeCNN_SingleSensor_v1
 )
 from configs.config import cfg
@@ -279,6 +280,8 @@ def get_ts_model_and_params(imu_only):
                 model_cls = ConvTran_SingleSensor_Residual_v1
             elif cfg.convtran_type == 'inception':
                 model_cls = ConvTran_SingleSensor_Inception_v1
+            elif cfg.convtran_type == 'se':
+                model_cls = ConvTran_SingleSensor_SE_v1
             params = {
                 'num_classes': cfg.main_num_classes,
             }

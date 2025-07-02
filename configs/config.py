@@ -144,7 +144,7 @@ cfg.convtran_emb_size = 64
 cfg.convtran_num_heads = 8
 cfg.convtran_dim_ff = 256
 cfg.convtran_dropout = 0.1
-cfg.convtran_type = 'default' # ['default', 'multiscale', 'residual', 'inception']
+cfg.convtran_type = 'default' # ['default', 'multiscale', 'residual', 'inception', 'se']
 
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
