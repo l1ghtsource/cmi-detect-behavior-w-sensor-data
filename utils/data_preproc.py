@@ -251,8 +251,6 @@ def fe(df):
         angular_distance_df = angular_distance_df.droplevel('sequence_id')
         df = df.join(angular_distance_df)
 
-        df[cfg.imu_cols] = df[cfg.imu_cols].ffill().bfill().fillna(0).values.astype('float32')
-
     if cfg.fe_time_pos:
         seq_len = df.groupby('sequence_id')['sequence_id'].transform('count')
         df['time_from_start'] = df.groupby('sequence_id').cumcount() / seq_len
@@ -276,6 +274,8 @@ def fe(df):
                         .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
                         .reset_index(level=0, drop=True)
                     )
+
+    df[cfg.imu_cols] = df[cfg.imu_cols].ffill().bfill().fillna(0).values.astype('float32')
     
     return df
 
