@@ -173,7 +173,7 @@ def fe(df):
     if cfg.fe_col_prod:
         for acc_col in ['acc_x', 'acc_y', 'acc_z']:
             for rot_col in ['rot_x', 'rot_y', 'rot_z']:
-                df[f'{acc_col}_times_{rot_col}']
+                df[f'{acc_col}_times_{rot_col}'] = df[acc_col] * df[rot_col]
 
     if cfg.fe_angles:
         df['acc_angle_xy'] = np.arctan2(df['acc_y'], df['acc_x'])
