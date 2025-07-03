@@ -264,7 +264,7 @@ class FilterNet_SingleSensor_v1(BaseNet):
         dropout=0.1,
         do_pool=True,
         stride_pos="post",
-        stride_amt=4,#2,
+        stride_amt=2,
         **other_kwargs,
     ):
         # if scale != 1:
