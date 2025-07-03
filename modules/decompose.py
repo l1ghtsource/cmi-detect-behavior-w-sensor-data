@@ -46,7 +46,7 @@ class Embedding(nn.Module):
 # custom emb for tof sensor (2d -> 1d) 
 class ToFEmbedding(nn.Module):
     def __init__(self, P=8, S=4, D=64):
-        super(ToFEmbedding, self).__init__()
+        super().__init__()
         self.P = P
         self.S = S
         self.spatial_conv = nn.Sequential(
@@ -95,7 +95,7 @@ class ToFEmbedding(nn.Module):
 class PWConv(nn.Module):
     def __init__(self, M, D, r, one=True):
         # one=True: Cross-Channel Fusion (CCF), one=False: Cross-Variable Fusion (CVF)
-        super(PWConv, self).__init__()
+        super().__init__()
         groups_num = M if one else D  # Determine groups for depthwise convolution based on fusion type
 
         # Cross-Channel Fusion (CCF) of Hierarchical Interaction Fusion
@@ -122,7 +122,7 @@ class PWConv(nn.Module):
 # Decomposition Convolutional Block for feature extraction
 class DecomposeConvBlock(nn.Module):
     def __init__(self, M, D, kernel_size, r):
-        super(DecomposeConvBlock, self).__init__()
+        super().__init__()
 
         # Local Temporal Extraction (LTE) of Modality-Aware Decomposition
         self.dw_conv = nn.Conv1d(
