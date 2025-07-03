@@ -37,8 +37,8 @@ class BaseNet(nn.Module):
         """
         raise NotImplementedError()
 
-    def forward(self, X, **kwargs):
-        ys = self._forward(X, **kwargs)
+    def forward(self, X, pad_mask=None):
+        ys = self._forward(X, pad_mask)
 
         if self.output_type == "many_to_one_takelast":
             return [y[:, :, -1] for y in ys]
@@ -47,7 +47,7 @@ class BaseNet(nn.Module):
         else:
             raise NotImplemented(self.output_type)
 
-    def _forward(self, X, **kwargs):
+    def _forward(self, X, pad_mask=None):
         """Forward pass logic specific to this network type.
         REIPMLEMENT IN SUBCLASSES.
         Input dimensionality: (N, C_{in}, L_{in})"""
