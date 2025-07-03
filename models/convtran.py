@@ -511,7 +511,7 @@ class TimeCNN_SingleSensor_v1(nn.Module):
     """
 
     def __init__(self, channel_size=cfg.imu_vars, T=cfg.seq_len, k=15, m=3, emb_size=32, num_heads=8, dim_ff=256, dropout=0.1, num_classes=cfg.main_num_classes):
-        C, T = channel_size, seq_len
+        C = channel_size
         seq_len = T // m
         super().__init__()
 
