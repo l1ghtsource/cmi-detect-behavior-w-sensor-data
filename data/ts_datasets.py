@@ -511,8 +511,8 @@ class TS_CMIDataset(Dataset):
         if self.train:
             data_stacked = self._apply_augmentations(data_stacked, sensor_type)
         
-        if sensor_type == 'imu':
-            data_stacked = self._generate_features(data_stacked, data_stacked.shape[0])
+        # if sensor_type == 'imu':
+        #     data_stacked = self._generate_features(data_stacked, data_stacked.shape[0])
         
         data_stacked, padding_mask = self._pad_or_truncate_final(data_stacked, self.seq_len)
         

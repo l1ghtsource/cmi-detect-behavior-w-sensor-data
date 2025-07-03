@@ -3,6 +3,92 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 from configs.config import cfg
 
+def remove_gravity_from_acc_df(acc_data, rot_data):
+    if isinstance(acc_data, pd.DataFrame):
+        acc_values = acc_data[['acc_x', 'acc_y', 'acc_z']].values
+    else:
+        acc_values = acc_data
+
+    if isinstance(rot_data, pd.DataFrame):
+        quat_values = rot_data[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
+    else:
+        quat_values = rot_data
+
+    num_samples = acc_values.shape[0]
+    linear_accel = np.zeros_like(acc_values)
+    
+    gravity_world = np.array([0, 0, 9.81])
+
+    for i in range(num_samples):
+        if np.all(np.isnan(quat_values[i])) or np.all(np.isclose(quat_values[i], 0)):
+            linear_accel[i, :] = acc_values[i, :] 
+            continue
+
+        try:
+            rotation = R.from_quat(quat_values[i])
+            gravity_sensor_frame = rotation.apply(gravity_world, inverse=True)
+            linear_accel[i, :] = acc_values[i, :] - gravity_sensor_frame
+        except ValueError:
+             linear_accel[i, :] = acc_values[i, :]
+             
+    return linear_accel
+
+def calculate_angular_velocity_from_quat(rot_data, time_delta=1/200): # Assuming 200Hz sampling rate
+    if isinstance(rot_data, pd.DataFrame):
+        quat_values = rot_data[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
+    else:
+        quat_values = rot_data
+
+    num_samples = quat_values.shape[0]
+    angular_vel = np.zeros((num_samples, 3))
+
+    for i in range(num_samples - 1):
+        q_t = quat_values[i]
+        q_t_plus_dt = quat_values[i+1]
+
+        if np.all(np.isnan(q_t)) or np.all(np.isclose(q_t, 0)) or \
+           np.all(np.isnan(q_t_plus_dt)) or np.all(np.isclose(q_t_plus_dt, 0)):
+            continue
+
+        try:
+            rot_t = R.from_quat(q_t)
+            rot_t_plus_dt = R.from_quat(q_t_plus_dt)
+            delta_rot = rot_t.inv() * rot_t_plus_dt
+            angular_vel[i, :] = delta_rot.as_rotvec() / time_delta
+        except ValueError:
+            pass
+            
+    return angular_vel
+
+def calculate_angular_distance(rot_data):
+    if isinstance(rot_data, pd.DataFrame):
+        quat_values = rot_data[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
+    else:
+        quat_values = rot_data
+
+    num_samples = quat_values.shape[0]
+    angular_dist = np.zeros(num_samples)
+
+    for i in range(num_samples - 1):
+        q1 = quat_values[i]
+        q2 = quat_values[i+1]
+
+        if np.all(np.isnan(q1)) or np.all(np.isclose(q1, 0)) or \
+           np.all(np.isnan(q2)) or np.all(np.isclose(q2, 0)):
+            angular_dist[i] = 0
+            continue
+        try:
+            r1 = R.from_quat(q1)
+            r2 = R.from_quat(q2)
+            relative_rotation = r1.inv() * r2
+            angle = np.linalg.norm(relative_rotation.as_rotvec())
+            angular_dist[i] = angle
+        except ValueError:
+            angular_dist[i] = 0
+            pass
+            
+    return angular_dist
+
 def convert_to_world_coordinates(df):
     quats = df[['rot_w', 'rot_x', 'rot_y', 'rot_z']].to_numpy()
     accs = df[['acc_x', 'acc_y', 'acc_z']].to_numpy()
@@ -62,27 +148,110 @@ def apply_symmetry(data): # TODO: test it?? its can be wrong..
     return transformed
 
 def fe(df):
-    # if cfg.fe_mag_ang:
-    #     df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
-    #     df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
-    #     df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
+    if cfg.fe_mag_ang:
+        df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
+        df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
+        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
 
-    # if cfg.fe_col_diff:
-    #     df['XY_acc'] = df['acc_x'] - df['acc_y']
-    #     df['XZ_acc'] = df['acc_x'] - df['acc_z']
-    #     df['YZ_acc'] = df['acc_y'] - df['acc_z']
-    #     # df['XY_rot'] = df['rot_x'] - df['rot_y']
-    #     # df['XZ_rot'] = df['rot_x'] - df['rot_z']
-    #     # df['YZ_rot'] = df['rot_y'] - df['rot_z']
+    if cfg.fe_col_diff:
+        df['XY_acc'] = df['acc_x'] - df['acc_y']
+        df['XZ_acc'] = df['acc_x'] - df['acc_z']
+        df['YZ_acc'] = df['acc_y'] - df['acc_z']
+        # df['XY_rot'] = df['rot_x'] - df['rot_y']
+        # df['XZ_rot'] = df['rot_x'] - df['rot_z']
+        # df['YZ_rot'] = df['rot_y'] - df['rot_z']
 
-    # if cfg.lag_lead_cum: # haha cum
-    #     for c in ['acc_x', 'acc_y', 'acc_z']:
-    #         df[f'{c}_lag_diff'] = df.groupby('sequence_id')[c].diff() # add 2, 3
-    #         df[f'{c}_lead_diff'] = df.groupby('sequence_id')[c].diff(-1) # add -2, -3
-    #         df[f'{c}_cumsum'] = df.groupby('sequence_id')[c].cumsum()
-    #         df[f'{c}_cumsum'] = df.groupby('sequence_id')[f'{c}_cumsum'].transform(
-    #             lambda x: (x - x.mean()) / (x.std() + 1e-6)
-    #         )
+    if cfg.lag_lead_cum: # haha cum
+        for c in ['acc_x', 'acc_y', 'acc_z']:
+            df[f'{c}_lag_diff'] = df.groupby('sequence_id')[c].diff() # add 2, 3
+            df[f'{c}_lead_diff'] = df.groupby('sequence_id')[c].diff(-1) # add -2, -3
+            df[f'{c}_cumsum'] = df.groupby('sequence_id')[c].cumsum()
+            df[f'{c}_cumsum'] = df.groupby('sequence_id')[f'{c}_cumsum'].transform(
+                lambda x: (x - x.mean()) / (x.std() + 1e-6)
+            )
+
+    if cfg.fe_col_prod:
+        for acc_col in ['acc_x', 'acc_y', 'acc_z']:
+            for rot_col in ['rot_x', 'rot_y', 'rot_z']:
+                df[f'{acc_col}_times_{rot_col}']
+
+    if cfg.fe_angles:
+        df['acc_angle_xy'] = np.arctan2(df['acc_y'], df['acc_x'])
+        df['acc_angle_xz'] = np.arctan2(df['acc_z'], df['acc_x'])
+        df['acc_angle_yz'] = np.arctan2(df['acc_z'], df['acc_y'])
+        df['acc_direction_change'] = np.abs(np.diff(df['acc_angle_xy'], prepend=df['acc_angle_xy'].iloc[0]))
+
+    if cfg.fe_euler:
+        df['roll'] = np.arctan2(
+            2 * (df['rot_w'] * df['rot_x'] + df['rot_y'] * df['rot_z']), 
+            1 - 2 * (df['rot_x'] ** 2 + df['rot_y'] ** 2)
+        )
+        df['pitch'] = np.arcsin(
+            np.clip(2 * (df['rot_w'] * df['rot_y'] - df['rot_z'] * df['rot_x']), -1, 1)
+        )
+        df['yaw'] = np.arctan2(
+            2 * (df['rot_w'] * df['rot_z'] + df['rot_x'] * df['rot_y']), 
+            1 - 2 * (df['rot_y'] ** 2 + df['rot_z'] ** 2)
+        )
+
+    if cfg.fe_gravity:
+        df['gravity_x'] = 2 * (df['rot_x'] * df['rot_z'] - df['rot_w'] * df['rot_y'])
+        df['gravity_y'] = 2 * (df['rot_w'] * df['rot_x'] + df['rot_y'] * df['rot_z'])
+        df['gravity_z'] = df['rot_w'] ** 2 - df['rot_x'] ** 2 - df['rot_y'] ** 2 + df['rot_z'] ** 2
+        
+        df['acc_vertical'] = (df['acc_x'] * df['gravity_x'] + 
+                            df['acc_y'] * df['gravity_y'] + 
+                            df['acc_z'] * df['gravity_z'])
+        
+        df['acc_horizontal_x'] = df['acc_x'] - df['acc_vertical'] * df['gravity_x']
+        df['acc_horizontal_y'] = df['acc_y'] - df['acc_vertical'] * df['gravity_y']
+        df['acc_horizontal_z'] = df['acc_z'] - df['acc_vertical'] * df['gravity_z']
+        
+        df['acc_horizontal_mag'] = np.sqrt(df['acc_horizontal_x'] ** 2 + 
+                                        df['acc_horizontal_y'] ** 2 + 
+                                        df['acc_horizontal_z'] ** 2)
+        
+    if cfg.kaggle_fe:
+        df['acc_mag'] = np.sqrt(df['acc_x']**2 + df['acc_y']**2 + df['acc_z']**2)
+        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
+        
+        df['acc_mag_jerk'] = df.groupby('sequence_id')['acc_mag'].diff().fillna(0)
+        df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
+        
+        def get_linear_accel(df):
+            res = remove_gravity_from_acc_df(
+                df[['acc_x', 'acc_y', 'acc_z']],
+                df[['rot_x', 'rot_y', 'rot_z', 'rot_w']]
+            )
+            res = pd.DataFrame(res, columns=['linear_acc_x', 'linear_acc_y', 'linear_acc_z'], index=df.index)
+            return res
+        
+        linear_accel_df = df.groupby('sequence_id').apply(get_linear_accel, include_groups=False)
+        linear_accel_df = linear_accel_df.droplevel('sequence_id')
+        df = df.join(linear_accel_df)
+        
+        df['linear_acc_mag'] = np.sqrt(df['linear_acc_x']**2 + df['linear_acc_y']**2 + df['linear_acc_z']**2)
+        df['linear_acc_mag_jerk'] = df.groupby('sequence_id')['linear_acc_mag'].diff().fillna(0)
+
+        def calc_angular_velocity(df):
+            res = calculate_angular_velocity_from_quat( df[['rot_x', 'rot_y', 'rot_z', 'rot_w']] )
+            res = pd.DataFrame(res, columns=['angular_vel_x', 'angular_vel_y', 'angular_vel_z'], index=df.index)
+            return res
+        
+        angular_velocity_df = df.groupby('sequence_id').apply(calc_angular_velocity, include_groups=False)
+        angular_velocity_df = angular_velocity_df.droplevel('sequence_id')
+        df = df.join(angular_velocity_df)
+
+        def calc_angular_distance(df):
+            res = calculate_angular_distance(df[['rot_x', 'rot_y', 'rot_z', 'rot_w']])
+            res = pd.DataFrame(res, columns=['angular_distance'], index=df.index)
+            return res
+        
+        angular_distance_df = df.groupby('sequence_id').apply(calc_angular_distance, include_groups=False)
+        angular_distance_df = angular_distance_df.droplevel('sequence_id')
+        df = df.join(angular_distance_df)
+
+        df[cfg.imu_cols] = df[cfg.imu_cols].ffill().bfill().fillna(0).values.astype('float32')
 
     if cfg.fe_time_pos:
         seq_len = df.groupby('sequence_id')['sequence_id'].transform('count')

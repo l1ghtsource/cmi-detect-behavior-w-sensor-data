@@ -16,7 +16,14 @@ cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wris
 cfg.imu_cols = [
     'acc_x', 'acc_y', 'acc_z',
     'rot_w', 'rot_x', 'rot_y', 'rot_z',
-    'time_from_start', 'time_to_end', 'sin_time_position',
+    'acc_mag', 'rot_angle', 'acc_mag_jerk', 'rot_angle_vel',
+    'linear_acc_x', 'linear_acc_y', 'linear_acc_z', 'linear_acc_mag', 'linear_acc_mag_jerk',
+    'angular_vel_x', 'angular_vel_y', 'angular_vel_z',
+    'angular_distance',
+    'acc_x_lag_diff', 'acc_y_lag_diff', 'acc_z_lag_diff',
+    'acc_x_lead_diff', 'acc_y_lead_diff', 'acc_z_lead_diff',
+    'acc_x_cumsum', 'acc_y_cumsum', 'acc_z_cumsum',
+    # 'time_from_start', 'time_to_end', 'sin_time_position',
     # 'acc_x_world', 'acc_y_world', 'acc_z_world',
     # 'acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g'
 ]
@@ -76,32 +83,33 @@ cfg.apply_fe = True # some feature engineering
 cfg.fe_mag_ang = False # magnitude and rot angle
 cfg.fe_col_diff = False # x-y, x-z, y-z
 cfg.lag_lead_cum = True # lag, lead, cumsum for sensor data
-cfg.fe_time_pos = True # info about time pos in !orig! ts (before pad&trunc)
+cfg.fe_time_pos = False # info about time pos in !orig! ts (before pad&trunc)
 cfg.fe_col_prod = False # acc(x/y/z) * rot(x/y/z)
 cfg.use_windows = False # some rolling stats 
 cfg.fe_angles = False # add xy yz zx angles
 cfg.fe_euler = False # euler angles from quat
 cfg.fe_freq_wavelet = False # freq and wavelet features from acc
 cfg.fe_gravity = False # gravity vector [vx, vy, vz]
+cfg.kaggle_fe = True # some fe before init ds (so augs works bad)
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 
-if cfg.fe_mag_ang:
-    cfg.imu_add += 4
-if cfg.fe_col_diff:
-    cfg.imu_add += 3
-if cfg.lag_lead_cum:
-    cfg.imu_add += 9
-if cfg.fe_col_prod:
-    cfg.imu_add += 9
-if cfg.fe_angles:
-    cfg.imu_add += 4
-if cfg.fe_euler:
-    cfg.imu_add += 3
-if cfg.fe_freq_wavelet:
-    cfg.imu_add += 21
-if cfg.fe_gravity:
-    cfg.imu_add += 5
+# if cfg.fe_mag_ang:
+#     cfg.imu_add += 4
+# if cfg.fe_col_diff:
+#     cfg.imu_add += 3
+# if cfg.lag_lead_cum:
+#     cfg.imu_add += 9
+# if cfg.fe_col_prod:
+#     cfg.imu_add += 9
+# if cfg.fe_angles:
+#     cfg.imu_add += 4
+# if cfg.fe_euler:
+#     cfg.imu_add += 3
+# if cfg.fe_freq_wavelet:
+#     cfg.imu_add += 21
+# if cfg.fe_gravity:
+#     cfg.imu_add += 5
 
 # --- im ds cfg ---
 cfg.im_size = 160
@@ -152,7 +160,7 @@ cfg.encoder_hidden_dim = 64
 cfg.im_pretrained = True
 
 # --- train params ---
-cfg.bs = 128
+cfg.bs = 256
 cfg.n_epochs = 50
 cfg.patience = 10
 cfg.lr = 1e-3
@@ -167,18 +175,18 @@ cfg.scheduler = 'linear' # ['cosine', 'cosine_cycle', 'linear']
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 4
+cfg.max_augmentations_per_sample = 0#4
 
-cfg.jitter_proba = 0.5
+cfg.jitter_proba = 0#0.5
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
 
-cfg.magnitude_warp_proba = 0.3
+cfg.magnitude_warp_proba = 0#0.3
 cfg.magnitude_warp_sensors = ['imu', 'thm']
 
-cfg.time_warp_proba = 0.5
+cfg.time_warp_proba = 0#0.5
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
 
-cfg.scaling_proba = 0.3
+cfg.scaling_proba = 0#0.3
 cfg.scaling_sensors = ['imu', 'thm']
 
 cfg.window_slice_proba = 0
@@ -190,15 +198,15 @@ cfg.window_warp_sensors = ['imu', 'thm']
 cfg.permutation_proba = 0
 cfg.permutation_sensors = ['imu', 'tof', 'thm']
 
-cfg.rotation_proba = 0.5
+cfg.rotation_proba = 0#0.5
 cfg.rotation_sensors = ['imu']
 cfg.rotation_max_angle = 30
 
-cfg.moda_proba = 0.4
+cfg.moda_proba = 0#0.4
 cfg.moda_sensors = ['imu']
 
 # --- mixup ---
-cfg.use_mixup = True
+cfg.use_mixup = False#True
 cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 
