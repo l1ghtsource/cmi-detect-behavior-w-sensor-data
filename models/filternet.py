@@ -14,7 +14,7 @@ class BaseNet(nn.Module):
     def __init__(
         self,
         input_channels=cfg.imu_vars,
-        num_output_classes=[cfg.main_num_classes],
+        num_output_classes=[cfg.main_num_classes, 2],
         output_type="many_to_one_takelast",
         keep_intermediates=False,
         **other_kwargs,
@@ -401,7 +401,7 @@ class FilterNet_SingleSensor_v1(BaseNet):
 
         self.end_stacks = nn.ModuleList(end_stacks)
 
-    def _forward(self, X, **kwargs):
+    def _forward(self, X, pad_mask=None):
         """(N, C_{in}, L_{in})"""
         X = X[:, 0, :, :].transpose(1, 2) # [batch, chan, seq]
         Xs = [X]  
