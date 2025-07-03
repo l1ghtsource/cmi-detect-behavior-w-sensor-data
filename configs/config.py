@@ -19,6 +19,8 @@ cfg.imu_cols = [
     'acc_mag', 'rot_angle', 'acc_mag_jerk', 'rot_angle_vel',
     'linear_acc_x', 'linear_acc_y', 'linear_acc_z', 'linear_acc_mag', 'linear_acc_mag_jerk',
     'angular_vel_x', 'angular_vel_y', 'angular_vel_z',
+    'angular_jerk_x', 'angular_jerk_y', 'angular_jerk_z',
+    'angular_snap_x', 'angular_snap_y', 'angular_snap_z',
     'angular_distance',
     'acc_x_lag_diff', 'acc_y_lag_diff', 'acc_z_lag_diff',
     'acc_x_lead_diff', 'acc_y_lead_diff', 'acc_z_lead_diff',

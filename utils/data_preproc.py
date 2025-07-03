@@ -242,6 +242,14 @@ def fe(df):
         angular_velocity_df = angular_velocity_df.droplevel('sequence_id')
         df = df.join(angular_velocity_df)
 
+        df['angular_jerk_x'] = df.groupby('sequence_id')['angular_vel_x'].diff().fillna(0)
+        df['angular_jerk_y'] = df.groupby('sequence_id')['angular_vel_y'].diff().fillna(0)
+        df['angular_jerk_z'] = df.groupby('sequence_id')['angular_vel_z'].diff().fillna(0)
+
+        df['angular_snap_x'] = df.groupby('sequence_id')['angular_jerk_x'].diff().fillna(0)
+        df['angular_snap_y'] = df.groupby('sequence_id')['angular_jerk_y'].diff().fillna(0)
+        df['angular_snap_z'] = df.groupby('sequence_id')['angular_jerk_z'].diff().fillna(0)
+
         def calc_angular_distance(df):
             res = calculate_angular_distance(df[['rot_x', 'rot_y', 'rot_z', 'rot_w']])
             res = pd.DataFrame(res, columns=['angular_distance'], index=df.index)
