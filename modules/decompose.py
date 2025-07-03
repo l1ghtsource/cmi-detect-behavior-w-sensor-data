@@ -16,7 +16,7 @@ from einops import rearrange
 # Modality-Specific Embedding (MSE) of Modality-Aware Decomposition
 class Embedding(nn.Module):
     def __init__(self, P=8, S=4, D=2048):
-        super(Embedding, self).__init__()
+        super().__init__()
         self.P = P  # Kernel size for the convolutional layer
         self.S = S  # Stride for the convolutional layer
         self.conv = nn.Conv1d(
