@@ -23,7 +23,7 @@ cfg.imu_cols = [
     'acc_x_lag_diff', 'acc_y_lag_diff', 'acc_z_lag_diff',
     'acc_x_lead_diff', 'acc_y_lead_diff', 'acc_z_lead_diff',
     'acc_x_cumsum', 'acc_y_cumsum', 'acc_z_cumsum',
-    'time_from_start', 'time_to_end', 'sin_time_position',
+    # 'time_from_start', 'time_to_end', 'sin_time_position',
     # 'acc_x_world', 'acc_y_world', 'acc_z_world',
     # 'acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g'
 ]
@@ -83,7 +83,7 @@ cfg.apply_fe = True # some feature engineering
 cfg.fe_mag_ang = False # magnitude and rot angle
 cfg.fe_col_diff = False # x-y, x-z, y-z
 cfg.lag_lead_cum = True # lag, lead, cumsum for sensor data
-cfg.fe_time_pos = True # info about time pos in !orig! ts (before pad&trunc)
+cfg.fe_time_pos = False # info about time pos in !orig! ts (before pad&trunc)
 cfg.fe_col_prod = False # acc(x/y/z) * rot(x/y/z)
 cfg.use_windows = False # some rolling stats 
 cfg.fe_angles = False # add xy yz zx angles
