@@ -2,7 +2,7 @@ import torch.nn as nn
 
 class AM_Layer(nn.Module):
     def __init__(self, self_attention, mamba, d_model, dropout):
-        super(AM_Layer, self).__init__()
+        super().__init__()
         self.self_attention = self_attention
         self.mamba = mamba
         self.norm1 = nn.LayerNorm(d_model)
@@ -24,7 +24,7 @@ class AM_Layer(nn.Module):
 
 class MA_Layer(nn.Module):
     def __init__(self, mamba, self_attention, d_model, dropout):
-        super(MA_Layer, self).__init__()
+        super().__init__()
         self.mamba = mamba
         self.self_attention = self_attention
         self.norm1 = nn.LayerNorm(d_model)
@@ -45,7 +45,7 @@ class MA_Layer(nn.Module):
 
 class Mamba_Layer(nn.Module):
     def __init__(self, mamba, d_model):
-        super(Mamba_Layer, self).__init__()
+        super().__init__()
         self.mamba = mamba
         self.norm = nn.LayerNorm(d_model)
 
@@ -57,7 +57,7 @@ class Mamba_Layer(nn.Module):
 
 class Att_Layer(nn.Module):
     def __init__(self, self_attention, d_model, dropout):
-        super(Att_Layer, self).__init__()
+        super().__init__()
         self.self_attention = self_attention
         self.norm1 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)

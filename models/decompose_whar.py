@@ -30,7 +30,7 @@ class DecomposeWHAR_Extractor(nn.Module):
                  num_layers=cfg.num_layers,  # Number of decomposition layers
                  num_m_layers=cfg.num_m_layers,   # Number of mamba layers
                  num_a_layers=cfg.num_a_layers):   # Number of attention layers
-        super(DecomposeWHAR_Extractor, self).__init__()
+        super().__init__()
 
         self.num_layers = num_layers
         self.num_a_layers = num_a_layers
@@ -257,7 +257,7 @@ class MultiSensor_DecomposeWHAR_v2(nn.Module):
                  num_a_layers=cfg.num_a_layers,
                  num_classes=cfg.main_num_classes,
                  num_seq_type_classes=cfg.seq_type_aux_num_classes):
-        super(MultiSensor_DecomposeWHAR_v2, self).__init__()
+        super().__init__()
         
         self.num_imu = num_imu
         self.num_tof = num_tof  
@@ -397,7 +397,7 @@ class DecomposeWHAR_SingleSensor_v2(nn.Module):
                  num_m_layers=cfg.num_m_layers,  # Number of mamba layers
                  num_classes=cfg.main_num_classes,
                  num_seq_type_classes=cfg.seq_type_aux_num_classes):   
-        super(DecomposeWHAR_SingleSensor_v2, self).__init__()
+        super().__init__()
 
         self.num_layers = num_layers
         self.num_m_layers = num_m_layers
