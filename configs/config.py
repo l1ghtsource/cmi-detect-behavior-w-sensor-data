@@ -50,7 +50,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
-cfg.selected_model = 'convtran' # ['timemil', 'decomposewhar', 'convtran', 'timecnn', 'moderntcn', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline']
+cfg.selected_model = 'timemil' # ['timemil', 'decomposewhar', 'convtran', 'timecnn', 'moderntcn', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline']
 
 # --- target things ---
 cfg.main_weight = 1.0
@@ -153,8 +153,8 @@ cfg.im_pretrained = True
 
 # --- train params ---
 cfg.bs = 128
-cfg.n_epochs = 100
-cfg.patience = 20
+cfg.n_epochs = 50
+cfg.patience = 10
 cfg.lr = 1e-3
 cfg.lr_muon = 2e-2
 cfg.weight_decay = 3e-4
