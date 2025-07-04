@@ -433,6 +433,9 @@ def get_prefix(imu_only):
 
     if cfg.fe_relative_quat:
         prefix_parts.append('fe_relative_quat')
+
+    if cfg.use_quat6d:
+        prefix_parts.append('use_quat6d')
     
     prefix_parts.append(cfg.optim_type)
 

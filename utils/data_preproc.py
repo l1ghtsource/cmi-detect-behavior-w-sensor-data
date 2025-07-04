@@ -4,6 +4,32 @@ from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 from configs.config import cfg
 
+# take it from https://arxiv.org/pdf/1812.07035
+def add_quat6d(df: pd.DataFrame,
+               w_col: str = 'rot_w',
+               x_col: str = 'rot_x',
+               y_col: str = 'rot_y',
+               z_col: str = 'rot_z',
+               prefix: str = 'quat6d_',
+               eps: float = 1e-8) -> pd.DataFrame:
+    q = df[[w_col, x_col, y_col, z_col]].to_numpy(float)
+    mask_valid = (~np.isnan(q).any(axis=1)) & (np.linalg.norm(q, axis=1) > eps)
+    quat6d = np.zeros((len(df), 6), dtype=np.float32)
+
+    if mask_valid.any():
+        # (w, x, y, z) -> (x, y, z, w)
+        q_scipy = q[mask_valid][:, [1, 2, 3, 0]]
+        rot_mats = R.from_quat(q_scipy).as_matrix()          # (M, 3, 3)
+        first_two_cols = rot_mats[:, :, :2].reshape(-1, 6)   # (M, 6)
+        quat6d[mask_valid] = first_two_cols
+
+    for i in range(6):
+        df[f'{prefix}{i}'] = quat6d[:, i]
+
+    df.drop(columns=[w_col, x_col, y_col, z_col], inplace=True)
+
+    return df
+
 def remove_gravity_from_acc_df(acc_data, rot_data):
     if isinstance(acc_data, pd.DataFrame):
         acc_values = acc_data[['acc_x', 'acc_y', 'acc_z']].values
@@ -214,6 +240,10 @@ def fe(df):
         for c in ['acc_x', 'acc_y', 'acc_z']:
             df[f'{c}_lag_diff'] = df.groupby('sequence_id')[c].diff() # add 2, 3
             df[f'{c}_lead_diff'] = df.groupby('sequence_id')[c].diff(-1) # add -2, -3
+            # df[f'{c}_lag_diff3'] = df.groupby('sequence_id')[c].diff(3)
+            # df[f'{c}_lead_diff3'] = df.groupby('sequence_id')[c].diff(-3)
+            # df[f'{c}_lag_diff5'] = df.groupby('sequence_id')[c].diff(5)
+            # df[f'{c}_lead_diff5'] = df.groupby('sequence_id')[c].diff(-5)
             df[f'{c}_cumsum'] = df.groupby('sequence_id')[c].cumsum()
             df[f'{c}_cumsum'] = df.groupby('sequence_id')[f'{c}_cumsum'].transform(
                 lambda x: (x - x.mean()) / (x.std() + 1e-6)
@@ -330,6 +360,9 @@ def fe(df):
             .apply(rel_quat_block)
         )
         df = df.join(rel_df)
+
+    if cfg.use_quat6d:
+        df = add_quat6d(df)
 
     df[cfg.imu_cols] = df[cfg.imu_cols].ffill().bfill().fillna(0).values.astype('float32')
     
