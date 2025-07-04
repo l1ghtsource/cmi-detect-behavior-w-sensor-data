@@ -427,6 +427,12 @@ def get_prefix(imu_only):
 
     if cfg.fe_gravity:
         prefix_parts.append('fe_gravity')
+
+    if cfg.kaggle_fe:
+        prefix_parts.append('kaggle_fe')
+
+    if cfg.fe_relative_quat:
+        prefix_parts.append('fe_relative_quat')
     
     prefix_parts.append(cfg.optim_type)
 
