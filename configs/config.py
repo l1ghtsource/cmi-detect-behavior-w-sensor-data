@@ -20,13 +20,18 @@ cfg.imu_cols = [
     'linear_acc_x', 'linear_acc_y', 'linear_acc_z', 'linear_acc_mag', 'linear_acc_mag_jerk',
     'angular_vel_x', 'angular_vel_y', 'angular_vel_z',
     'angular_distance',
+    # 'roll', 'pitch', 'yaw',
+    # 'gravity_x', 'gravity_y', 'gravity_z', 'acc_vertical', 'acc_horizontal_mag', 
+    # 'XY_acc', 'XZ_acc', 'YZ_acc',
     'acc_x_lag_diff', 'acc_y_lag_diff', 'acc_z_lag_diff',
     'acc_x_lead_diff', 'acc_y_lead_diff', 'acc_z_lead_diff',
     'acc_x_cumsum', 'acc_y_cumsum', 'acc_z_cumsum',
     # 'time_from_start', 'time_to_end', 'sin_time_position',
     # 'acc_x_world', 'acc_y_world', 'acc_z_world',
-    # 'acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g'
+    # 'acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g',
+    # 'rel_dqw', 'rel_dqx', 'rel_dqy', 'rel_dqz', 'rel_angle',
 ]
+
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
 cfg.tof_cols = [f'tof_{i}_v{j}' for i in range(1, 6) for j in range(64)]
 cfg.num_tof_sensors = 5
@@ -91,6 +96,7 @@ cfg.fe_euler = False # euler angles from quat
 cfg.fe_freq_wavelet = False # freq and wavelet features from acc
 cfg.fe_gravity = False # gravity vector [vx, vy, vz]
 cfg.kaggle_fe = True # some fe before init ds (so augs works bad)
+cfg.fe_relative_quat = False # add relative quat to first frame
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 
@@ -206,7 +212,7 @@ cfg.moda_proba = 0#0.4
 cfg.moda_sensors = ['imu']
 
 # --- mixup ---
-cfg.use_mixup = False#True
+cfg.use_mixup = True
 cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 
