@@ -287,28 +287,43 @@ def fe(df):
                     )
 
     if cfg.fe_relative_quat:
+        EPS = 1e-8
+
+        def _is_valid_q(q: np.ndarray) -> bool:
+            return (not np.isnan(q).any()) and (np.linalg.norm(q) > EPS)
+
         def rel_quat_block(group: pd.DataFrame) -> pd.DataFrame:
-            q0 = Quaternion(
-                group['rot_w'].iloc[0],
-                group['rot_x'].iloc[0],
-                group['rot_y'].iloc[0],
-                group['rot_z'].iloc[0],
-            ).inverse
-
-            rel_q_list = []
+            first_valid = None
             for w, x, y, z in group[['rot_w', 'rot_x', 'rot_y', 'rot_z']].to_numpy():
-                rel_q = Quaternion(w, x, y, z) * q0
-                rel_q_list.append([rel_q.w, rel_q.x, rel_q.y, rel_q.z])
+                q = np.array([w, x, y, z])
+                if _is_valid_q(q):
+                    first_valid = Quaternion(w, x, y, z).inverse
+                    break
 
-            rel_q_df = pd.DataFrame(
-                rel_q_list,
-                columns=['rel_dqw', 'rel_dqx', 'rel_dqy', 'rel_dqz'],
+            if first_valid is None:
+                zeros = np.zeros((len(group), 5))
+                cols = ['rel_dqw', 'rel_dqx', 'rel_dqy', 'rel_dqz', 'rel_angle']
+                return pd.DataFrame(zeros, columns=cols, index=group.index)
+
+            rel_q_out = np.zeros((len(group), 5))
+
+            for i, (w, x, y, z) in enumerate(
+                group[['rot_w', 'rot_x', 'rot_y', 'rot_z']].to_numpy()
+            ):
+                q_cur = np.array([w, x, y, z])
+
+                if _is_valid_q(q_cur):
+                    rel_q = Quaternion(w, x, y, z) * first_valid
+                    rel_q_out[i, :4] = [rel_q.w, rel_q.x, rel_q.y, rel_q.z]
+                    rel_q_out[i, 4] = 2 * np.arccos(np.clip(rel_q.w, -1.0, 1.0))
+                else:
+                    rel_q_out[i, :] = 0.0
+
+            return pd.DataFrame(
+                rel_q_out,
+                columns=['rel_dqw', 'rel_dqx', 'rel_dqy', 'rel_dqz', 'rel_angle'],
                 index=group.index,
             )
-            rel_q_df['rel_angle'] = 2 * np.arccos(
-                rel_q_df['rel_dqw'].clip(-1.0, 1.0)
-            )
-            return rel_q_df
 
         rel_df = (
             df.groupby('sequence_id', group_keys=False)
