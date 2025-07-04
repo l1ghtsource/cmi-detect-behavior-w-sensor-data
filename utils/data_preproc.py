@@ -148,7 +148,55 @@ def apply_symmetry(data): # TODO: test it?? its can be wrong..
     return transformed
 
 def fe(df):
-    if cfg.fe_mag_ang:
+    if cfg.kaggle_fe:
+        df['acc_mag'] = np.sqrt(df['acc_x']**2 + df['acc_y']**2 + df['acc_z']**2)
+        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
+        
+        df['acc_mag_jerk'] = df.groupby('sequence_id')['acc_mag'].diff().fillna(0)
+        df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
+        
+        def get_linear_accel(df):
+            res = remove_gravity_from_acc_df(
+                df[['acc_x', 'acc_y', 'acc_z']],
+                df[['rot_x', 'rot_y', 'rot_z', 'rot_w']]
+            )
+            res = pd.DataFrame(res, columns=['linear_acc_x', 'linear_acc_y', 'linear_acc_z'], index=df.index)
+            return res
+        
+        linear_accel_df = df.groupby('sequence_id').apply(get_linear_accel, include_groups=False)
+        linear_accel_df = linear_accel_df.droplevel('sequence_id')
+        df = df.join(linear_accel_df)
+        
+        df['linear_acc_mag'] = np.sqrt(df['linear_acc_x']**2 + df['linear_acc_y']**2 + df['linear_acc_z']**2)
+        df['linear_acc_mag_jerk'] = df.groupby('sequence_id')['linear_acc_mag'].diff().fillna(0)
+
+        def calc_angular_velocity(df):
+            res = calculate_angular_velocity_from_quat( df[['rot_x', 'rot_y', 'rot_z', 'rot_w']] )
+            res = pd.DataFrame(res, columns=['angular_vel_x', 'angular_vel_y', 'angular_vel_z'], index=df.index)
+            return res
+        
+        angular_velocity_df = df.groupby('sequence_id').apply(calc_angular_velocity, include_groups=False)
+        angular_velocity_df = angular_velocity_df.droplevel('sequence_id')
+        df = df.join(angular_velocity_df)
+
+        # df['angular_jerk_x'] = df.groupby('sequence_id')['angular_vel_x'].diff().fillna(0)
+        # df['angular_jerk_y'] = df.groupby('sequence_id')['angular_vel_y'].diff().fillna(0)
+        # df['angular_jerk_z'] = df.groupby('sequence_id')['angular_vel_z'].diff().fillna(0)
+
+        # df['angular_snap_x'] = df.groupby('sequence_id')['angular_jerk_x'].diff().fillna(0)
+        # df['angular_snap_y'] = df.groupby('sequence_id')['angular_jerk_y'].diff().fillna(0)
+        # df['angular_snap_z'] = df.groupby('sequence_id')['angular_jerk_z'].diff().fillna(0)
+
+        def calc_angular_distance(df):
+            res = calculate_angular_distance(df[['rot_x', 'rot_y', 'rot_z', 'rot_w']])
+            res = pd.DataFrame(res, columns=['angular_distance'], index=df.index)
+            return res
+        
+        angular_distance_df = df.groupby('sequence_id').apply(calc_angular_distance, include_groups=False)
+        angular_distance_df = angular_distance_df.droplevel('sequence_id')
+        df = df.join(angular_distance_df)
+
+    if cfg.fe_mag_ang: # don't use w/ kaggle_fe
         df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
         df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
         df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
@@ -211,53 +259,7 @@ def fe(df):
                                         df['acc_horizontal_y'] ** 2 + 
                                         df['acc_horizontal_z'] ** 2)
         
-    if cfg.kaggle_fe:
-        df['acc_mag'] = np.sqrt(df['acc_x']**2 + df['acc_y']**2 + df['acc_z']**2)
-        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
-        
-        df['acc_mag_jerk'] = df.groupby('sequence_id')['acc_mag'].diff().fillna(0)
-        df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
-        
-        def get_linear_accel(df):
-            res = remove_gravity_from_acc_df(
-                df[['acc_x', 'acc_y', 'acc_z']],
-                df[['rot_x', 'rot_y', 'rot_z', 'rot_w']]
-            )
-            res = pd.DataFrame(res, columns=['linear_acc_x', 'linear_acc_y', 'linear_acc_z'], index=df.index)
-            return res
-        
-        linear_accel_df = df.groupby('sequence_id').apply(get_linear_accel, include_groups=False)
-        linear_accel_df = linear_accel_df.droplevel('sequence_id')
-        df = df.join(linear_accel_df)
-        
-        df['linear_acc_mag'] = np.sqrt(df['linear_acc_x']**2 + df['linear_acc_y']**2 + df['linear_acc_z']**2)
-        df['linear_acc_mag_jerk'] = df.groupby('sequence_id')['linear_acc_mag'].diff().fillna(0)
-
-        def calc_angular_velocity(df):
-            res = calculate_angular_velocity_from_quat( df[['rot_x', 'rot_y', 'rot_z', 'rot_w']] )
-            res = pd.DataFrame(res, columns=['angular_vel_x', 'angular_vel_y', 'angular_vel_z'], index=df.index)
-            return res
-        
-        angular_velocity_df = df.groupby('sequence_id').apply(calc_angular_velocity, include_groups=False)
-        angular_velocity_df = angular_velocity_df.droplevel('sequence_id')
-        df = df.join(angular_velocity_df)
-
-        # df['angular_jerk_x'] = df.groupby('sequence_id')['angular_vel_x'].diff().fillna(0)
-        # df['angular_jerk_y'] = df.groupby('sequence_id')['angular_vel_y'].diff().fillna(0)
-        # df['angular_jerk_z'] = df.groupby('sequence_id')['angular_vel_z'].diff().fillna(0)
-
-        # df['angular_snap_x'] = df.groupby('sequence_id')['angular_jerk_x'].diff().fillna(0)
-        # df['angular_snap_y'] = df.groupby('sequence_id')['angular_jerk_y'].diff().fillna(0)
-        # df['angular_snap_z'] = df.groupby('sequence_id')['angular_jerk_z'].diff().fillna(0)
-
-        def calc_angular_distance(df):
-            res = calculate_angular_distance(df[['rot_x', 'rot_y', 'rot_z', 'rot_w']])
-            res = pd.DataFrame(res, columns=['angular_distance'], index=df.index)
-            return res
-        
-        angular_distance_df = df.groupby('sequence_id').apply(calc_angular_distance, include_groups=False)
-        angular_distance_df = angular_distance_df.droplevel('sequence_id')
-        df = df.join(angular_distance_df)
+        df.drop(columns=['acc_horizontal_x', 'acc_horizontal_y', 'acc_horizontal_z'], inplace=True)
 
     if cfg.fe_time_pos:
         seq_len = df.groupby('sequence_id')['sequence_id'].transform('count')
