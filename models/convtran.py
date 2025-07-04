@@ -510,7 +510,7 @@ class TimeCNN_SingleSensor_v1(nn.Module):
     using multivariate and multimodal time series"
     """
 
-    def __init__(self, channel_size=cfg.imu_vars, T=cfg.seq_len, k=15, m=3, emb_size=32, num_heads=8, dim_ff=256, dropout=0.1, num_classes=cfg.main_num_classes):
+    def __init__(self, channel_size=cfg.imu_vars, T=cfg.seq_len, k=15, m=1, emb_size=128, num_heads=8, dim_ff=256, dropout=0.1, num_classes=cfg.main_num_classes):
         C = channel_size
         seq_len = T // m
         super().__init__()
@@ -542,12 +542,13 @@ class TimeCNN_SingleSensor_v1(nn.Module):
         self.out2 = nn.Linear(emb_size * seq_len, 2)
 
     def forward(self, x, pad_mask=None):
-        # input is (bs, 1, T, C)
-        x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
+        # x: (bs, 1, T, C) -> (bs, 1, C, T)
+        x = x.permute(0, 1, 3, 2)
         bs = x.shape[0]
-        x = self.Norm(x)
-        out = self.depthwise_conv(out).transpose(1, 2)  # (bs, C, 1, T)
-        # out = out.permute(0, 2, 1, 3)  # (bs, 1, C, T)
+        x = x.squeeze(1) # (bs, C, T)
+        x = self.Norm(x) 
+        x = x.unsqueeze(1) # (bs, 1, C, T)
+        out = self.depthwise_conv(x).transpose(1, 2) # (bs, 1, emb_size, T)
         out = self.spatial_padding(out)
         out = self.spatialwise_conv1(out)  # (bs, n_spatial_filters, C, T)
         out = self.relu(out)
