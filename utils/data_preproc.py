@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 from configs.config import cfg
 
@@ -284,6 +285,36 @@ def fe(df):
                         .apply(lambda x: x[::-1].rolling(window, min_periods=1).agg(aggfunc)[::-1])
                         .reset_index(level=0, drop=True)
                     )
+
+    if cfg.fe_relative_quat:
+        def rel_quat_block(group: pd.DataFrame) -> pd.DataFrame:
+            q0 = Quaternion(
+                group['rot_w'].iloc[0],
+                group['rot_x'].iloc[0],
+                group['rot_y'].iloc[0],
+                group['rot_z'].iloc[0],
+            ).inverse
+
+            rel_q_list = []
+            for w, x, y, z in group[['rot_w', 'rot_x', 'rot_y', 'rot_z']].to_numpy():
+                rel_q = Quaternion(w, x, y, z) * q0
+                rel_q_list.append([rel_q.w, rel_q.x, rel_q.y, rel_q.z])
+
+            rel_q_df = pd.DataFrame(
+                rel_q_list,
+                columns=['rel_dqw', 'rel_dqx', 'rel_dqy', 'rel_dqz'],
+                index=group.index,
+            )
+            rel_q_df['rel_angle'] = 2 * np.arccos(
+                rel_q_df['rel_dqw'].clip(-1.0, 1.0)
+            )
+            return rel_q_df
+
+        rel_df = (
+            df.groupby('sequence_id', group_keys=False)
+            .apply(rel_quat_block)
+        )
+        df = df.join(rel_df)
 
     df[cfg.imu_cols] = df[cfg.imu_cols].ffill().bfill().fillna(0).values.astype('float32')
     
