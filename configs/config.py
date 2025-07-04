@@ -15,8 +15,8 @@ cfg.demo_bin_cols = ['adult_child', 'sex', 'handedness']
 cfg.demo_cont_cols = ['age', 'height_cm', 'shoulder_to_wrist_cm', 'elbow_to_wrist_cm']
 cfg.imu_cols = [
     'acc_x', 'acc_y', 'acc_z',
-    'quat6d_0', 'quat6d_1', 'quat6d_2', 'quat6d_3', 'quat6d_4', 'quat6d_5',
-    # 'rot_w', 'rot_x', 'rot_y', 'rot_z',
+    # 'quat6d_0', 'quat6d_1', 'quat6d_2', 'quat6d_3', 'quat6d_4', 'quat6d_5',
+    'rot_w', 'rot_x', 'rot_y', 'rot_z',
     'acc_mag', 'rot_angle', 'acc_mag_jerk', 'rot_angle_vel',
     'linear_acc_x', 'linear_acc_y', 'linear_acc_z', 'linear_acc_mag', 'linear_acc_mag_jerk',
     'angular_vel_x', 'angular_vel_y', 'angular_vel_z',
@@ -102,7 +102,7 @@ cfg.fe_freq_wavelet = False # freq and wavelet features from acc
 cfg.fe_gravity = False # gravity vector [vx, vy, vz]
 cfg.kaggle_fe = True # some fe before init ds (so augs works bad)
 cfg.fe_relative_quat = False # add relative quat to first frame
-cfg.use_quat6d = True # better rot repr for nn
+cfg.use_quat6d = False # better rot repr for nn
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 
