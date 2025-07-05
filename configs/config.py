@@ -150,7 +150,7 @@ cfg.tof_num_sensor = 5
 cfg.imu_vars = len(cfg.imu_cols) + cfg.imu_add
 cfg.thm_vars = 1
 cfg.tof_vars = 8 * 8
-cfg.dwhar_ver = '1'
+cfg.dwhar_ver = '2'
 
 # --- timemil ---
 cfg.timemil_dim = 256
