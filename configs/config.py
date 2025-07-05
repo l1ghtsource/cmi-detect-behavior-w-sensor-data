@@ -67,7 +67,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
-cfg.selected_model = 'convtran' # ['timemil', 'decomposewhar', 'convtran', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline']
+cfg.selected_model = 'convtran' # ['timemil', 'decomposewhar', 'convtran', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline']
 
 # --- target things ---
 cfg.main_weight = 1.0
@@ -165,6 +165,12 @@ cfg.convtran_num_heads = 8
 cfg.convtran_dim_ff = 256
 cfg.convtran_dropout = 0.1
 cfg.convtran_type = 'default' # ['default', 'multiscale', 'residual', 'inception', 'se']
+
+# --- cnn1d ---
+cfg.cnn1d_extractor = 'inception_time' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet']
+cfg.cnn1d_out_channels = 32
+cfg.cnn1d_pooling = 'gap' # ['gap', 'gem', 'se_mean']
+cfg.cnn1d_use_neck = False
 
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k

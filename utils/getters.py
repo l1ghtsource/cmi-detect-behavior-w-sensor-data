@@ -55,6 +55,9 @@ from models.convtran import (
 from models.filternet import (
     FilterNet_SingleSensor_v1
 )
+from models.basic_cnn1ds import (
+    CNN1D_SingleSensor_v1
+)
 from configs.config import cfg
 
 def get_muon_param_groups(model, lr_muon=0.02, lr_adam=3e-4, weight_decay=0.01):
@@ -312,6 +315,16 @@ def get_ts_model_and_params(imu_only):
         else: # multi sensor model
             # TODO: add filternet multisensor model
             return None   
+    elif cfg.selected_model == 'cnn1d':
+        if imu_only: # only imu sensor
+            model_cls = CNN1D_SingleSensor_v1
+            params = {
+                'num_classes': [cfg.main_num_classes, 2],
+            }
+            return model_cls, params
+        else: # multi sensor model
+            # TODO: add cnn1d multisensor model
+            return None   
     elif cfg.selected_model == 'baseline':
         if imu_only: # only imu sensor
             model_cls = TS_IMUModel
@@ -362,6 +375,11 @@ def get_prefix(imu_only):
         prefix_parts.append(f'{cfg.timemil_extractor}')
     elif model == 'convtran':
         prefix_parts.append(f'{cfg.convtran_type}')
+    elif model == 'cnn1d':
+        prefix_parts.append(f'{cfg.cnn1d_extractor}')
+        prefix_parts.append(f'{cfg.cnn1d_pooling}')
+        if cfg.cnn1d_use_neck:
+            prefix_parts.append('use_neck')
 
     if imu_only:
         prefix_parts.append('imu_only')
