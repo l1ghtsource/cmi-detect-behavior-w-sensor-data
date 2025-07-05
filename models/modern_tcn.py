@@ -384,20 +384,20 @@ class Model(nn.Module):
 class ModernTCN_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  task_name='classification',
-                 patch_size=3, #3
-                 patch_stride=1, #1
+                 patch_size=8,#3,
+                 patch_stride=4,#1,
                  stem_ratio=1,
                  downsample_ratio=2,
-                 ffn_ratio=4, #4
-                 num_blocks=[2, 2],
-                 large_size=[71, 71], #11
-                 small_size=[7, 7], #3
-                 dims=[128, 256], #64,128
-                 dw_dims=[128, 256], #64,128
+                 ffn_ratio=1,#4,
+                 num_blocks=[1, 1],#[2, 2],
+                 large_size=[11, 11],
+                 small_size=[3, 3],
+                 dims=[48, 96],
+                 dw_dims=[48, 96],
                  nvars=cfg.imu_vars,
                  small_kernel_merged=False,
-                 backbone_dropout=0.1,
-                 head_dropout=0.1,
+                 backbone_dropout=0.3,
+                 head_dropout=0.3,
                  use_multi_scale=True,
                  revin=True,
                  affine=True,
@@ -405,7 +405,7 @@ class ModernTCN_SingleSensor_v1(nn.Module):
                  seq_len=cfg.seq_len,
                  individual=False,
                  target_window=96,
-                 class_drop=0.1,
+                 class_drop=0.4,
                  class_num=18):
         super(ModernTCN_SingleSensor_v1, self).__init__()
         
