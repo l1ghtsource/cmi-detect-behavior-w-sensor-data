@@ -164,7 +164,7 @@ cfg.convtran_emb_size = 64
 cfg.convtran_num_heads = 8
 cfg.convtran_dim_ff = 256
 cfg.convtran_dropout = 0.1
-cfg.convtran_type = 'default' # ['default', 'multiscale', 'residual', 'inception', 'se']
+cfg.convtran_type = 'notran' # ['default', 'notran', 'multiscale', 'residual', 'inception', 'se']
 
 # --- cnn1d ---
 cfg.cnn1d_extractor = 'inception_time' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet']

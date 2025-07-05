@@ -157,6 +157,71 @@ class ConvTran_SingleSensor_v1(nn.Module):
                  num_classes=cfg.main_num_classes):
         super().__init__()
 
+        if seq_len > 128:
+            m = 2 ** int(math.log2(seq_len // 128))
+        else:
+            m = 1
+
+        seq_len = seq_len // m
+
+        # Embedding Layer -----------------------------------------------------------
+        self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 15], padding='same'),
+                                         nn.BatchNorm2d(emb_size*4),
+                                         nn.GELU())
+
+        self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
+                                          nn.BatchNorm2d(emb_size),
+                                          nn.GELU())
+
+        self.maxpool = nn.MaxPool2d(kernel_size=(1, m), stride=(1, m))
+        self.Fix_Position = tAPE(emb_size, dropout=dropout, max_len=seq_len)
+        self.attention_layer = Attention_Rel_Scl(emb_size, num_heads, seq_len, dropout)
+
+        self.LayerNorm = nn.LayerNorm(emb_size, eps=1e-5)
+        self.LayerNorm2 = nn.LayerNorm(emb_size, eps=1e-5)
+
+        self.FeedForward = nn.Sequential(
+            nn.Linear(emb_size, dim_ff),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_ff, emb_size),
+            nn.Dropout(dropout))
+
+        self.gap = nn.AdaptiveAvgPool1d(1)
+        self.flatten = nn.Flatten()
+        self.out1 = nn.Linear(emb_size, num_classes)
+        self.out2 = nn.Linear(emb_size, 2)
+
+    def forward(self, x, pad_mask=None):
+        # input is (bs, 1, T, C)
+        x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
+        x_src = self.embed_layer(x)
+        x_src = self.embed_layer2(x_src).squeeze(2)
+        x_src = self.maxpool(x_src) 
+        x_src = x_src.permute(0, 2, 1)
+        x_src_pos = self.Fix_Position(x_src)
+        att = x_src + self.attention_layer(x_src_pos)
+        att = self.LayerNorm(att)
+        out = att + self.FeedForward(att)
+        out = self.LayerNorm2(out)
+        out = out.permute(0, 2, 1)
+        out = self.gap(out)
+        out = self.flatten(out)
+        out1 = self.out1(out)
+        out2 = self.out2(out)
+        return out1, out2
+    
+class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
+    def __init__(self, 
+                 channel_size=cfg.imu_vars, 
+                 seq_len=cfg.seq_len, 
+                 emb_size=cfg.convtran_emb_size, 
+                 num_heads=cfg.convtran_num_heads, 
+                 dim_ff=cfg.convtran_dim_ff, 
+                 dropout=cfg.convtran_dropout, 
+                 num_classes=cfg.main_num_classes):
+        super().__init__()
+
         self.embed_layer = nn.Sequential(
             nn.Conv2d(1, emb_size * 4, kernel_size=[1, 15], padding='same'),
             nn.BatchNorm2d(emb_size * 4),
@@ -209,71 +274,6 @@ class ConvTran_SingleSensor_v1(nn.Module):
         reg_logits = self.out2(x)
 
         return cls_logits, reg_logits
-
-# class ConvTran_SingleSensor_v1(nn.Module):
-#     def __init__(self, 
-#                  channel_size=cfg.imu_vars, 
-#                  seq_len=cfg.seq_len, 
-#                  emb_size=cfg.convtran_emb_size, 
-#                  num_heads=cfg.convtran_num_heads, 
-#                  dim_ff=cfg.convtran_dim_ff, 
-#                  dropout=cfg.convtran_dropout, 
-#                  num_classes=cfg.main_num_classes):
-#         super().__init__()
-
-#         if seq_len > 128:
-#             m = 2 ** int(math.log2(seq_len // 128))
-#         else:
-#             m = 1
-
-#         seq_len = seq_len // m
-
-#         # Embedding Layer -----------------------------------------------------------
-#         self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 15], padding='same'),
-#                                          nn.BatchNorm2d(emb_size*4),
-#                                          nn.GELU())
-
-#         self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
-#                                           nn.BatchNorm2d(emb_size),
-#                                           nn.GELU())
-
-#         self.maxpool = nn.MaxPool2d(kernel_size=(1, m), stride=(1, m))
-#         self.Fix_Position = tAPE(emb_size, dropout=dropout, max_len=seq_len)
-#         self.attention_layer = Attention_Rel_Scl(emb_size, num_heads, seq_len, dropout)
-
-#         self.LayerNorm = nn.LayerNorm(emb_size, eps=1e-5)
-#         self.LayerNorm2 = nn.LayerNorm(emb_size, eps=1e-5)
-
-#         self.FeedForward = nn.Sequential(
-#             nn.Linear(emb_size, dim_ff),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(dim_ff, emb_size),
-#             nn.Dropout(dropout))
-
-#         self.gap = nn.AdaptiveAvgPool1d(1)
-#         self.flatten = nn.Flatten()
-#         self.out1 = nn.Linear(emb_size, num_classes)
-#         self.out2 = nn.Linear(emb_size, 2)
-
-#     def forward(self, x, pad_mask=None):
-#         # input is (bs, 1, T, C)
-#         x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
-#         x_src = self.embed_layer(x)
-#         x_src = self.embed_layer2(x_src).squeeze(2)
-#         x_src = self.maxpool(x_src) 
-#         x_src = x_src.permute(0, 2, 1)
-#         x_src_pos = self.Fix_Position(x_src)
-#         att = x_src + self.attention_layer(x_src_pos)
-#         att = self.LayerNorm(att)
-#         out = att + self.FeedForward(att)
-#         out = self.LayerNorm2(out)
-#         out = out.permute(0, 2, 1)
-#         out = self.gap(out)
-#         out = self.flatten(out)
-#         out1 = self.out1(out)
-#         out2 = self.out2(out)
-#         return out1, out2
 
 class ConvTran_SingleSensor_SE_v1(nn.Module):
     def __init__(self, 
