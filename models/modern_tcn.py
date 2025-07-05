@@ -202,7 +202,7 @@ class Stage(nn.Module):
 class ModernTCN(nn.Module):
     def __init__(self,task_name,patch_size,patch_stride, stem_ratio, downsample_ratio, ffn_ratio, num_blocks, large_size, small_size, dims, dw_dims,
                  nvars, small_kernel_merged=False, backbone_dropout=0.1, head_dropout=0.1, use_multi_scale=True, revin=True, affine=True,
-                 subtract_last=False, freq=None, seq_len=512, c_in=7, individual=False, target_window=96, class_drop=0.,class_num = 10):
+                 subtract_last=False, freq=None, seq_len=cfg.seq_len, c_in=cfg.imu_vars, individual=False, target_window=96, class_drop=0.,class_num = 10):
 
         super(ModernTCN, self).__init__()
 
@@ -394,7 +394,7 @@ class ModernTCN_SingleSensor_v1(nn.Module):
                  small_size=[7, 7], #3
                  dims=[128, 256], #64,128
                  dw_dims=[128, 256], #64,128
-                 nvars=7,
+                 nvars=cfg.imu_vars,
                  small_kernel_merged=False,
                  backbone_dropout=0.1,
                  head_dropout=0.1,
