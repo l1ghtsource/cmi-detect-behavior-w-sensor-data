@@ -67,7 +67,7 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 0
 cfg.seed = 42
-cfg.selected_model = 'convtran' # ['timemil', 'decomposewhar', 'convtran', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'baseline', 'public']
+cfg.selected_model = 'convtran' # ['timemil', 'decomposewhar', 'convtran', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'wavenet', 'baseline', 'public']
 
 # --- target things ---
 cfg.main_weight = 1.0

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# TODO: test it
+from configs.config import cfg
 
 class Wave_Block(nn.Module):
     def __init__(self, in_channels, out_channels, dilation_rates, kernel_size):
@@ -46,10 +46,10 @@ class SEModule(nn.Module):
         return x
 
 class WaveNet_SingleSensor_v1(nn.Module):
-    def __init__(self, kernel_size=3):
+    def __init__(self, kernel_size=3, num_classes=cfg.main_num_classes):
         super().__init__()
         dropout_rate = 0.1
-        inch = 7  # imu
+        inch = cfg.imu_vars
 
         self.conv1d_1 = nn.Conv1d(inch, 32, kernel_size=1, stride=1, dilation=1, 
                                  padding=0, padding_mode='replicate')
@@ -82,8 +82,7 @@ class WaveNet_SingleSensor_v1(nn.Module):
         self.dropout_4 = nn.Dropout(dropout_rate)
 
         self.lstm = nn.LSTM(inch+16+32+64, 32, 1, batch_first=True, bidirectional=True)
-        self.fc0 = nn.Linear(64, 18)
-        self.fc1 = nn.Linear(64, 4)
+        self.fc0 = nn.Linear(64, num_classes)
         self.fc2 = nn.Linear(64, 2)
 
     def forward(self, imu_data, pad_mask=None):
@@ -93,10 +92,6 @@ class WaveNet_SingleSensor_v1(nn.Module):
             pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
         """
         x = imu_data.squeeze(1).permute(0, 2, 1)  # [B, 1, L, 7] -> [B, L, 7] -> [B, 7, L]
-        
-        if pad_mask is not None:
-            mask_expanded = pad_mask.unsqueeze(1).expand(-1, x.size(1), -1).float()
-            x = x * mask_expanded
 
         x0 = self.conv1d_1(x)
         x0 = F.relu(x0)
@@ -134,30 +129,13 @@ class WaveNet_SingleSensor_v1(nn.Module):
 
         lstm_input = x4_base.permute(0, 2, 1)  # [B, C, L] -> [B, L, C]
         
-        if pad_mask is not None:
-            lengths = pad_mask.sum(dim=1).cpu()
-            lstm_input = nn.utils.rnn.pack_padded_sequence(
-                lstm_input, lengths, batch_first=True, enforce_sorted=False
-            )
-            lstm_out, _ = self.lstm(lstm_input)
-            lstm_out, _ = nn.utils.rnn.pad_packed_sequence(lstm_out, batch_first=True)
-        else:
-            lstm_out, _ = self.lstm(lstm_input)
+        lstm_out, _ = self.lstm(lstm_input)
         
         out0 = self.fc0(lstm_out)  # [B, L, 18]
         out2 = self.fc2(lstm_out)  # [B, L, 2]
 
-        if pad_mask is not None:
-            mask_output = pad_mask.unsqueeze(-1).float()
-            out0_masked = out0 * mask_output.expand_as(out0)
-            out2_masked = out2 * mask_output.expand_as(out2)
-            
-            valid_lengths = pad_mask.sum(dim=1, keepdim=True).float()  # [B, 1]
-            out0 = out0_masked.sum(dim=1) / valid_lengths  # [B, 18]
-            out2 = out2_masked.sum(dim=1) / valid_lengths  # [B, 2]
-        else:
-            out0 = out0.mean(dim=1)  # [B, 18]
-            out2 = out2.mean(dim=1)  # [B, 2]
+        out0 = out0.mean(dim=1)  # [B, 18]
+        out2 = out2.mean(dim=1)  # [B, 2]
 
         return out0, out2
     
@@ -251,11 +229,11 @@ class InterSensorFusionModule(nn.Module):
         return x
 
 class WaveNet_MultiSensor_v1(nn.Module):
-    def __init__(self, kernel_size=3):
+    def __init__(self, kernel_size=3, num_classes=cfg.main_num_classes):
         super().__init__()
         dropout_rate = 0.1
         
-        imu_features = 7
+        imu_features = cfg.imu_vars
         self.imu_conv1d_1 = nn.Conv1d(imu_features, 32, kernel_size=1, stride=1, 
                                      dilation=1, padding=0, padding_mode='replicate')
         self.imu_batch_norm_conv_1 = nn.BatchNorm1d(32)
@@ -300,7 +278,7 @@ class WaveNet_MultiSensor_v1(nn.Module):
         )
         
         self.lstm = nn.LSTM(256, 64, 1, batch_first=True, bidirectional=True)
-        self.fc0 = nn.Linear(128, 18)
+        self.fc0 = nn.Linear(128, num_classes)
         self.fc2 = nn.Linear(128, 2)
 
     def forward(self, imu_data, tof_data, thm_data, pad_mask=None):
@@ -312,10 +290,6 @@ class WaveNet_MultiSensor_v1(nn.Module):
             pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
         """
         imu_x = imu_data.squeeze(1).permute(0, 2, 1)  # [B, 1, L, 7] -> [B, 7, L]
-        
-        if pad_mask is not None:
-            mask_expanded = pad_mask.unsqueeze(1).expand(-1, imu_x.size(1), -1).float()
-            imu_x = imu_x * mask_expanded
 
         imu_x0 = self.imu_conv1d_1(imu_x)
         imu_x0 = F.relu(imu_x0)
@@ -347,30 +321,13 @@ class WaveNet_MultiSensor_v1(nn.Module):
         )  # [B, 256, L]
         
         lstm_input = fused_features.permute(0, 2, 1)  # [B, L, 256]
-        
-        if pad_mask is not None:
-            lengths = pad_mask.sum(dim=1).cpu()
-            lstm_input = nn.utils.rnn.pack_padded_sequence(
-                lstm_input, lengths, batch_first=True, enforce_sorted=False
-            )
-            lstm_out, _ = self.lstm(lstm_input)
-            lstm_out, _ = nn.utils.rnn.pad_packed_sequence(lstm_out, batch_first=True)
-        else:
-            lstm_out, _ = self.lstm(lstm_input)
+
+        lstm_out, _ = self.lstm(lstm_input)
         
         out0 = self.fc0(lstm_out)  # [B, L, 18]
         out2 = self.fc2(lstm_out)  # [B, L, 2]
 
-        if pad_mask is not None:
-            mask_output = pad_mask.unsqueeze(-1).float()
-            out0_masked = out0 * mask_output.expand_as(out0)
-            out2_masked = out2 * mask_output.expand_as(out2)
-            
-            valid_lengths = pad_mask.sum(dim=1, keepdim=True).float()  # [B, 1]
-            out0 = out0_masked.sum(dim=1) / valid_lengths  # [B, 18]
-            out2 = out2_masked.sum(dim=1) / valid_lengths  # [B, 2]
-        else:
-            out0 = out0.mean(dim=1)  # [B, 18]
-            out2 = out2.mean(dim=1)  # [B, 2]
+        out0 = out0.mean(dim=1)  # [B, 18]
+        out2 = out2.mean(dim=1)  # [B, 2]
 
         return out0, out2
