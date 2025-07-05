@@ -114,7 +114,7 @@ class ResidualEmbeddingBlock(nn.Module):
         return F.gelu(out + residual)
     
 class SE_Block(nn.Module):
-    def __init__(self, channels, reduction=16):
+    def __init__(self, channels, reduction=8):
         super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
@@ -130,6 +130,22 @@ class SE_Block(nn.Module):
         y = self.fc(y).view(b, c, 1, 1)
         return x * y.expand_as(x)
 
+class SEBlock228(nn.Module):
+    def __init__(self, channels, r=16):
+        super().__init__()
+        self.pool = nn.AdaptiveAvgPool1d(1)          # squeeze
+        self.fc = nn.Sequential(                     # excitation
+            nn.Conv1d(channels, channels // r, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(channels // r, channels, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):                           # x: (bs, C, T)
+        w = self.pool(x)                            # (bs, C, 1)
+        w = self.fc(w)                              # (bs, C, 1)
+        return x * w                                # channel-wise re-weighting
+
 class ConvTran_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  channel_size=cfg.imu_vars, 
@@ -141,59 +157,123 @@ class ConvTran_SingleSensor_v1(nn.Module):
                  num_classes=cfg.main_num_classes):
         super().__init__()
 
-        if seq_len > 128:
-            m = 2 ** int(math.log2(seq_len // 128))
-        else:
-            m = 1
+        self.embed_layer = nn.Sequential(
+            nn.Conv2d(1, emb_size * 4, kernel_size=[1, 15], padding='same'),
+            nn.BatchNorm2d(emb_size * 4),
+            nn.GELU()
+        )
+        self.embed_layer2 = nn.Sequential(
+            nn.Conv2d(emb_size * 4, emb_size, kernel_size=[channel_size, 1],
+                      padding='valid'),
+            nn.BatchNorm2d(emb_size),
+            nn.GELU()
+        )
 
-        seq_len = seq_len // m
+        self.conv_extra = nn.Sequential(
+            nn.Conv1d(emb_size, emb_size, kernel_size=3, padding=1, dilation=1),
+            nn.BatchNorm1d(emb_size),
+            nn.GELU(),
+            nn.Dropout(dropout)
+        )
+        self.se = SEBlock228(emb_size, r=16)
 
-        # Embedding Layer -----------------------------------------------------------
-        self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 15], padding='same'),
-                                         nn.BatchNorm2d(emb_size*4),
-                                         nn.GELU())
-
-        self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
-                                          nn.BatchNorm2d(emb_size),
-                                          nn.GELU())
-
-        self.maxpool = nn.MaxPool2d(kernel_size=(1, m), stride=(1, m))
-        self.Fix_Position = tAPE(emb_size, dropout=dropout, max_len=seq_len)
-        self.attention_layer = Attention_Rel_Scl(emb_size, num_heads, seq_len, dropout)
-
-        self.LayerNorm = nn.LayerNorm(emb_size, eps=1e-5)
-        self.LayerNorm2 = nn.LayerNorm(emb_size, eps=1e-5)
-
-        self.FeedForward = nn.Sequential(
+        self.ffn = nn.Sequential(
             nn.Linear(emb_size, dim_ff),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(dim_ff, emb_size),
-            nn.Dropout(dropout))
+            nn.Dropout(dropout)
+        )
+        self.norm = nn.LayerNorm(emb_size, eps=1e-5)
 
         self.gap = nn.AdaptiveAvgPool1d(1)
-        self.flatten = nn.Flatten()
         self.out1 = nn.Linear(emb_size, num_classes)
         self.out2 = nn.Linear(emb_size, 2)
 
     def forward(self, x, pad_mask=None):
-        # input is (bs, 1, T, C)
-        x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
-        x_src = self.embed_layer(x)
-        x_src = self.embed_layer2(x_src).squeeze(2)
-        x_src = self.maxpool(x_src) 
-        x_src = x_src.permute(0, 2, 1)
-        x_src_pos = self.Fix_Position(x_src)
-        att = x_src + self.attention_layer(x_src_pos)
-        att = self.LayerNorm(att)
-        out = att + self.FeedForward(att)
-        out = self.LayerNorm2(out)
-        out = out.permute(0, 2, 1)
-        out = self.gap(out)
-        out = self.flatten(out)
-        out1 = self.out1(out)
-        out2 = self.out2(out)
-        return out1, out2
+        # x: (bs, 1, T, C) → (bs, 1, C, T)
+        x = x.permute(0, 1, 3, 2)
+
+        x = self.embed_layer(x)
+        x = self.embed_layer2(x).squeeze(2)         # (bs, emb, T)
+
+        x = self.conv_extra(x)
+        x = self.se(x)
+
+        x = x.permute(0, 2, 1)                      # (bs, T, emb)
+        x = self.norm(x + self.ffn(x))              # residual + FFN
+        x = x.permute(0, 2, 1)                      # (bs, emb, T)
+
+        x = self.gap(x).squeeze(-1)                 # (bs, emb)
+        cls_logits = self.out1(x)
+        reg_logits = self.out2(x)
+
+        return cls_logits, reg_logits
+
+# class ConvTran_SingleSensor_v1(nn.Module):
+#     def __init__(self, 
+#                  channel_size=cfg.imu_vars, 
+#                  seq_len=cfg.seq_len, 
+#                  emb_size=cfg.convtran_emb_size, 
+#                  num_heads=cfg.convtran_num_heads, 
+#                  dim_ff=cfg.convtran_dim_ff, 
+#                  dropout=cfg.convtran_dropout, 
+#                  num_classes=cfg.main_num_classes):
+#         super().__init__()
+
+#         if seq_len > 128:
+#             m = 2 ** int(math.log2(seq_len // 128))
+#         else:
+#             m = 1
+
+#         seq_len = seq_len // m
+
+#         # Embedding Layer -----------------------------------------------------------
+#         self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 15], padding='same'),
+#                                          nn.BatchNorm2d(emb_size*4),
+#                                          nn.GELU())
+
+#         self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
+#                                           nn.BatchNorm2d(emb_size),
+#                                           nn.GELU())
+
+#         self.maxpool = nn.MaxPool2d(kernel_size=(1, m), stride=(1, m))
+#         self.Fix_Position = tAPE(emb_size, dropout=dropout, max_len=seq_len)
+#         self.attention_layer = Attention_Rel_Scl(emb_size, num_heads, seq_len, dropout)
+
+#         self.LayerNorm = nn.LayerNorm(emb_size, eps=1e-5)
+#         self.LayerNorm2 = nn.LayerNorm(emb_size, eps=1e-5)
+
+#         self.FeedForward = nn.Sequential(
+#             nn.Linear(emb_size, dim_ff),
+#             nn.ReLU(),
+#             nn.Dropout(dropout),
+#             nn.Linear(dim_ff, emb_size),
+#             nn.Dropout(dropout))
+
+#         self.gap = nn.AdaptiveAvgPool1d(1)
+#         self.flatten = nn.Flatten()
+#         self.out1 = nn.Linear(emb_size, num_classes)
+#         self.out2 = nn.Linear(emb_size, 2)
+
+#     def forward(self, x, pad_mask=None):
+#         # input is (bs, 1, T, C)
+#         x = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
+#         x_src = self.embed_layer(x)
+#         x_src = self.embed_layer2(x_src).squeeze(2)
+#         x_src = self.maxpool(x_src) 
+#         x_src = x_src.permute(0, 2, 1)
+#         x_src_pos = self.Fix_Position(x_src)
+#         att = x_src + self.attention_layer(x_src_pos)
+#         att = self.LayerNorm(att)
+#         out = att + self.FeedForward(att)
+#         out = self.LayerNorm2(out)
+#         out = out.permute(0, 2, 1)
+#         out = self.gap(out)
+#         out = self.flatten(out)
+#         out1 = self.out1(out)
+#         out2 = self.out2(out)
+#         return out1, out2
 
 class ConvTran_SingleSensor_SE_v1(nn.Module):
     def __init__(self, 
@@ -215,14 +295,14 @@ class ConvTran_SingleSensor_SE_v1(nn.Module):
 
         # Embedding Layer -----------------------------------------------------------
         self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 15], padding='same'),
-                                         SE_Block(emb_size*4, reduction=8),
                                          nn.BatchNorm2d(emb_size*4),
-                                         nn.GELU())
+                                         nn.GELU(),
+                                         SE_Block(emb_size*4, reduction=8))
 
         self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
-                                          SE_Block(emb_size, reduction=16),
                                           nn.BatchNorm2d(emb_size),
-                                          nn.GELU())
+                                          nn.GELU(),
+                                          SE_Block(emb_size, reduction=8))
 
         self.maxpool = nn.MaxPool2d(kernel_size=(1, m), stride=(1, m))
         self.Fix_Position = tAPE(emb_size, dropout=dropout, max_len=seq_len)
