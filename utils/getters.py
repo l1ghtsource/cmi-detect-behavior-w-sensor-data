@@ -65,6 +65,9 @@ from models.public_model import (
 from models.wavenet import (
     WaveNet_SingleSensor_v1, WaveNet_MultiSensor_v1
 )
+from models.hybrid_model import (
+    HybridModel_SingleSensor_v1
+)
 from configs.config import cfg
 
 def get_muon_param_groups(model, lr_muon=0.02, lr_adam=3e-4, weight_decay=0.01):
@@ -357,6 +360,16 @@ def get_ts_model_and_params(imu_only):
                 'num_classes': cfg.main_num_classes,
             }
             return model_cls, params
+    elif cfg.selected_model == 'hybrid':
+        if imu_only: # only imu sensor
+            model_cls = HybridModel_SingleSensor_v1
+            params = {
+                'num_classes': cfg.main_num_classes,
+            }
+            return model_cls, params
+        else: # multi sensor model
+            # TODO: add hybrid multisensor model
+            return None 
     elif cfg.selected_model == 'baseline':
         if imu_only: # only imu sensor
             model_cls = TS_IMUModel
