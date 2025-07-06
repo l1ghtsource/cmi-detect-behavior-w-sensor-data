@@ -65,7 +65,7 @@ cfg.phase_aux_target = 'phase'
 cfg.group = 'subject'
 cfg.seq_len = 120
 cfg.n_splits = 5
-cfg.curr_fold = 0
+cfg.curr_fold = 1
 cfg.seed = 42
 cfg.selected_model = 'hybrid' # ['timemil', 'decomposewhar', 'convtran', 'hybrid', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'wavenet', 'baseline', 'public']
 
@@ -162,17 +162,17 @@ cfg.timemil_extractor = 'inception_time' # ['inception_time', 'lite', 'resnet', 
 cfg.timemil_singlebranch = True
 
 # --- convtran ---
-cfg.convtran_emb_size = 64
+cfg.convtran_emb_size = 128
 cfg.convtran_num_heads = 8
 cfg.convtran_dim_ff = 256
 cfg.convtran_dropout = 0.1
 cfg.convtran_type = 'notran' # ['default', 'notran', 'multiscale', 'residual', 'inception', 'se']
 
 # --- cnn1d ---
-cfg.cnn1d_extractor = 'inception_time' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet']
+cfg.cnn1d_extractor = 'resnet' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet']
 cfg.cnn1d_out_channels = 32
-cfg.cnn1d_pooling = 'gap' # ['gap', 'gem', 'se_mean']
-cfg.cnn1d_use_neck = False
+cfg.cnn1d_pooling = 'se_mean' # ['gap', 'gem', 'se_mean']
+cfg.cnn1d_use_neck = True
 
 # --- im model ---
 cfg.encoder_name = 'timm/test_convnext.r160_in1k' # timm/test_vit.r160_in1k
@@ -184,7 +184,7 @@ cfg.bs = 256
 cfg.n_epochs = 100
 cfg.patience = 25
 cfg.lr = 1e-3
-cfg.lr_muon = 2e-2
+cfg.lr_muon = 1e-3
 cfg.weight_decay = 3e-4
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
@@ -195,18 +195,18 @@ cfg.scheduler = 'linear' # ['cosine', 'cosine_cycle', 'linear']
 cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 0#4
+cfg.max_augmentations_per_sample = 0#3
 
-cfg.jitter_proba = 0#0.5
+cfg.jitter_proba = 0#0.8
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
 
 cfg.magnitude_warp_proba = 0#0.3
 cfg.magnitude_warp_sensors = ['imu', 'thm']
 
-cfg.time_warp_proba = 0#0.5
+cfg.time_warp_proba = 0#0.6
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
 
-cfg.scaling_proba = 0#0.3
+cfg.scaling_proba = 0#0.5
 cfg.scaling_sensors = ['imu', 'thm']
 
 cfg.window_slice_proba = 0
