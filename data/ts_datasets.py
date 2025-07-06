@@ -17,6 +17,11 @@ from data.ts_augmentations import (
 )
 from data.moda import moda_augmentation
 from utils.denoising import apply_denoising
+from utils.data_preproc import (
+    remove_gravity_from_acc_df, 
+    calculate_angular_velocity_from_quat, 
+    calculate_angular_distance
+)
 from configs.config import cfg
 
 # TODO: all augmentations to gpu!
@@ -459,41 +464,34 @@ class TS_CMIDataset(Dataset):
                 acc_horizontal_mag
             ])
 
-        # if cfg.use_kaggle_shit:
-        #     acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
-        #     rot_angle = 2 * np.arccos(rot_w.clip(-1, 1))
-        #     acc_mag_jerk = np.zeros_like(acc_mag)
-        #     acc_mag_jerk[1:] = acc_mag[1:] - acc_mag[:-1]
-        #     rot_angle_vel = np.zeros_like(rot_angle)
-        #     rot_angle_vel[1:] = rot_angle[1:] - rot_angle[:-1]
-        #     linear_accs = remove_gravity_from_acc(data[:, :3], data[:, 3:7])
-        #     linear_acc_x, linear_acc_y, linear_acc_z = linear_accs[:, 0], linear_accs[:, 1], linear_accs[:, 2]
-        #     linear_acc_mag = np.sqrt(linear_acc_x ** 2 + linear_acc_y ** 2 + linear_acc_z ** 2)
-        #     linear_acc_mag_jerk = np.zeros_like(linear_acc_mag)
-        #     linear_acc_mag_jerk[1:] = linear_acc_mag[1:] - linear_acc_mag[:-1]   
-        #     angular_vels = calculate_angular_velocity_from_quat(data[:, 3:7])
-        #     angular_vel_x, angular_vel_y, angular_vel_z = angular_vels[:, 0], angular_vels[:, 1], angular_vels[:, 2]
-        #     angular_jerk_x = np.zeros_like(angular_vel_x)
-        #     angular_jerk_x[1:] = angular_vel_x[1:] - angular_vel_x[:-1]     
-        #     angular_jerk_y = np.zeros_like(angular_vel_y)
-        #     angular_jerk_y[1:] = angular_vel_y[1:] - angular_vel_y[:-1]     
-        #     angular_jerk_z = np.zeros_like(angular_vel_z)
-        #     angular_jerk_z[1:] = angular_vel_z[1:] - angular_vel_z[:-1]     
-        #     angular_snap_x = np.zeros_like(angular_jerk_x)
-        #     angular_snap_x[1:] = angular_jerk_x[1:] - angular_jerk_x[:-1]  
-        #     angular_snap_y = np.zeros_like(angular_jerk_y)
-        #     angular_snap_y[1:] = angular_jerk_y[1:] - angular_jerk_y[:-1]   
-        #     angular_snap_z = np.zeros_like(angular_jerk_z)
-        #     angular_snap_z[1:] = angular_jerk_z[1:] - angular_jerk_z[:-1]     
+        if cfg.kaggle_fe:
+            acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
+            rot_angle = 2 * np.arccos(rot_w.clip(-1, 1))
 
-        #     additional_features.extend([
-        #         acc_mag, rot_angle,
-        #         acc_mag_jerk, rot_angle_vel,
-        #         linear_acc_mag, linear_acc_mag_jerk,
-        #         angular_vel_x, angular_vel_y, angular_vel_z,
-        #         angular_jerk_x, angular_jerk_y, angular_jerk_z,
-        #         angular_snap_x, angular_snap_y, angular_snap_z
-        #     ])
+            acc_mag_jerk = np.zeros_like(acc_mag)
+            acc_mag_jerk[1:] = acc_mag[1:] - acc_mag[:-1]
+            rot_angle_vel = np.zeros_like(rot_angle)
+            rot_angle_vel[1:] = rot_angle[1:] - rot_angle[:-1]
+
+            linear_accs = remove_gravity_from_acc_df(data[:, :3], data[:, 3:7])
+            linear_acc_x, linear_acc_y, linear_acc_z = linear_accs[:, 0], linear_accs[:, 1], linear_accs[:, 2]
+
+            linear_acc_mag = np.sqrt(linear_acc_x ** 2 + linear_acc_y ** 2 + linear_acc_z ** 2)
+            linear_acc_mag_jerk = np.zeros_like(linear_acc_mag)
+            linear_acc_mag_jerk[1:] = linear_acc_mag[1:] - linear_acc_mag[:-1]   
+
+            angular_vels = calculate_angular_velocity_from_quat(data[:, 3:7])
+            angular_vel_x, angular_vel_y, angular_vel_z = angular_vels[:, 0], angular_vels[:, 1], angular_vels[:, 2]
+
+            angular_distance = calculate_angular_distance(data[:, 3:7])
+
+            additional_features.extend([
+                acc_mag, rot_angle,
+                acc_mag_jerk, rot_angle_vel,
+                linear_acc_mag, linear_acc_mag_jerk,
+                angular_vel_x, angular_vel_y, angular_vel_z,
+                angular_distance
+            ])
 
         if additional_features:
             additional_features = np.column_stack(additional_features)  # (seq_len, n_new_features)
