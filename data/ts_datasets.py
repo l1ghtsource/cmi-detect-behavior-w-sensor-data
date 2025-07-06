@@ -488,6 +488,7 @@ class TS_CMIDataset(Dataset):
             additional_features.extend([
                 acc_mag, rot_angle,
                 acc_mag_jerk, rot_angle_vel,
+                linear_acc_x, linear_acc_y, linear_acc_z,
                 linear_acc_mag, linear_acc_mag_jerk,
                 angular_vel_x, angular_vel_y, angular_vel_z,
                 angular_distance
