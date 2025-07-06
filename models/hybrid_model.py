@@ -251,9 +251,8 @@ class HybridModel_SingleSensor_v1(nn.Module):
         self.extractor4 = Resnet1DFeatureExtractor(
             n_in_channels=channel_size, out_channels=cnn1d_out_channels
         ) # output dim = cnn1d_out_channels * 4 = 32 * 4 = 128
-
-        self.pool = SEPlusMean(cnn1d_out_channels * 4)
-        self.neck = MLPNeck(cnn1d_out_channels * 4)
+        self.pool4 = SEPlusMean(cnn1d_out_channels * 4)
+        self.neck4 = MLPNeck(cnn1d_out_channels * 4)
 
         general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) # 64 + 100 + 64 + 128 = 356
 
@@ -282,8 +281,8 @@ class HybridModel_SingleSensor_v1(nn.Module):
         x_ = x_.squeeze(1) # (bs, C, T)
 
         x4 = self.extractor4(x_) # (bs, cnn1d_out_channels * 4, T)
-        x4 = self.pool(x4) # (bs, cnn1d_out_channels * 4)
-        x4 = x4 + self.neck(x4) # (bs, cnn1d_out_channels * 4)
+        x4 = self.pool4(x4) # (bs, cnn1d_out_channels * 4)
+        x4 = x4 + self.neck4(x4) # (bs, cnn1d_out_channels * 4)
 
         x_cat = torch.cat([x1, x2, x3, x4], dim=1) # (bs, general_hdim)
 
