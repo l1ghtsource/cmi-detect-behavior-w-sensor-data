@@ -214,6 +214,149 @@ class ConvTran_SingleSensor_NoTranLol_Extractor(nn.Module):
 
         return x
     
+class EnhancedSEBlock(nn.Module):
+    def __init__(self, channels, reduction=8):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.max_pool = nn.AdaptiveMaxPool1d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(channels * 2, channels // reduction, bias=False),
+            nn.SiLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        b, c, _ = x.size()
+        avg_y = self.avg_pool(x).view(b, c)
+        max_y = self.max_pool(x).view(b, c)
+        y = torch.cat([avg_y, max_y], dim=1)
+        y = self.excitation(y).view(b, c, 1)
+        return x * y.expand_as(x)
+
+class MultiScaleConv1d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_sizes=[3, 5, 7]):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for ks in kernel_sizes:
+            self.convs.append(nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, ks, padding=ks//2, bias=False),
+                nn.BatchNorm1d(out_channels),
+                nn.ReLU(inplace=True)
+            ))
+        
+    def forward(self, x):
+        outputs = [conv(x) for conv in self.convs]
+        return torch.cat(outputs, dim=1)
+
+class ResidualSEBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pool_size=2, dropout=0.3):
+        super().__init__()
+        self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size, padding=kernel_size//2, bias=False)
+        self.bn1 = nn.BatchNorm1d(out_channels)
+        
+        self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size, padding=kernel_size//2, bias=False)
+        self.bn2 = nn.BatchNorm1d(out_channels)
+        
+        self.se = EnhancedSEBlock(out_channels, reduction=8)
+        
+        self.shortcut = nn.Sequential()
+        if in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels, 1, bias=False),
+                nn.BatchNorm1d(out_channels)
+            )
+        
+        self.pool = nn.MaxPool1d(pool_size)
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x):
+        shortcut = self.shortcut(x)
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = self.se(out)
+        out += shortcut
+        out = F.relu(out)
+        out = self.pool(out)
+        out = self.dropout(out)
+        return out
+
+class MetaFeatureExtractor(nn.Module):
+    def forward(self, x):
+        # x shape: (B, L, C)
+        mean = torch.mean(x, dim=1)
+        std = torch.std(x, dim=1)
+        max_val, _ = torch.max(x, dim=1)
+        min_val, _ = torch.min(x, dim=1)
+        
+        # Calculate slope: (last - first) / seq_len
+        seq_len = x.size(1)
+        if seq_len > 1:
+            slope = (x[:, -1, :] - x[:, 0, :]) / (seq_len - 1)
+        else:
+            slope = torch.zeros_like(x[:, 0, :])
+        
+        return torch.cat([mean, std, max_val, min_val, slope], dim=1)
+
+class Public2_SingleSensor_Extractor(nn.Module):
+    def __init__(
+        self,
+        channel_size=cfg.imu_vars, 
+    ):
+        super().__init__()
+
+        self.meta_extractor = MetaFeatureExtractor()
+        self.meta_dense = nn.Sequential(
+            nn.Linear(5 * channel_size, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+        )
+
+        self.branches = nn.ModuleList(
+            [
+                nn.Sequential(
+                    MultiScaleConv1d(1, 12, kernel_sizes=[3, 5, 7]),
+                    ResidualSEBlock(36, 48, 3, dropout=0.3),
+                    ResidualSEBlock(48, 48, 3, dropout=0.3),
+                )
+                for _ in range(channel_size)
+            ]
+        )
+
+        self.bigru = nn.GRU(
+            input_size=48 * channel_size,
+            hidden_size=128,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
+            dropout=0.2,
+        )
+
+        self.attention_pooling = AttentionLayer(256)
+
+    def forward(self, x, pad_mask=None):
+        x = x.squeeze(1) # (bs, l, c)
+
+        meta = self.meta_extractor(x)
+        meta_proj = self.meta_dense(meta)
+
+        branch_outputs = []
+        for i in range(x.shape[2]):
+            channel_input = x[:, :, i].unsqueeze(1)
+            processed = self.branches[i](channel_input)
+            branch_outputs.append(processed.transpose(1, 2))
+
+        combined = torch.cat(branch_outputs, dim=2)
+
+        gru_out, _ = self.bigru(combined)
+
+        pooled_output = self.attention_pooling(gru_out)
+
+        fused = torch.cat([pooled_output, meta_proj], dim=1) # 256 + 32 = 288
+
+        return fused
+    
 class HybridModel_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  channel_size=cfg.imu_vars, 
@@ -224,6 +367,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  convtran_num_heads=cfg.convtran_num_heads, 
                  convtran_dim_ff=cfg.convtran_dim_ff, 
                  convtran_dropout=cfg.convtran_dropout,
+                 out_size_public2=256+32,
                  cnn1d_out_channels=32,
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
@@ -254,7 +398,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
         self.pool4 = SEPlusMean(cnn1d_out_channels * 4)
         self.neck4 = MLPNeck(cnn1d_out_channels * 4)
 
-        general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) # 64 + 100 + 64 + 128 = 356
+        self.extractor5 = Public2_SingleSensor_Extractor(channel_size=channel_size)
+
+        general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) + (out_size_public2) # 64 + 100 + 64 + 128 + 288 = 644
 
         self.head1 = nn.Sequential(
             nn.Linear(general_hdim, general_hdim),
@@ -284,7 +430,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
         x4 = self.pool4(x4) # (bs, cnn1d_out_channels * 4)
         x4 = x4 + self.neck4(x4) # (bs, cnn1d_out_channels * 4)
 
-        x_cat = torch.cat([x1, x2, x3, x4], dim=1) # (bs, general_hdim)
+        x5 = self.extractor5(x) # (bs, 256 + 32)
+
+        x_cat = torch.cat([x1, x2, x3, x4, x5], dim=1) # (bs, general_hdim)
 
         out1 = self.head1(x_cat) # (bs, num_classes)
         out2 = self.head2(x_cat) # (bs, 2)
