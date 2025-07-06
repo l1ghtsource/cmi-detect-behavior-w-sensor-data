@@ -122,6 +122,8 @@ cfg.imu_add = 0 # new features
 #     cfg.imu_add += 21
 # if cfg.fe_gravity:
 #     cfg.imu_add += 5
+# if cfg.kaggle_fe:
+#     cfg.imu_add += 13
 
 # --- im ds cfg ---
 cfg.im_size = 160
