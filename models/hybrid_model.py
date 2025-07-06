@@ -10,6 +10,7 @@ from modules.inceptiontime_replacers import (
 )
 from models.convtran import SEBlock228
 from models.filternet import FilterNet_SingleSensor_v1, DEFAULT_WIDTH
+from models.basic_cnn1ds import SEPlusMean, MLPNeck
 from configs.config import cfg
 
 class SEBlock(nn.Module):
@@ -148,8 +149,8 @@ class FilterNetFeatureExtractor(FilterNet_SingleSensor_v1):
             self.Xs = Xs
 
         feats = Xs[-1]                             # [B, hidden_dim, T']
-        feats = feats[:, :, -1]                    # or feats = feats.mean(-1)
-        return feats                               # [B, hidden_dim] = [B, 100]
+        feats = feats[:, :, -1]                    # [B, hidden_dim]
+        return feats
 
     def forward(self, X, pad_mask=None):
         return self._forward(X, pad_mask)
@@ -251,6 +252,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
             n_in_channels=channel_size, out_channels=cnn1d_out_channels
         ) # output dim = cnn1d_out_channels * 4 = 32 * 4 = 128
 
+        self.pool = SEPlusMean(cnn1d_out_channels * 4)
+        self.neck = MLPNeck(cnn1d_out_channels * 4)
+
         general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) # 64 + 100 + 64 + 128 = 356
 
         self.head1 = nn.Sequential(
@@ -271,13 +275,15 @@ class HybridModel_SingleSensor_v1(nn.Module):
         # input is (bs, 1, T, C)
 
         x1 = self.extractor1(x) # (bs, dim_ff_public // 2)
-        x2 = self.extractor2(x) # (bs, 100)
-        x3 = self.extractor3(x) # (bs, 64)
+        x2 = self.extractor2(x) # (bs, DEFAULT_WIDTH)
+        x3 = self.extractor3(x) # (bs, convtran_emb_size)
 
         x_ = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
         x_ = x_.squeeze(1) # (bs, C, T)
 
-        x4 = self.extractor4(x_) # (bs, 128)
+        x4 = self.extractor4(x_) # (bs, cnn1d_out_channels * 4, T)
+        x4 = self.pool(x4) # (bs, cnn1d_out_channels * 4)
+        x4 = x4 + self.neck(x4) # (bs, cnn1d_out_channels * 4)
 
         x_cat = torch.cat([x1, x2, x3, x4], dim=1) # (bs, general_hdim)
 
