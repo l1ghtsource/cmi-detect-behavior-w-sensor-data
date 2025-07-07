@@ -47,7 +47,7 @@ class ResidualBiGRU(nn.Module):
 class MultiResidualBiGRU_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  seq_len=cfg.seq_len,
-                 n_imu_vars=7,
+                 n_imu_vars=cfg.imu_vars,
                  hidden_size=128, 
                  n_layers=3, 
                  bidir=True,
