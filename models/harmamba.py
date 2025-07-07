@@ -578,7 +578,7 @@ class HARMamba_SingleSensor_v1(nn.Module):
             embed_dim=embed_dim,
             channels=1,
             num_classes=num_classes,
-            c_in=7,
+            c_in=cfg.imu_vars,
             revin=True,
             **kwargs
         )
