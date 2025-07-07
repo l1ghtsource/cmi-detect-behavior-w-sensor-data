@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 from configs.config import cfg
 
+# good in hybrid, solo ok
+
 # class SEBlock(nn.Module):
 #     def __init__(self, channels, reduction=8):
 #         super().__init__()

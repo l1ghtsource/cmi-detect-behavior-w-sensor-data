@@ -10,6 +10,8 @@ from modules.inceptiontime_replacers import (
 from modules.lite import LiteFeatureExtractor
 from configs.config import cfg
 
+# good in hybrid, solo ok
+
 class GeMPool(nn.Module):
     def __init__(self, p: float = 3.0, eps: float = 1e-6):
         super().__init__()

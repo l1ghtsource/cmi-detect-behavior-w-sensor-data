@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from torch import nn
 from configs.config import cfg
 
+# good in hybrid, solo ok
+
 DEFAULT_WIDTH = 100
 
 class BaseNet(nn.Module):

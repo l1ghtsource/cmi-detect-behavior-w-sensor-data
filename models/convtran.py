@@ -8,6 +8,8 @@ from einops import rearrange
 from modules.inceptiontime import InceptionTimeFeatureExtractor
 from configs.config import cfg
 
+# good in hybrid, solo ok
+
 class tAPE(nn.Module):
     r"""Inject some information about the relative or absolute position of the tokens
         in the sequence. The positional encodings have the same dimension as
