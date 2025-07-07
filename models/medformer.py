@@ -6,6 +6,8 @@ from modules.selfattn import MedformerLayer
 from modules.embed import ListPatchEmbedding
 from configs.config import cfg
 
+# bad solo, bad in hybrid :(
+
 class Original_Medformer(nn.Module):
     """
     Paper link: https://arxiv.org/pdf/2405.19363
@@ -119,14 +121,14 @@ class Medformer_SingleSensor_v1(nn.Module):
     def __init__(
         self,
         seq_len=cfg.seq_len,
-        n_vars=7,
+        n_vars=cfg.imu_vars,
         num_classes=cfg.main_num_classes,
-        d_model=128,
-        n_heads=8,
-        e_layers=6,
+        d_model=64,
+        n_heads=4,
+        e_layers=2,
         d_ff=256,
         dropout=0.1,
-        patch_len_list="2,4,8,8,16,16,16,32,32,32,32,32",
+        patch_len_list="2,4,8,16,32",
         activation="gelu",
         output_attention=False,
         no_inter_attn=False,
