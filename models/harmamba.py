@@ -31,6 +31,8 @@ except ImportError:
 
 from configs.config import cfg
 
+# bad solo, bad in hybrid :(
+
 class PatchEmbed(nn.Module):
     """ Patch Embedding
     """
@@ -563,9 +565,9 @@ class HARMamba_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  seq_size=cfg.seq_len,
                  patch_size=16,
-                 stride=16,
-                 depth=12,
-                 embed_dim=256,
+                 stride=8,
+                 depth=6,
+                 embed_dim=128,
                  num_classes=18,
                  **kwargs):
         super().__init__()
