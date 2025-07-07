@@ -2,15 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from modules.inceptiontime import InceptionTimeFeatureExtractor
-from modules.inceptiontime_replacers import (
-    Resnet1DFeatureExtractor, 
-    EfficientNet1DFeatureExtractor, 
-    DenseNet1DFeatureExtractor
-)
+from modules.inceptiontime_replacers import Resnet1DFeatureExtractor
 from models.convtran import SEBlock228
 from models.filternet import FilterNet_SingleSensor_v1, DEFAULT_WIDTH
 from models.basic_cnn1ds import SEPlusMean, MLPNeck
+from models.multi_bigru import ResidualBiGRU
 from configs.config import cfg
 
 class SEBlock(nn.Module):
@@ -357,6 +353,70 @@ class Public2_SingleSensor_Extractor(nn.Module):
 
         return fused
     
+class MultiResidualBiGRU_SingleSensor_Extractor(nn.Module):
+    def __init__(self, 
+                 seq_len=cfg.seq_len,
+                 n_imu_vars=cfg.imu_vars,
+                 hidden_size=128, 
+                 n_layers=3, 
+                 bidir=True,
+                 dropout=0.1):
+        super().__init__()
+
+        self.seq_len = seq_len
+        self.n_imu_vars = n_imu_vars
+        self.hidden_size = hidden_size
+        self.n_layers = n_layers
+        
+        self.imu_input_projection = nn.Linear(n_imu_vars, hidden_size)
+        self.input_ln = nn.LayerNorm(hidden_size)
+        self.input_dropout = nn.Dropout(dropout)
+        
+        self.res_bigrus = nn.ModuleList([
+            ResidualBiGRU(hidden_size, n_layers=1, bidir=bidir)
+            for _ in range(n_layers)
+        ])
+        
+        self.global_avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.global_max_pool = nn.AdaptiveMaxPool1d(1)
+        
+        pooled_size = hidden_size * 2
+        self.feature_fusion = nn.Sequential(
+            nn.Linear(pooled_size, hidden_size),
+            nn.LayerNorm(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, imu_data, pad_mask=None, h=None):
+        batch_size = imu_data.size(0)
+        
+        x = imu_data.squeeze(1)
+        
+        x = self.imu_input_projection(x)  # (B, L, hidden_size)
+        x = self.input_ln(x)
+        x = nn.functional.relu(x)
+        x = self.input_dropout(x)
+        
+        if h is None:
+            h = [None for _ in range(self.n_layers)]
+        
+        new_h = []
+        for i, res_bigru in enumerate(self.res_bigrus):
+            x, new_hi = res_bigru(x, h[i])
+            new_h.append(new_hi)
+        
+        # x shape: (B, L, hidden_size) -> (B, hidden_size, L) for pooling
+        x_transposed = x.transpose(1, 2)
+        
+        avg_pooled = self.global_avg_pool(x_transposed).squeeze(-1)  # (B, hidden_size)
+        max_pooled = self.global_max_pool(x_transposed).squeeze(-1)  # (B, hidden_size)
+        
+        pooled_features = torch.cat([avg_pooled, max_pooled], dim=1)  # (B, hidden_size*2)
+        features = self.feature_fusion(pooled_features)  # (B, hidden_size)
+        
+        return features
+    
 class HybridModel_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  channel_size=cfg.imu_vars, 
@@ -369,6 +429,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  convtran_dropout=cfg.convtran_dropout,
                  out_size_public2=256+32,
                  cnn1d_out_channels=32,
+                 multibigru_dim=128,
+                 multibigru_layers=3,
+                 multibigru_dropout=0.1,
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
                  num_classes=cfg.main_num_classes):
@@ -400,7 +463,17 @@ class HybridModel_SingleSensor_v1(nn.Module):
 
         self.extractor5 = Public2_SingleSensor_Extractor(channel_size=channel_size)
 
-        general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) + (out_size_public2) # 64 + 100 + 64 + 128 + 288 = 644
+        self.extractor6 = MultiResidualBiGRU_SingleSensor_Extractor(
+            seq_len=seq_len,
+            n_imu_vars=channel_size,
+            hidden_size=multibigru_dim, 
+            n_layers=multibigru_layers, 
+            bidir=True,
+            dropout=multibigru_dropout
+        )
+
+        # 64 + 100 + 64 + 128 + 288 + 128 = 772
+        general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) + (out_size_public2) + (multibigru_dim)
 
         self.head1 = nn.Sequential(
             nn.Linear(general_hdim, general_hdim),
@@ -432,7 +505,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
 
         x5 = self.extractor5(x) # (bs, 256 + 32)
 
-        x_cat = torch.cat([x1, x2, x3, x4, x5], dim=1) # (bs, general_hdim)
+        x6 = self.extractor6(x) # (bs, multibigru_dim)
+
+        x_cat = torch.cat([x1, x2, x3, x4, x5, x6], dim=1) # (bs, general_hdim)
 
         out1 = self.head1(x_cat) # (bs, num_classes)
         out2 = self.head2(x_cat) # (bs, 2)
