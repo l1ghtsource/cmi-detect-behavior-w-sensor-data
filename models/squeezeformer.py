@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from configs.config import cfg
 
 class GLU(nn.Module):
     def __init__(self):
@@ -157,10 +158,10 @@ class Conv1DBlockSqueezeformer(nn.Module):
         return x
 
 class Squeezeformer_SingleSensor_v1(nn.Module):
-    def __init__(self, dim=256, head_dim=512, num_classes=18):
+    def __init__(self, dim=128, head_dim=256, num_classes=18):
         super().__init__()
         
-        self.input_dense = nn.Linear(7, dim, bias=False)
+        self.input_dense = nn.Linear(cfg.imu_vars, dim, bias=False)
         self.input_norm = nn.LayerNorm(dim, eps=1e-6)
         
         conv_filter = 15
