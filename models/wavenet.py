@@ -4,35 +4,28 @@ import torch.nn.functional as F
 
 from configs.config import cfg
 
-class Wave_Block(nn.Module):
-    def __init__(self, in_channels, out_channels, dilation_rates, kernel_size):
-        super(Wave_Block, self).__init__()
-        self.num_rates = dilation_rates
-        self.convs = nn.ModuleList()
-        self.filter_convs = nn.ModuleList()
-        self.gate_convs = nn.ModuleList()
+# bad solo, bad in hybrid :(
 
-        self.convs.append(nn.Conv1d(in_channels, out_channels, kernel_size=1))
-        dilation_rates = [2 ** i for i in range(dilation_rates)]
-        for dilation_rate in dilation_rates:
-            self.filter_convs.append(
-                nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, 
-                         padding=int((dilation_rate*(kernel_size-1))/2), 
-                         dilation=dilation_rate, padding_mode='replicate'))
-            self.gate_convs.append(
-                nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size, 
-                         padding=int((dilation_rate*(kernel_size-1))/2), 
-                         dilation=dilation_rate, padding_mode='replicate'))
-            self.convs.append(nn.Conv1d(out_channels, out_channels, kernel_size=1))
+class Wave_Block(nn.Module):
+    def __init__(self, in_ch, out_ch, n_rates, k):
+        super().__init__()
+        self.conv_in = nn.Conv1d(in_ch, out_ch, 1)
+        self.convs = nn.ModuleList([
+            nn.Conv1d(out_ch, out_ch * 2, k,
+                      padding=((k - 1) * (2 ** i)) // 2,
+                      dilation=2 ** i)
+            for i in range(n_rates)
+        ])
+        self.conv_out = nn.Conv1d(out_ch, out_ch, 1)
 
     def forward(self, x):
-        x = self.convs[0](x)
+        x = self.conv_in(x)
         res = x
-        for i in range(self.num_rates):
-            x = torch.tanh(self.filter_convs[i](x)) * torch.sigmoid(self.gate_convs[i](x))
-            x = self.convs[i + 1](x)
-            res = res + x
-        return res
+        for c in self.convs:
+            f, g = c(x).chunk(2, 1)
+            x = torch.tanh(f) * torch.sigmoid(g)
+        return res + self.conv_out(x)
+
 
 class SEModule(nn.Module):
     def __init__(self, in_channels, reduction=2):
@@ -58,10 +51,10 @@ class WaveNet_SingleSensor_v1(nn.Module):
             nn.Dropout(dropout)
         )
 
-        self.block1 = Wave_Block(32,  16, 12, kernel_size)
-        self.block2 = Wave_Block(inch+16,        32,  8, kernel_size)
-        self.block3 = Wave_Block(inch+16+32,     64,  4, kernel_size)
-        self.block4 = Wave_Block(inch+16+32+64, 128,  1, kernel_size)
+        self.block1 = Wave_Block(32, 16, 6,  kernel_size)
+        self.block2 = Wave_Block(inch+16, 32, 4, kernel_size)
+        self.block3 = Wave_Block(inch+16+32, 64, 2, kernel_size)
+        self.block4 = Wave_Block(inch+16+32+64, 128, 1, kernel_size)
 
         self.se1, self.se2, self.se3, self.se4 = SEModule(16), SEModule(32), SEModule(64), SEModule(128)
         self.bn1, self.bn2, self.bn3, self.bn4 = nn.BatchNorm1d(16), nn.BatchNorm1d(32), nn.BatchNorm1d(64), nn.BatchNorm1d(128)
