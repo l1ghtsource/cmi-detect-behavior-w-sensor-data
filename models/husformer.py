@@ -3,6 +3,10 @@ from torch import nn
 import torch.nn.functional as F
 from modules.transformer import TransformerEncoder
 
+from configs.config import cfg
+
+# bad solo, bad in hybrid :(
+
 # orig -> https://arxiv.org/pdf/2209.15182 !!!
 
 class Original_HUSFORMERModel(nn.Module):
@@ -181,7 +185,7 @@ class SingleSensor_HUSFORMER_v1(nn.Module):
                  embed_dropout=0.1,
                  attn_mask=False,
                  output_dim=18,
-                 d_m=256):
+                 d_m=128):
         super(SingleSensor_HUSFORMER_v1, self).__init__()
 
         self.d_m = d_m
@@ -194,7 +198,7 @@ class SingleSensor_HUSFORMER_v1(nn.Module):
         self.embed_dropout = embed_dropout
         self.attn_mask = attn_mask
 
-        self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
+        self.proj_imu = nn.Conv1d(cfg.imu_vars, d_m, kernel_size=1, padding=0, bias=False)
         self.trans = self.get_network('imu_only', layers)
         self.out_layer = nn.Linear(d_m, output_dim)
         self.out_layer2 = nn.Linear(d_m, 2)
