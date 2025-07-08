@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from configs.config import cfg
+
+# bad solo, bad in hybrid :(
+
 # https://www.kaggle.com/code/jsday96/parkinsons-overlapping-se-unet-frequency-domain
 
 class Conv1dBlockSE(nn.Module):
@@ -125,83 +129,83 @@ class Conv1dBlockPreprocessedSE(nn.Module):
 class SE_Unet_SingleSensor_v1(nn.Module):
     def __init__(
             self, 
-            in_channels=7,
+            in_channels=cfg.imu_vars,
             num_classes=18,
-            model_width_coef=32, 
-            reduction=16, 
+            model_width_coef=8, 
+            reduction=4, 
             use_second_se=False, 
-            preprocessor_dropout=0, 
+            preprocessor_dropout=0.1, 
             se_dropout=0,
-            initial_dropout=0,
-            center_dropout=0):
+            initial_dropout=0.1,
+            center_dropout=0.1):
         super(SE_Unet_SingleSensor_v1, self).__init__()
 
         features = model_width_coef
 
         self.encoder1 = nn.Sequential(
-            NonResidualConvSE(in_channels, features, reduction = reduction//2, dropout=initial_dropout),
-            NonResidualConvSE(features, features, reduction = reduction//2, dropout=initial_dropout),
-            Conv1dBlockPreprocessedSE(features, features, reduction, use_second_se, preprocessor_dropout, se_dropout)
+            NonResidualConvSE(in_channels, features,
+                              reduction=reduction // 2,
+                              dropout=initial_dropout),
+            NonResidualConvSE(features, features,
+                              reduction=reduction // 2,
+                              dropout=initial_dropout),
+            Conv1dBlockPreprocessedSE(features, features,
+                                      reduction, use_second_se,
+                                      preprocessor_dropout, se_dropout)
         )
 
-        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.encoder2 = Conv1dBlockPreprocessedSE(features, features*2, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.encoder3 = Conv1dBlockPreprocessedSE(features*2, features*4, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.encoder4 = Conv1dBlockPreprocessedSE(features*4, features*8, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.encoder5 = Conv1dBlockPreprocessedSE(features*8, features*16, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.pool5 = nn.MaxPool1d(kernel_size=2, stride=2)
+        self.pool1 = nn.MaxPool1d(2)
+        self.encoder2 = Conv1dBlockPreprocessedSE(features, features * 2,
+                                                  reduction, use_second_se,
+                                                  preprocessor_dropout, se_dropout)
 
-        self.bottleneck = Conv1dBlock(features*16, features*32, dropout=center_dropout)
+        self.pool2 = nn.MaxPool1d(2)
+        self.encoder3 = Conv1dBlockPreprocessedSE(features * 2, features * 4,
+                                                  reduction, use_second_se,
+                                                  preprocessor_dropout, se_dropout)
 
-        self.upconv5 = nn.ConvTranspose1d(features*32, features*16, kernel_size=2, stride=2, output_padding=1)
-        self.decoder5 = Conv1dBlockPreprocessedSE(features*32, features*16, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.upconv4 = nn.ConvTranspose1d(features*16, features*8, kernel_size=2, stride=2, output_padding=1)
-        self.decoder4 = Conv1dBlockPreprocessedSE(features*16, features*8, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.upconv3 = nn.ConvTranspose1d(features*8, features*4, kernel_size=2, stride=2)
-        self.decoder3 = Conv1dBlockPreprocessedSE(features*8, features*4, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.upconv2 = nn.ConvTranspose1d(features*4, features*2, kernel_size=2, stride=2)
-        self.decoder2 = Conv1dBlockPreprocessedSE(features*4, features*2, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.upconv1 = nn.ConvTranspose1d(features*2, features, kernel_size=2, stride=2)
-        self.decoder1 = Conv1dBlockPreprocessedSE(features*2, features, reduction, use_second_se, preprocessor_dropout, se_dropout)
+        self.pool3 = nn.MaxPool1d(2)
+        self.encoder4 = Conv1dBlockPreprocessedSE(features * 4, features * 8,
+                                                  reduction, use_second_se,
+                                                  preprocessor_dropout, se_dropout)
 
-        self.feature_conv = nn.Conv1d(features, features, kernel_size=1)
-        
+        self.pool4 = nn.MaxPool1d(2)
+        self.encoder5 = Conv1dBlockPreprocessedSE(features * 8, features * 16,
+                                                  reduction, use_second_se,
+                                                  preprocessor_dropout, se_dropout)
+
+        self.pool5 = nn.MaxPool1d(2)
+
+        self.bottleneck = Conv1dBlock(features * 16, features * 32,
+                                      dropout=center_dropout)
+
         self.global_avg_pool = nn.AdaptiveAvgPool1d(1)
         self.global_max_pool = nn.AdaptiveMaxPool1d(1)
-        
+
+        classifier_dim = features * 32 * 2
         self.classifier1 = nn.Sequential(
-            nn.Linear(features * 2, features),
+            nn.Linear(classifier_dim, features * 16),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(features, features//2),
+            nn.Linear(features * 16, features * 8),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(features//2, num_classes)
+            nn.Linear(features * 8, num_classes)
         )
-        
+
         self.classifier2 = nn.Sequential(
-            nn.Linear(features * 2, features),
+            nn.Linear(classifier_dim, features * 16),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(features, features//2),
+            nn.Linear(features * 16, features * 8),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(features//2, 2)
+            nn.Linear(features * 8, 2)
         )
 
     def forward(self, imu_data, pad_mask=None):
-        """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-        Returns:
-            dict with 'target', 'aux_target', 'aux2_target' logits
-        """
-        batch_size = imu_data.shape[0]
-        x = imu_data.squeeze(1)  # [B, L, 7]
-        x = x.permute(0, 2, 1)   # [B, 7, L]
+        x = imu_data.squeeze(1)      # [B, L, 7]
+        x = x.permute(0, 2, 1)       # [B, 7, L]
 
         enc1 = self.encoder1(x)
         enc2 = self.encoder2(self.pool1(enc1))
@@ -211,27 +215,12 @@ class SE_Unet_SingleSensor_v1(nn.Module):
 
         bottleneck = self.bottleneck(self.pool5(enc5))
 
-        dec5 = self.upconv5(bottleneck)
-        dec5 = self.decoder5(torch.cat((dec5, enc5), dim=1))
-        dec4 = self.upconv4(dec5)
-        dec4 = self.decoder4(torch.cat((dec4, enc4), dim=1))
-        dec3 = self.upconv3(dec4)
-        dec3 = self.decoder3(torch.cat((dec3, enc3), dim=1))
-        dec2 = self.upconv2(dec3)
-        dec2 = self.decoder2(torch.cat((dec2, enc2), dim=1))
-        dec1 = self.upconv1(dec2)
-        dec1 = self.decoder1(torch.cat((dec1, enc1), dim=1))
+        avg_pool  = self.global_avg_pool(bottleneck)  # [B, C, 1]
+        max_pool  = self.global_max_pool(bottleneck)  # [B, C, 1]
+        feats = torch.cat([avg_pool, max_pool], dim=1).squeeze(-1)  # [B, C*2]
 
-        temporal_features = self.feature_conv(dec1)  # [B, features, L]
-        
-        avg_pooled = self.global_avg_pool(temporal_features)  # [B, features, 1]
-        max_pooled = self.global_max_pool(temporal_features)  # [B, features, 1]
-        
-        pooled_features = torch.cat([avg_pooled, max_pooled], dim=1)  # [B, features*2, 1]
-        features = pooled_features.squeeze(-1)  # [B, features*2]
-        
-        target_logits1 = self.classifier1(features)      # [B, 18]
-        target_logits2 = self.classifier2(features)      # [B, 2]
+        target_logits1 = self.classifier1(feats)
+        target_logits2 = self.classifier2(feats)
 
         return target_logits1, target_logits2
     
