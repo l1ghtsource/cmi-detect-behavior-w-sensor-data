@@ -155,8 +155,8 @@ cfg.tof_vars = 8 * 8
 cfg.dwhar_ver = '2'
 
 # --- timemil ---
-cfg.timemil_dim = 256
-cfg.timemil_dropout = 0.0
+cfg.timemil_dim = 128
+cfg.timemil_dropout = 0.2
 cfg.timemil_ver = '1'
 cfg.timemil_extractor = 'inception_time' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'inception_resnet', 'letmecook', 'inception_time2', 'densenet']
 cfg.timemil_singlebranch = True

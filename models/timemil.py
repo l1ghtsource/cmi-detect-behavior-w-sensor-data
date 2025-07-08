@@ -27,13 +27,13 @@ def initialize_weights(model):
             nn.init.constant_(m.bias, 0)
             
 class TransLayer(nn.Module):
-    def __init__(self, norm_layer=nn.LayerNorm, dropout=0.2,dim=512):
+    def __init__(self, norm_layer=nn.LayerNorm, dropout=0.2,dim=64):
         super().__init__()
         self.norm = norm_layer(dim)
         self.attn = NystromAttention(
             dim = dim,
-            dim_head = dim//8,
-            heads = 8,
+            dim_head = dim//4,
+            heads = 4,
             num_landmarks = dim//2,    # number of landmarks
             pinv_iterations = 6,    # number of moore-penrose iterations for approximating pinverse. 6 was recommended by the paper
             residual = True,         # whether to do an extra residual with the value or not. supposedly faster convergence if turned on
