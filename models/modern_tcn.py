@@ -6,6 +6,8 @@ from modules.modern_tcn_layers import series_decomp, Flatten_Head
 from modules.revin import RevIN
 from configs.config import cfg
 
+# bad solo, bad in hybrid :(
+
 class LayerNorm(nn.Module):
 
     def __init__(self, channels, eps=1e-6, data_format="channels_last"):
