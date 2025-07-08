@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from configs.config import cfg
 
+# good in hybrid, solo ok
+
 # https://www.kaggle.com/competitions/tlvmc-parkinsons-freezing-gait-prediction/discussion/416410
 
 class ResidualBiGRU(nn.Module):

@@ -63,7 +63,7 @@ from models.public_model import (
     Public_SingleSensor_v1
 )
 from models.wavenet import (
-    WaveNet_SingleSensor_v1, WaveNet_MultiSensor_v1
+    WaveNet_SingleSensor_v1
 )
 from models.hybrid_model import (
     HybridModel_SingleSensor_v1
@@ -355,11 +355,8 @@ def get_ts_model_and_params(imu_only):
             }
             return model_cls, params
         else: # multi sensor model
-            model_cls = WaveNet_MultiSensor_v1
-            params = {
-                'num_classes': cfg.main_num_classes,
-            }
-            return model_cls, params
+            # TODO: add wavenet multisensor model
+            return None 
     elif cfg.selected_model == 'hybrid':
         if imu_only: # only imu sensor
             model_cls = HybridModel_SingleSensor_v1
