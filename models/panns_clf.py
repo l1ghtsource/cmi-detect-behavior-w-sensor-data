@@ -5,21 +5,23 @@ from typing import Optional, Callable
 from modules.panns import PANNsFeatureExtractor
 from configs.config import cfg
 
+# bad solo, bad in hybrid :(
+
 class PANNsCLF_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  n_channels: int = cfg.imu_vars, 
                  seq_len: int = cfg.seq_len, 
                  num_classes: int = cfg.main_num_classes, 
-                 base_filters: int | tuple = 128, 
-                 kernel_sizes: tuple = (32, 16, 4, 2), 
+                 base_filters: int | tuple = 64, 
+                 kernel_sizes: tuple = (32, 16, 8, 4), 
                  stride: int = 4, 
                  sigmoid: bool = False, 
                  output_size: Optional[int] = None, 
                  conv: Callable = nn.Conv1d, 
                  reinit: bool = True, 
                  win_length: Optional[int] = None,
-                 cnn_channels: tuple = (256, 512),
-                 dropout: float = 0.2):
+                 cnn_channels: tuple = (128, 256),
+                 dropout: float = 0.3):
         super().__init__()
         
         self.feature_extractor = PANNsFeatureExtractor(
