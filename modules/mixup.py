@@ -11,66 +11,66 @@ class MixupLoss:
         seq_type_loss = lam * self.seq_type_criterion(seq_type_outputs, seq_type_targets_a) + (1 - lam) * self.seq_type_criterion(seq_type_outputs, seq_type_targets_b)
         return main_loss, seq_type_loss
 
-# def mixup_batch(batch, alpha=1.0, device='cuda'):
-#     if alpha > 0:
-#         lam = np.random.beta(alpha, alpha)
-#     else:
-#         lam = 1
-    
-#     batch_size = batch['main_target'].size()[0]
-#     index = torch.randperm(batch_size).to(device)
-    
-#     mixed_batch = {}
-    
-#     target_keys = {'main_target', 'seq_type_aux_target'}
-    
-#     for key in batch.keys():
-#         if key not in target_keys:
-#             mixed_batch[key] = lam * batch[key] + (1 - lam) * batch[key][index]
-#         else:
-#             mixed_batch[key] = batch[key]
-    
-#     targets_a = batch['main_target']
-#     targets_b = batch['main_target'][index]
-    
-#     seq_type_targets_a = batch['seq_type_aux_target']
-#     seq_type_targets_b = batch['seq_type_aux_target'][index]
-    
-#     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam
-
-# mixup only in (label <= 7) or (label > 7) groups
 def mixup_batch(batch, alpha=1.0, device='cuda'):
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
         lam = 1
-
-    main_targets = batch['main_target']
-    batch_size = main_targets.size(0)
-
-    cat1_idx = torch.where(main_targets <= 7)[0]
-    cat2_idx = torch.where(main_targets > 7)[0]
-
-    perm = torch.arange(batch_size, device=main_targets.device)
-
-    if len(cat1_idx) > 1:
-        perm[cat1_idx] = cat1_idx[torch.randperm(len(cat1_idx), device=device)]
-    if len(cat2_idx) > 1:
-        perm[cat2_idx] = cat2_idx[torch.randperm(len(cat2_idx), device=device)]
-
+    
+    batch_size = batch['main_target'].size()[0]
+    index = torch.randperm(batch_size).to(device)
+    
     mixed_batch = {}
     
     target_keys = {'main_target', 'seq_type_aux_target'}
-
-    for key, tensor in batch.items():
+    
+    for key in batch.keys():
         if key not in target_keys:
-            mixed_batch[key] = lam * tensor + (1.0 - lam) * tensor[perm]
+            mixed_batch[key] = lam * batch[key] + (1 - lam) * batch[key][index]
         else:
-            mixed_batch[key] = tensor
-
+            mixed_batch[key] = batch[key]
+    
     targets_a = batch['main_target']
-    targets_b = batch['main_target'][perm]
+    targets_b = batch['main_target'][index]
+    
     seq_type_targets_a = batch['seq_type_aux_target']
-    seq_type_targets_b = batch['seq_type_aux_target'][perm]
-
+    seq_type_targets_b = batch['seq_type_aux_target'][index]
+    
     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam
+
+# mixup only in (label <= 7) or (label > 7) groups
+# def mixup_batch(batch, alpha=1.0, device='cuda'):
+#     if alpha > 0:
+#         lam = np.random.beta(alpha, alpha)
+#     else:
+#         lam = 1
+
+#     main_targets = batch['main_target']
+#     batch_size = main_targets.size(0)
+
+#     cat1_idx = torch.where(main_targets <= 7)[0]
+#     cat2_idx = torch.where(main_targets > 7)[0]
+
+#     perm = torch.arange(batch_size, device=main_targets.device)
+
+#     if len(cat1_idx) > 1:
+#         perm[cat1_idx] = cat1_idx[torch.randperm(len(cat1_idx), device=device)]
+#     if len(cat2_idx) > 1:
+#         perm[cat2_idx] = cat2_idx[torch.randperm(len(cat2_idx), device=device)]
+
+#     mixed_batch = {}
+    
+#     target_keys = {'main_target', 'seq_type_aux_target'}
+
+#     for key, tensor in batch.items():
+#         if key not in target_keys:
+#             mixed_batch[key] = lam * tensor + (1.0 - lam) * tensor[perm]
+#         else:
+#             mixed_batch[key] = tensor
+
+#     targets_a = batch['main_target']
+#     targets_b = batch['main_target'][perm]
+#     seq_type_targets_a = batch['seq_type_aux_target']
+#     seq_type_targets_b = batch['seq_type_aux_target'][perm]
+
+#     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam
