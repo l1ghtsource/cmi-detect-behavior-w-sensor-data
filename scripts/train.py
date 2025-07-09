@@ -303,8 +303,8 @@ def run_training_with_stratified_group_kfold():
         if not fucking_kaggle_p100:
             model = torch.compile(model, mode='max-autotune')
 
-        if cfg.do_wandb_log:
-            wandb.watch(model, log='all', log_freq=10)
+        # if cfg.do_wandb_log:
+        #     wandb.watch(model, log='all', log_freq=10)
 
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
