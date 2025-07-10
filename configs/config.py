@@ -180,7 +180,7 @@ cfg.encoder_hidden_dim = 64
 cfg.im_pretrained = True
 
 # --- train params ---
-cfg.bs = 256
+cfg.bs = 128
 cfg.n_epochs = 100
 cfg.patience = 25
 cfg.lr = 1e-3
