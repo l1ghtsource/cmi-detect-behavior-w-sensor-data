@@ -610,6 +610,13 @@ class HybridModel_SingleSensor_v1(nn.Module):
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 2)
         )
+
+        self.head3 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 4)
+        )
             
     def process_branch(self, x, branch_name):
         x1 = self.branch_extractors[f'{branch_name}_extractor1'](x)
@@ -651,5 +658,6 @@ class HybridModel_SingleSensor_v1(nn.Module):
         
         out1 = self.head1(final_features)
         out2 = self.head2(final_features)
+        out3 = self.head3(final_features)
 
-        return out1, out2
+        return out1, out2, out3

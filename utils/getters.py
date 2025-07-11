@@ -117,22 +117,22 @@ class SafeMuonWithAuxAdam(SingleDeviceMuonWithAuxAdam):
             
         return result
 
-def get_optimizer(model):
+def get_optimizer(model, lr=cfg.lr, lr_muon=cfg.lr_muon, weight_decay=cfg.weight_decay):
     if cfg.optim_type == 'adamw':
-        return AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        return AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     elif cfg.optim_type == 'adan':
-        return Adan(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        return Adan(model.parameters(), lr=lr, weight_decay=weight_decay)
     elif cfg.optim_type == 'adamp':
-        return AdamP(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return AdamP(model.parameters(), lr=lr, weight_decay=weight_decay) 
     elif cfg.optim_type == 'madgrad':
-        return MADGRAD(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return MADGRAD(model.parameters(), lr=lr, weight_decay=weight_decay) 
     elif cfg.optim_type == 'adafisherw':
-        return AdaFisherW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return AdaFisherW(model.parameters(), lr=lr, weight_decay=weight_decay) 
     elif cfg.optim_type == 'ranger':
         print('use ranger w/o weight decay pls')
-        return Ranger(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay) 
+        return Ranger(model.parameters(), lr=lr, weight_decay=weight_decay) 
     elif cfg.optim_type == 'muonwauxadam':
-        param_groups = get_muon_param_groups(model, lr_muon=cfg.lr_muon, lr_adam=cfg.lr, weight_decay=cfg.weight_decay)
+        param_groups = get_muon_param_groups(model, lr_muon=lr_muon, lr_adam=lr, weight_decay=weight_decay)
         return SafeMuonWithAuxAdam(param_groups)
     else:
         raise Exception('stick your finger in your ass')
