@@ -2,14 +2,16 @@ import torch
 import numpy as np
 
 class MixupLoss:
-    def __init__(self, main_criterion, seq_type_criterion):
+    def __init__(self, main_criterion, seq_type_criterion, orientation_criterion):
         self.main_criterion = main_criterion
         self.seq_type_criterion = seq_type_criterion
+        self.orientation_criterion = orientation_criterion
     
-    def __call__(self, outputs, seq_type_outputs, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam):
+    def __call__(self, outputs, seq_type_outputs, orientation_outputs, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam):
         main_loss = lam * self.main_criterion(outputs, targets_a) + (1 - lam) * self.main_criterion(outputs, targets_b)
         seq_type_loss = lam * self.seq_type_criterion(seq_type_outputs, seq_type_targets_a) + (1 - lam) * self.seq_type_criterion(seq_type_outputs, seq_type_targets_b)
-        return main_loss, seq_type_loss
+        orientation_loss = lam * self.orientation_criterion(orientation_outputs, orientation_targets_a) + (1 - lam) * self.orientation_criterion(orientation_outputs, orientation_targets_b)
+        return main_loss, seq_type_loss, orientation_loss
 
 def mixup_batch(batch, alpha=1.0, device='cuda'):
     if alpha > 0:
@@ -22,7 +24,7 @@ def mixup_batch(batch, alpha=1.0, device='cuda'):
     
     mixed_batch = {}
     
-    target_keys = {'main_target', 'seq_type_aux_target'}
+    target_keys = {'main_target', 'seq_type_aux_target', 'orientation_aux_target'}
     
     for key in batch.keys():
         if key not in target_keys:
@@ -35,8 +37,11 @@ def mixup_batch(batch, alpha=1.0, device='cuda'):
     
     seq_type_targets_a = batch['seq_type_aux_target']
     seq_type_targets_b = batch['seq_type_aux_target'][index]
+
+    orientation_targets_a = batch['orientation_aux_target']
+    orientation_targets_b = batch['orientation_aux_target'][index]
     
-    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, lam
+    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
 
 # mixup only in (label <= 7) or (label > 7) groups
 # def mixup_batch(batch, alpha=1.0, device='cuda'):
