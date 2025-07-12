@@ -225,6 +225,38 @@ def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_c
     avg_m, bm, mm = comp_metric(all_targets, all_preds)
     return avg_loss, avg_m, bm, mm, all_targets, all_preds
 
+def average_model_weights(checkpoints, top_k):
+    if len(checkpoints) < top_k:
+        top_k = len(checkpoints)
+
+    top_checkpoints = checkpoints[:top_k]
+    averaged_state_dict = {}
+    
+    first_state_dict = torch.load(top_checkpoints[0]['model_path'], map_location=device)
+    
+    for key in first_state_dict.keys():
+        averaged_state_dict[key] = torch.zeros_like(first_state_dict[key])
+    
+    for checkpoint in top_checkpoints:
+        state_dict = torch.load(checkpoint['model_path'], map_location=device)
+        for key in state_dict.keys():
+            averaged_state_dict[key] += state_dict[key] / top_k
+    
+    return averaged_state_dict
+
+def get_oof_predictions(model, val_loader):
+    model.eval()
+
+    all_preds = []
+    with torch.no_grad():
+        for batch in val_loader:
+            for key in batch.keys():
+                batch[key] = batch[key].to(device)
+            outputs, _, _, _, _, _, _, _, _ = forward_model(model, batch, imu_only=cfg.imu_only)
+            all_preds.append(outputs.cpu().numpy())
+
+    return np.concatenate(all_preds, axis=0)
+
 def run_training_with_stratified_group_kfold():
     os.makedirs(cfg.model_dir, exist_ok=True)
     os.makedirs(cfg.oof_dir, exist_ok=True)
@@ -243,7 +275,9 @@ def run_training_with_stratified_group_kfold():
     targets = train_seq[cfg.main_target].values
     groups = train_seq[cfg.group].values
     
-    oof_preds = np.zeros((len(train_seq), cfg.main_num_classes))
+    oof_preds_top1 = np.zeros((len(train_seq), cfg.main_num_classes))
+    oof_preds_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
+    oof_preds_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_targets = train_seq[cfg.main_target].values
     
     best_models = []
@@ -453,9 +487,27 @@ def run_training_with_stratified_group_kfold():
                 break
 
         best_checkpoint = fold_checkpoints[0]
-        if best_checkpoint:
-            model.load_state_dict(torch.load(best_checkpoint['model_path']))
+        model.load_state_dict(torch.load(best_checkpoint['model_path']))
+        if cfg.use_ema and best_checkpoint['ema_path'] and os.path.exists(best_checkpoint['ema_path']):
+            ema_state_dict = torch.load(best_checkpoint['ema_path'], map_location=device)
+            for name, param in model.named_parameters():
+                if name in ema_state_dict:
+                    param.data = ema_state_dict[name]
+        
+        preds_top1 = get_oof_predictions(model, val_loader)
+        oof_preds_top1[val_idx] = preds_top1
+        
+        averaged_weights_top3 = average_model_weights(fold_checkpoints, 3)
+        model.load_state_dict(averaged_weights_top3)
+        preds_top3_avg = get_oof_predictions(model, val_loader)
+        oof_preds_top3_avg[val_idx] = preds_top3_avg
 
+        averaged_weights_top5 = average_model_weights(fold_checkpoints, 5)
+        model.load_state_dict(averaged_weights_top5)
+        preds_top5_avg = get_oof_predictions(model, val_loader)
+        oof_preds_top5_avg[val_idx] = preds_top5_avg
+
+        model.load_state_dict(torch.load(best_checkpoint['model_path']))
         if cfg.use_ema and best_checkpoint['ema_path'] and os.path.exists(best_checkpoint['ema_path']):
             ema_state_dict = torch.load(best_checkpoint['ema_path'], map_location=device)
             for name, param in model.named_parameters():
@@ -470,19 +522,6 @@ def run_training_with_stratified_group_kfold():
                 f'fold_{fold}/final_val_avg_f1': best_val_score,
                 f'fold_{fold}/fold_completed': True
             })
-        
-        model.eval()
-        all_preds = []
-        with torch.no_grad():
-            for batch in val_loader:
-                for key in batch.keys():
-                    batch[key] = batch[key].to(device)
-
-                outputs, _, _, _, _, _, _, _, _ = forward_model(model, batch, imu_only=cfg.imu_only)
-                all_preds.append(outputs.cpu().numpy())
-
-        all_preds = np.concatenate(all_preds, axis=0)
-        oof_preds[val_idx] = all_preds
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -490,9 +529,17 @@ def run_training_with_stratified_group_kfold():
         if cfg.do_wandb_log:
             wandb.finish()
     
-    oof_pred_labels = np.argmax(oof_preds, axis=1)
-    oof_m, oof_bm, oof_mm = comp_metric(oof_targets, oof_pred_labels)
-    print(f'{oof_m=}, {oof_bm=}, {oof_mm=}, ')
+    oof_pred_labels_top1 = np.argmax(oof_preds_top1, axis=1)
+    oof_pred_labels_top3_avg = np.argmax(oof_preds_top3_avg, axis=1)
+    oof_pred_labels_top5_avg = np.argmax(oof_preds_top5_avg, axis=1)
+    
+    oof_m, oof_bm, oof_mm = comp_metric(oof_targets, oof_pred_labels_top1)
+    oof_m_top3_avg, oof_bm_top3_avg, oof_mm_top3_avg = comp_metric(oof_targets, oof_pred_labels_top3_avg)
+    oof_m_top5_avg, oof_bm_top5_avg, oof_mm_top5_avg = comp_metric(oof_targets, oof_pred_labels_top5_avg)
+    
+    print(f'use top1 models: {oof_m=}, {oof_bm=}, {oof_mm=}')
+    print(f'use top3 avg models: {oof_m_top3_avg=}, {oof_bm_top3_avg=}, {oof_mm_top3_avg=}')
+    print(f'use top5 avg models: {oof_m_top5_avg=}, {oof_bm_top5_avg=}, {oof_mm_top5_avg=}')
     
     if cfg.do_wandb_log:
         wandb.init(
@@ -505,6 +552,12 @@ def run_training_with_stratified_group_kfold():
             'oof_avg_f1': oof_m,
             'oof_binary_f1': oof_bm,
             'oof_macro_f1': oof_mm,
+            'oof_avg_f1_top3_avg': oof_m_top3_avg,
+            'oof_binary_f1_top3_avg': oof_bm_top3_avg,
+            'oof_macro_f1_top3_avg': oof_mm_top3_avg,
+            'oof_avg_f1_top5_avg': oof_m_top5_avg,
+            'oof_binary_f1_top5_avg': oof_bm_top5_avg,
+            'oof_macro_f1_top5_avg': oof_mm_top5_avg,
             'mean_cv_avg_f1': np.mean(best_f1_scores),
             'std_cv_avg_f1': np.std(best_f1_scores),
             'fold_avg_f1_scores': {f'fold_{i}': score for i, score in enumerate(best_f1_scores)}
@@ -512,25 +565,53 @@ def run_training_with_stratified_group_kfold():
         
         wandb.finish()
     
-    oof_preds_path = os.path.join(cfg.oof_dir, f'{prefix}oof_preds.npy')
+    oof_preds_top1_path = os.path.join(cfg.oof_dir, f'{prefix}oof_preds_top1.npy')
+    oof_pred_labels_top1_path = os.path.join(cfg.oof_dir, f'{prefix}oof_pred_labels_top1.npy')
+    
+    oof_preds_top3_avg_path = os.path.join(cfg.oof_dir, f'{prefix}oof_preds_top3_avg.npy')
+    oof_pred_labels_top3_avg_path = os.path.join(cfg.oof_dir, f'{prefix}oof_pred_labels_top3_avg.npy')
+    
+    oof_preds_top5_avg_path = os.path.join(cfg.oof_dir, f'{prefix}oof_preds_top5_avg.npy')
+    oof_pred_labels_top5_avg_path = os.path.join(cfg.oof_dir, f'{prefix}oof_pred_labels_top5_avg.npy')
+    
     oof_targets_path = os.path.join(cfg.oof_dir, f'{prefix}oof_targets.npy')
-    oof_pred_labels_path = os.path.join(cfg.oof_dir, f'{prefix}oof_pred_labels.npy')
 
-    np.save(oof_preds_path, oof_preds)
+    np.save(oof_preds_top1_path, oof_preds_top1)
+    np.save(oof_pred_labels_top1_path, oof_pred_labels_top1)
+    
+    np.save(oof_preds_top3_avg_path, oof_preds_top3_avg)
+    np.save(oof_pred_labels_top3_avg_path, oof_pred_labels_top3_avg)
+    
+    np.save(oof_preds_top5_avg_path, oof_preds_top5_avg)
+    np.save(oof_pred_labels_top5_avg_path, oof_pred_labels_top5_avg)
+    
     np.save(oof_targets_path, oof_targets)
-    np.save(oof_pred_labels_path, oof_pred_labels)
 
     oof_info = {
-        'oof_avg_f1': oof_m,
-        'oof_binary_f1': oof_bm,
-        'oof_macro_f1': oof_mm,
-        'best_avg_f1_scores_per_fold': best_f1_scores,
-        'mean_cv_avg_f1': np.mean(best_f1_scores),
-        'std_cv_avg_f1': np.std(best_f1_scores)
+        'top1_model': {
+            'oof_avg_f1': oof_m,
+            'oof_binary_f1': oof_bm,
+            'oof_macro_f1': oof_mm
+        },
+        'top3_avg_model': {
+            'oof_avg_f1': oof_m_top3_avg,
+            'oof_binary_f1': oof_bm_top3_avg,
+            'oof_macro_f1': oof_mm_top3_avg
+        },
+        'top5_avg_model': {
+            'oof_avg_f1': oof_m_top5_avg,
+            'oof_binary_f1': oof_bm_top5_avg,
+            'oof_macro_f1': oof_mm_top5_avg
+        },
+        'cv_statistics': {
+            'best_avg_f1_scores_per_fold': best_f1_scores,
+            'mean_cv_avg_f1': np.mean(best_f1_scores),
+            'std_cv_avg_f1': np.std(best_f1_scores)
+        }
     }
     
     oof_info_path = os.path.join(cfg.oof_dir, f'{prefix}oof_info.json')
     with open(oof_info_path, 'w') as f:
         json.dump(oof_info, f, indent=2)
 
-    return best_models, oof_preds
+    return best_models, oof_preds_top1
