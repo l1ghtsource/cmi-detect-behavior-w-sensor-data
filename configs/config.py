@@ -35,6 +35,16 @@ cfg.imu_cols = [
     # 'acc_x_world', 'acc_y_world', 'acc_z_world',
     # 'acc_x_remove_g', 'acc_y_remove_g', 'acc_z_remove_g',
     # 'rel_dqw', 'rel_dqx', 'rel_dqy', 'rel_dqz', 'rel_angle',
+    # 'acc_mag_shift_-2', 'acc_mag_shift_-1', 'acc_mag_shift_1', 'acc_mag_shift_2', 
+    # 'acc_mag_jerk_shift_-2', 'acc_mag_jerk_shift_-1', 'acc_mag_jerk_shift_1', 'acc_mag_jerk_shift_2', 
+    # 'rot_angle_shift_-2', 'rot_angle_shift_-1', 'rot_angle_shift_1', 'rot_angle_shift_2', 
+    # 'rot_angle_vel_shift_-2', 'rot_angle_vel_shift_-1', 'rot_angle_vel_shift_1', 'rot_angle_vel_shift_2', 
+    # 'linear_acc_mag_shift_-2', 'linear_acc_mag_shift_-1', 'linear_acc_mag_shift_1', 'linear_acc_mag_shift_2', 
+    # 'linear_acc_mag_jerk_shift_-2', 'linear_acc_mag_jerk_shift_-1', 'linear_acc_mag_jerk_shift_1', 'linear_acc_mag_jerk_shift_2', 
+    # 'angular_distance_shift_-2', 'angular_distance_shift_-1', 'angular_distance_shift_1', 'angular_distance_shift_2', 
+    # 'angular_vel_x_shift_-2', 'angular_vel_x_shift_-1', 'angular_vel_x_shift_1', 'angular_vel_x_shift_2',
+    # 'angular_vel_y_shift_-2', 'angular_vel_y_shift_-1', 'angular_vel_y_shift_1', 'angular_vel_y_shift_2',
+    # 'angular_vel_z_shift_-2', 'angular_vel_z_shift_-1', 'angular_vel_z_shift_1', 'angular_vel_z_shift_2',
 ]
 
 cfg.thm_cols = [f'thm_{i}' for i in range(1, 6)]
@@ -67,11 +77,11 @@ cfg.seq_len = 120
 cfg.n_splits = 5
 cfg.curr_fold = 1
 cfg.seed = 42
-cfg.selected_model = 'hybrid' # ['timemil', 'decomposewhar', 'convtran', 'hybrid', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'wavenet', 'baseline', 'public']
+cfg.selected_model = 'hybrid' # ['timemil', 'decomposewhar', 'convtran', 'hybrid', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'wavenet', 'baseline', 'imunet', 'public']
 
 # --- target things ---
 cfg.main_weight = 1.0
-cfg.orientation_aux_weight = 0
+cfg.orientation_aux_weight = 0.5#0
 cfg.seq_type_aux_weight = 0.5
 cfg.main_clpsd_weight = 0
 cfg.behavior_aux_weight = 0
@@ -224,6 +234,15 @@ cfg.rotation_max_angle = 30
 
 cfg.moda_proba = 0#0.4
 cfg.moda_sensors = ['imu']
+
+cfg.time_mask_proba = 0
+cfg.time_mask_n_features = 3
+cfg.time_mask_max_width_frac = 0.25
+cfg.time_mask_sensors = ['imu', 'thm', 'tof']
+
+cfg.feature_mask_proba = 0
+cfg.feature_mask_n_features = 1
+cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
 # --- mixup ---
 cfg.use_mixup = True

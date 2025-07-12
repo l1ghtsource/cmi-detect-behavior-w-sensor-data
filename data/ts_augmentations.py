@@ -7,6 +7,40 @@ import numpy as np
 from tqdm import tqdm
 from scipy.interpolate import CubicSpline
 
+def time_mask(data: np.ndarray,
+              n_features: int,
+              max_width: int) -> np.ndarray:
+    """
+    Zero-out a contiguous time interval on `n_features` columns.
+    data shape → (T, F)
+    """
+    T, F = data.shape
+    if T == 0 or F == 0:
+        return data
+
+    feat_idx = random.sample(range(F), k=min(n_features, F))
+
+    w = random.randint(1, max_width)            # ширина окна
+    start = random.randint(0, max(0, T - w))    # x1
+    end = start + w                             # x2 (не включительно)
+
+    data[start:end, feat_idx] = 0
+    return data
+
+
+def feature_mask(data: np.ndarray,
+                 n_features: int) -> np.ndarray:
+    """
+    Zero-out complete features (columns).
+    """
+    _, F = data.shape
+    if F == 0:
+        return data
+
+    feat_idx = random.sample(range(F), k=min(n_features, F))
+    data[:, feat_idx] = 0
+    return data
+
 #####################
 # all the x is expected with the shape as: [N, Sequences, feature_dim]
 # i.e., [7800, 750, 1]

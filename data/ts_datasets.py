@@ -13,7 +13,9 @@ from data.ts_augmentations import (
     window_slice,
     window_warp,
     permutation,
-    rotation
+    rotation,
+    time_mask,
+    feature_mask
 )
 from data.moda import moda_augmentation
 from utils.denoising import apply_denoising
@@ -206,15 +208,27 @@ class TS_CMIDataset(Dataset):
         if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
             data = time_warp(data, sigma=0.1, knot=3)
             n_applied += 1
+
         if random.random() < cfg.window_slice_proba and sensor_type in cfg.window_slice_sensors:
             data = window_slice(data, reduce_ratio=0.9)
             n_applied += 1
+
         if random.random() < cfg.permutation_proba and sensor_type in cfg.permutation_sensors:
             data = permutation(data, max_segments=5, seg_mode="equal")
             n_applied += 1
+
+        if random.random() < cfg.time_mask_proba and sensor_type in cfg.time_mask_sensors:
+            data = time_mask(data, 
+                            n_features=cfg.time_mask_n_features,
+                            max_width=int(cfg.time_mask_max_width_frac * self.seq_len))
+            n_applied += 1
+            
+        if random.random() < cfg.feature_mask_proba and sensor_type in cfg.feature_mask_sensors:
+            data = feature_mask(data, n_features=cfg.feature_mask_n_features)
+            n_applied += 1
         
         if sensor_type == 'imu':
-            return self._apply_imu_augmentations(data)
+            return self._apply_imu_augmentations(data, n_applied)
         else:
             augmentations = []
             if random.random() < cfg.jitter_proba and sensor_type in cfg.jitter_sensors:
@@ -234,7 +248,7 @@ class TS_CMIDataset(Dataset):
                 
             return data
 
-    def _apply_imu_augmentations(self, data):
+    def _apply_imu_augmentations(self, data, n_applied):
         available_augmentations = []
 
         if random.random() < cfg.moda_proba and 'imu' in cfg.moda_sensors:
@@ -253,7 +267,7 @@ class TS_CMIDataset(Dataset):
         if random.random() < cfg.window_warp_proba and 'imu' in cfg.window_warp_sensors:
             acc_only_augs.append('window_warp')
         
-        max_acc_augs = cfg.max_augmentations_per_sample - len(available_augmentations)
+        max_acc_augs = cfg.max_augmentations_per_sample - len(available_augmentations) - n_applied
         if max_acc_augs > 0 and acc_only_augs:
             selected_acc_augs = random.sample(acc_only_augs, 
                                             min(len(acc_only_augs), max_acc_augs))
@@ -371,6 +385,36 @@ class TS_CMIDataset(Dataset):
         rot_x, rot_y, rot_z, rot_w = data[:, 3], data[:, 4], data[:, 5], data[:, 6]
         
         additional_features = []
+
+        if cfg.kaggle_fe:
+            acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
+            rot_angle = 2 * np.arccos(rot_w.clip(-1, 1))
+
+            acc_mag_jerk = np.zeros_like(acc_mag)
+            acc_mag_jerk[1:] = acc_mag[1:] - acc_mag[:-1]
+            rot_angle_vel = np.zeros_like(rot_angle)
+            rot_angle_vel[1:] = rot_angle[1:] - rot_angle[:-1]
+
+            linear_accs = remove_gravity_from_acc_df(data[:, :3], data[:, 3:7])
+            linear_acc_x, linear_acc_y, linear_acc_z = linear_accs[:, 0], linear_accs[:, 1], linear_accs[:, 2]
+
+            linear_acc_mag = np.sqrt(linear_acc_x ** 2 + linear_acc_y ** 2 + linear_acc_z ** 2)
+            linear_acc_mag_jerk = np.zeros_like(linear_acc_mag)
+            linear_acc_mag_jerk[1:] = linear_acc_mag[1:] - linear_acc_mag[:-1]   
+
+            angular_vels = calculate_angular_velocity_from_quat(data[:, 3:7])
+            angular_vel_x, angular_vel_y, angular_vel_z = angular_vels[:, 0], angular_vels[:, 1], angular_vels[:, 2]
+
+            angular_distance = calculate_angular_distance(data[:, 3:7])
+
+            additional_features.extend([
+                acc_mag, rot_angle,
+                acc_mag_jerk, rot_angle_vel,
+                linear_acc_x, linear_acc_y, linear_acc_z,
+                linear_acc_mag, linear_acc_mag_jerk,
+                angular_vel_x, angular_vel_y, angular_vel_z,
+                angular_distance
+            ])
         
         if cfg.fe_mag_ang:
             acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
@@ -462,36 +506,6 @@ class TS_CMIDataset(Dataset):
                 gravity_x, gravity_y, gravity_z,
                 acc_vertical,
                 acc_horizontal_mag
-            ])
-
-        if cfg.kaggle_fe:
-            acc_mag = np.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2)
-            rot_angle = 2 * np.arccos(rot_w.clip(-1, 1))
-
-            acc_mag_jerk = np.zeros_like(acc_mag)
-            acc_mag_jerk[1:] = acc_mag[1:] - acc_mag[:-1]
-            rot_angle_vel = np.zeros_like(rot_angle)
-            rot_angle_vel[1:] = rot_angle[1:] - rot_angle[:-1]
-
-            linear_accs = remove_gravity_from_acc_df(data[:, :3], data[:, 3:7])
-            linear_acc_x, linear_acc_y, linear_acc_z = linear_accs[:, 0], linear_accs[:, 1], linear_accs[:, 2]
-
-            linear_acc_mag = np.sqrt(linear_acc_x ** 2 + linear_acc_y ** 2 + linear_acc_z ** 2)
-            linear_acc_mag_jerk = np.zeros_like(linear_acc_mag)
-            linear_acc_mag_jerk[1:] = linear_acc_mag[1:] - linear_acc_mag[:-1]   
-
-            angular_vels = calculate_angular_velocity_from_quat(data[:, 3:7])
-            angular_vel_x, angular_vel_y, angular_vel_z = angular_vels[:, 0], angular_vels[:, 1], angular_vels[:, 2]
-
-            angular_distance = calculate_angular_distance(data[:, 3:7])
-
-            additional_features.extend([
-                acc_mag, rot_angle,
-                acc_mag_jerk, rot_angle_vel,
-                linear_acc_x, linear_acc_y, linear_acc_z,
-                linear_acc_mag, linear_acc_mag_jerk,
-                angular_vel_x, angular_vel_y, angular_vel_z,
-                angular_distance
             ])
 
         if additional_features:
