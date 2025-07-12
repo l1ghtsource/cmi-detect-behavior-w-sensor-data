@@ -223,6 +223,16 @@ def fe(df):
         angular_distance_df = angular_distance_df.droplevel('sequence_id')
         df = df.join(angular_distance_df)
 
+        # for col in (
+        #     'acc_mag', 'acc_mag_jerk', 
+        #     'rot_angle', 'rot_angle_vel', 
+        #     'linear_acc_mag', 'linear_acc_mag_jerk', 
+        #     'angular_distance', 
+        #     'angular_vel_x', 'angular_vel_y', 'angular_vel_z'
+        # ):
+        #     for x in (-2, -1, 1, 2):
+        #         df[f'{col}_shift_{x}'] = df.groupby('sequence_id')[col].shift(x)
+
     if cfg.fe_mag_ang: # don't use w/ kaggle_fe
         df['acc_mag'] = np.sqrt(df['acc_x'] ** 2 + df['acc_y'] ** 2 + df['acc_z'] ** 2)
         df['rot_mag'] = np.sqrt(df['rot_x'] ** 2 + df['rot_y'] ** 2 + df['rot_z'] ** 2)
