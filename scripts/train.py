@@ -235,12 +235,12 @@ def average_model_weights(checkpoints, top_k):
     first_state_dict = torch.load(top_checkpoints[0]['model_path'], map_location=device)
     
     for key in first_state_dict.keys():
-        averaged_state_dict[key] = torch.zeros_like(first_state_dict[key])
+        averaged_state_dict[key] = torch.zeros_like(first_state_dict[key], dtype=torch.float)
     
     for checkpoint in top_checkpoints:
         state_dict = torch.load(checkpoint['model_path'], map_location=device)
         for key in state_dict.keys():
-            averaged_state_dict[key] += state_dict[key] / top_k
+            averaged_state_dict[key] += state_dict[key].float() / top_k
     
     return averaged_state_dict
 
