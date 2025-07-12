@@ -2,16 +2,23 @@ import torch
 import numpy as np
 
 class MixupLoss:
-    def __init__(self, main_criterion, seq_type_criterion, orientation_criterion):
+    def __init__(self, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion):
         self.main_criterion = main_criterion
+        self.hybrid_criterions = hybrid_criterions
         self.seq_type_criterion = seq_type_criterion
         self.orientation_criterion = orientation_criterion
     
-    def __call__(self, outputs, seq_type_outputs, orientation_outputs, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam):
+    def __call__(self, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam):
         main_loss = lam * self.main_criterion(outputs, targets_a) + (1 - lam) * self.main_criterion(outputs, targets_b)
+        ext1_out1_loss = lam * self.hybrid_criterions[0](ext1_out1, targets_a) + (1 - lam) * self.hybrid_criterions[0](ext1_out1, targets_b)
+        ext2_out1_loss = lam * self.hybrid_criterions[1](ext2_out1, targets_a) + (1 - lam) * self.hybrid_criterions[1](ext2_out1, targets_b)
+        ext3_out1_loss = lam * self.hybrid_criterions[2](ext3_out1, targets_a) + (1 - lam) * self.hybrid_criterions[2](ext3_out1, targets_b) 
+        ext4_out1_loss = lam * self.hybrid_criterions[3](ext4_out1, targets_a) + (1 - lam) * self.hybrid_criterions[3](ext4_out1, targets_b)
+        ext5_out1_loss = lam * self.hybrid_criterions[4](ext5_out1, targets_a) + (1 - lam) * self.hybrid_criterions[4](ext5_out1, targets_b)
+        ext6_out1_loss = lam * self.hybrid_criterions[5](ext6_out1, targets_a) + (1 - lam) * self.hybrid_criterions[5](ext6_out1, targets_b)
         seq_type_loss = lam * self.seq_type_criterion(seq_type_outputs, seq_type_targets_a) + (1 - lam) * self.seq_type_criterion(seq_type_outputs, seq_type_targets_b)
         orientation_loss = lam * self.orientation_criterion(orientation_outputs, orientation_targets_a) + (1 - lam) * self.orientation_criterion(orientation_outputs, orientation_targets_b)
-        return main_loss, seq_type_loss, orientation_loss
+        return main_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, ext5_out1_loss, ext6_out1_loss, seq_type_loss, orientation_loss
 
 def mixup_batch(batch, alpha=1.0, device='cuda'):
     if alpha > 0:

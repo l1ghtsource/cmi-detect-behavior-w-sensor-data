@@ -82,7 +82,7 @@ train_seq = fast_seq_agg(train)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criterion, orientation_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
+def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
     model.train()
         
     total_loss = 0
@@ -91,7 +91,7 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
     all_preds = []
     
     if cfg.use_mixup:
-        mixup_criterion = MixupLoss(main_criterion, seq_type_criterion, orientation_criterion)
+        mixup_criterion = MixupLoss(main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion)
     
     loop = tqdm(train_loader, desc='train', leave=False)
 
@@ -105,21 +105,35 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs, seq_type_outputs, orientation_outputs = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
-            main_loss, seq_type_loss, orientation_loss = mixup_criterion(outputs, seq_type_outputs, orientation_outputs, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam)
-            loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
+            main_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, ext5_out1_loss, ext6_out1_loss, seq_type_loss, orientation_loss = mixup_criterion(
+                outputs, seq_type_outputs, orientation_outputs, 
+                ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1,
+                targets_a, targets_b, 
+                seq_type_targets_a, seq_type_targets_b, 
+                orientation_targets_a, orientation_targets_b, lam
+            )      
+            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss +  ext5_out1_loss + ext6_out1_loss) / 6  
+            loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
         else:
-            outputs, seq_type_outputs, orientation_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
             main_loss = main_criterion(outputs, targets)
+            ext1_out1_loss = hybrid_criterions[0](ext1_out1, targets)
+            ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
+            ext3_out1_loss = hybrid_criterions[2](ext3_out1, targets)
+            ext4_out1_loss = hybrid_criterions[3](ext4_out1, targets)
+            ext5_out1_loss = hybrid_criterions[4](ext5_out1, targets)
+            ext6_out1_loss = hybrid_criterions[5](ext6_out1, targets)
+            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss +  ext5_out1_loss + ext6_out1_loss) / 6  
             seq_type_loss = seq_type_criterion(seq_type_outputs, seq_type_aux_targets)
             orientation_loss = orientation_criterion(orientation_outputs, orientation_aux_targets)
-            loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
+            loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
 
         loss.backward()
 
@@ -142,6 +156,12 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
             wandb.log({
                 f'fold_{fold}/train_batch_loss': loss.item(),
                 f'fold_{fold}/train_main_loss': main_loss.item(),
+                f'fold_{fold}/train_ext1_out1_loss': ext1_out1_loss.item(),
+                f'fold_{fold}/train_ext2_out1_loss': ext2_out1_loss.item(),
+                f'fold_{fold}/train_ext3_out1_loss': ext3_out1_loss.item(),
+                f'fold_{fold}/train_ext4_out1_loss': ext4_out1_loss.item(),
+                f'fold_{fold}/train_ext5_out1_loss': ext5_out1_loss.item(),
+                f'fold_{fold}/train_ext6_out1_loss': ext6_out1_loss.item(),
                 f'fold_{fold}/train_seq_type_loss': seq_type_loss.item(),
                 f'fold_{fold}/train_orientation_loss': orientation_loss.item(),
                 f'fold_{fold}/learning_rate': scheduler.get_last_lr()[0],
@@ -156,7 +176,7 @@ def train_epoch(train_loader, model, optimizer, main_criterion, seq_type_criteri
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, orientation_criterion, device, ema=None):
+def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema=None):
     model.eval()
 
     if cfg.use_ema and ema is not None:
@@ -173,14 +193,21 @@ def valid_epoch(val_loader, model, main_criterion, seq_type_criterion, orientati
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, seq_type_outputs, orientation_outputs = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
             main_loss = main_criterion(outputs, targets)
+            ext1_out1_loss = hybrid_criterions[0](ext1_out1, targets)
+            ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
+            ext3_out1_loss = hybrid_criterions[2](ext3_out1, targets)
+            ext4_out1_loss = hybrid_criterions[3](ext4_out1, targets)
+            ext5_out1_loss = hybrid_criterions[4](ext5_out1, targets)
+            ext6_out1_loss = hybrid_criterions[5](ext6_out1, targets)
+            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss +  ext5_out1_loss + ext6_out1_loss) / 6  
             seq_type_loss = seq_type_criterion(seq_type_outputs, seq_type_aux_targets)
             orientation_loss = orientation_criterion(orientation_outputs, orientation_aux_targets)
-            loss = cfg.main_weight * main_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
+            loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
             
             total_loss += loss.item() * targets.size(0)
             total_samples += targets.size(0)
@@ -332,6 +359,8 @@ def run_training_with_stratified_group_kfold():
 
         orientation_criterion = nn.CrossEntropyLoss()
 
+        hybrid_criterions = [nn.CrossEntropyLoss() for _ in range(6)]
+
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
         current_step = 0
@@ -357,10 +386,10 @@ def run_training_with_stratified_group_kfold():
             print(f'{epoch=}')
             
             train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
-                train_loader, model, optimizer, main_criterion, seq_type_criterion, orientation_criterion, device, scheduler, 
+                train_loader, model, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, main_criterion, seq_type_criterion, orientation_criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema)
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
@@ -449,7 +478,7 @@ def run_training_with_stratified_group_kfold():
                 for key in batch.keys():
                     batch[key] = batch[key].to(device)
 
-                outputs, _, _ = forward_model(model, batch, imu_only=cfg.imu_only)
+                outputs, _, _, _, _, _, _, _, _ = forward_model(model, batch, imu_only=cfg.imu_only)
                 all_preds.append(outputs.cpu().numpy())
 
         all_preds = np.concatenate(all_preds, axis=0)
