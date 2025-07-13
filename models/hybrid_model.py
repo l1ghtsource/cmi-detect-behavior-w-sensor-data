@@ -756,8 +756,17 @@ class HybridModel_SingleSensor_v1(nn.Module):
                 nn.BatchNorm1d(final_hidden_dim)
             )
         
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=final_hidden_dim,
+            num_heads=8,
+            dropout=head_droupout,
+            batch_first=True
+        )
+
+        self.attention_norm = nn.LayerNorm(final_hidden_dim)
+
         final_feature_dim = final_hidden_dim * 6
-        
+
         self.head1 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
             nn.ReLU(),
@@ -863,7 +872,19 @@ class HybridModel_SingleSensor_v1(nn.Module):
             feature = self.process_extractor(x_dict, extractor_num)
             extractor_features.append(feature)
         
-        final_features = torch.cat(extractor_features, dim=1)
+        stacked_features = torch.stack(extractor_features, dim=1)  # (bs, 6, final_hidden_dim)
+        
+        attended_features, _ = self.self_attention(
+            stacked_features, 
+            stacked_features, 
+            stacked_features
+        )  # (bs, 6, final_hidden_dim)
+        
+        attended_features = self.attention_norm(attended_features + stacked_features)
+        
+        final_features = attended_features.view(attended_features.size(0), -1)  # (bs, final_hidden_dim * 6)
+        
+        # final_features = torch.cat(extractor_features, dim=1)
         
         out1 = self.head1(final_features)
         out2 = self.head2(final_features)
