@@ -21,6 +21,9 @@ cfg.imu_cols = [
     'linear_acc_x', 'linear_acc_y', 'linear_acc_z', 'linear_acc_mag', 'linear_acc_mag_jerk',
     'angular_vel_x', 'angular_vel_y', 'angular_vel_z',
     'angular_distance',
+    'linear_vel_x', 'linear_vel_y', 'linear_vel_z',
+    'pos_x', 'pos_y', 'pos_z',
+    # 'cumulative_trajectory_length', 'trajectory_curvature', 'tangential_accel',
     # 'roll', 'pitch', 'yaw',
     # 'gravity_x', 'gravity_y', 'gravity_z', 'acc_vertical', 'acc_horizontal_mag', 
     # 'XY_acc', 'XZ_acc', 'YZ_acc',
@@ -81,7 +84,7 @@ cfg.selected_model = 'hybrid' # ['timemil', 'decomposewhar', 'convtran', 'hybrid
 
 # --- target things ---
 cfg.main_weight = 1.0
-cfg.orientation_aux_weight = 0.5#0
+cfg.orientation_aux_weight = 0.5
 cfg.seq_type_aux_weight = 0.5
 cfg.main_clpsd_weight = 0
 cfg.behavior_aux_weight = 0
@@ -228,19 +231,19 @@ cfg.window_warp_sensors = ['imu', 'thm']
 cfg.permutation_proba = 0
 cfg.permutation_sensors = ['imu', 'tof', 'thm']
 
-cfg.rotation_proba = 0#0.5
+cfg.rotation_proba = 0
 cfg.rotation_sensors = ['imu']
 cfg.rotation_max_angle = 30
 
-cfg.moda_proba = 0#0.4
+cfg.moda_proba = 0
 cfg.moda_sensors = ['imu']
 
-cfg.time_mask_proba = 0
+cfg.time_mask_proba = 0#0.5
 cfg.time_mask_n_features = 3
-cfg.time_mask_max_width_frac = 0.25
+cfg.time_mask_max_width_frac = 0.2
 cfg.time_mask_sensors = ['imu', 'thm', 'tof']
 
-cfg.feature_mask_proba = 0
+cfg.feature_mask_proba = 0#0.5
 cfg.feature_mask_n_features = 1
 cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 

@@ -223,6 +223,57 @@ def fe(df):
         angular_distance_df = angular_distance_df.droplevel('sequence_id')
         df = df.join(angular_distance_df)
 
+        def compute_detrended_velocity(group):
+            acc_cols = ['linear_acc_x', 'linear_acc_y', 'linear_acc_z']
+            vel = group[acc_cols].cumsum() * 0.1
+            vel.columns = ['linear_vel_x', 'linear_vel_y', 'linear_vel_z']
+            t = np.arange(len(group))
+            for col in vel.columns:
+                trend = np.polyval(np.polyfit(t, vel[col], 2), t)
+                vel[col] -= trend
+            return vel
+        
+        linear_vel_df = df.groupby('sequence_id').apply(compute_detrended_velocity, include_groups=False)
+        linear_vel_df = linear_vel_df.droplevel('sequence_id')
+        df = df.join(linear_vel_df)
+
+        def compute_detrended_position(group):
+            vel_cols = ['linear_vel_x', 'linear_vel_y', 'linear_vel_z']
+            pos = group[vel_cols].cumsum() * 0.1
+            pos.columns = ['pos_x', 'pos_y', 'pos_z']
+            t = np.arange(len(group))
+            for col in pos.columns:
+                trend = np.polyval(np.polyfit(t, pos[col], 2), t)
+                pos[col] -= trend
+            return pos
+        
+        position_df = df.groupby('sequence_id').apply(compute_detrended_position, include_groups=False)
+        position_df = position_df.droplevel('sequence_id')
+        df = df.join(position_df)
+
+        # def compute_cumulative_trajectory_length(group):
+        #     pos_diff = group[['pos_x', 'pos_y', 'pos_z']].diff().fillna(0)
+        #     dist = np.sqrt((pos_diff ** 2).sum(axis=1))
+        #     cumulative_length = dist.cumsum()
+        #     return cumulative_length
+
+        # df['cumulative_trajectory_length'] = df.groupby('sequence_id').apply(
+        #     compute_cumulative_trajectory_length, include_groups=False
+        # ).reset_index(level=0, drop=True)
+        # df['cumulative_trajectory_length'] = df.groupby('sequence_id')[f'cumulative_trajectory_length'].transform(
+        #     lambda x: (x - x.mean()) / (x.std() + 1e-6)
+        # )
+
+        # epsilon = 1e-6
+        # v = df[['linear_vel_x', 'linear_vel_y', 'linear_vel_z']].values
+        # a = df[['linear_acc_x', 'linear_acc_y', 'linear_acc_z']].values
+        # cross = np.cross(v, a)
+        # cross_mag = np.linalg.norm(cross, axis=1)
+        # v_mag = np.linalg.norm(v, axis=1).clip(min=epsilon)
+        # df['trajectory_curvature'] = cross_mag / (v_mag ** 3)
+        # dot = np.einsum('ij,ij->i', v, a)
+        # df['tangential_accel'] = dot / v_mag.clip(min=epsilon)
+
         # for col in (
         #     'acc_mag', 'acc_mag_jerk', 
         #     'rot_angle', 'rot_angle_vel', 
