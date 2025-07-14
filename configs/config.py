@@ -22,7 +22,7 @@ cfg.imu_cols = [
     'angular_vel_x', 'angular_vel_y', 'angular_vel_z',
     'angular_distance',
     'linear_vel_x', 'linear_vel_y', 'linear_vel_z',
-    'pos_x', 'pos_y', 'pos_z',
+    # 'pos_x', 'pos_y', 'pos_z',
     # 'cumulative_trajectory_length', 'trajectory_curvature', 'tangential_accel',
     # 'roll', 'pitch', 'yaw',
     # 'gravity_x', 'gravity_y', 'gravity_z', 'acc_vertical', 'acc_horizontal_mag', 

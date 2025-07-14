@@ -237,19 +237,19 @@ def fe(df):
         linear_vel_df = linear_vel_df.droplevel('sequence_id')
         df = df.join(linear_vel_df)
 
-        def compute_detrended_position(group):
-            vel_cols = ['linear_vel_x', 'linear_vel_y', 'linear_vel_z']
-            pos = group[vel_cols].cumsum() * 0.1
-            pos.columns = ['pos_x', 'pos_y', 'pos_z']
-            t = np.arange(len(group))
-            for col in pos.columns:
-                trend = np.polyval(np.polyfit(t, pos[col], 2), t)
-                pos[col] -= trend
-            return pos
+        # def compute_detrended_position(group):
+        #     vel_cols = ['linear_vel_x', 'linear_vel_y', 'linear_vel_z']
+        #     pos = group[vel_cols].cumsum() * 0.1
+        #     pos.columns = ['pos_x', 'pos_y', 'pos_z']
+        #     t = np.arange(len(group))
+        #     for col in pos.columns:
+        #         trend = np.polyval(np.polyfit(t, pos[col], 2), t)
+        #         pos[col] -= trend
+        #     return pos
         
-        position_df = df.groupby('sequence_id').apply(compute_detrended_position, include_groups=False)
-        position_df = position_df.droplevel('sequence_id')
-        df = df.join(position_df)
+        # position_df = df.groupby('sequence_id').apply(compute_detrended_position, include_groups=False)
+        # position_df = position_df.droplevel('sequence_id')
+        # df = df.join(position_df)
 
         # def compute_cumulative_trajectory_length(group):
         #     pos_diff = group[['pos_x', 'pos_y', 'pos_z']].diff().fillna(0)
