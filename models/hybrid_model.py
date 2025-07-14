@@ -693,9 +693,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
         self.channel_sizes = {
             'imu': 3,      # x_imu: 0-2
             'rot': 4,      # x_rot: 3-6  
-            'fe1': 13+3+3,     # x_fe1: 7-19+3+3
-            'fe2': 9,      # x_fe2: 20+3+3-28+3+3
-            'full': 29+3+3     # x_full: 0-28+3+3
+            'fe1': 13+3,     # x_fe1: 7-19+3
+            'fe2': 9,      # x_fe2: 20+3-28+3
+            'full': 29+3     # x_full: 0-28+3
         }
         
         self.branch_extractors = nn.ModuleDict()
@@ -862,8 +862,8 @@ class HybridModel_SingleSensor_v1(nn.Module):
         x_dict = {
             'imu': _x[:, :, :, :3],
             'rot': _x[:, :, :, 3:7],
-            'fe1': _x[:, :, :, 7:20+3+3],
-            'fe2': _x[:, :, :, 20+3+3:29+3+3],
+            'fe1': _x[:, :, :, 7:20+3],
+            'fe2': _x[:, :, :, 20+3:29+3],
             'full': _x
         }
         
