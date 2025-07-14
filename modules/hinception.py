@@ -69,7 +69,7 @@ class HInceptionTimeFeatureExtractor(nn.Module):
             convs.append(conv)
         
         # Max pooling branch
-        max_pool = nn.MaxPool1d(pool_size=3, stride=1, padding=1)
+        max_pool = nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
         conv_after_pool = nn.Conv1d(input_channels, self.n_filters, kernel_size=1, padding='same', bias=False)
         
         # Store for forward pass
