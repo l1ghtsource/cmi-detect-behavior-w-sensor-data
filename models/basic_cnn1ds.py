@@ -7,6 +7,7 @@ from modules.inceptiontime_replacers import (
     EfficientNet1DFeatureExtractor, 
     DenseNet1DFeatureExtractor
 )
+from modules.hinception import HInceptionTimeFeatureExtractor
 from modules.lite import LiteFeatureExtractor
 from configs.config import cfg
 
@@ -81,6 +82,8 @@ class CNN1D_SingleSensor_v1(nn.Module):
             self.feature_extractor = DenseNet1DFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
         elif extractor == 'lite':
             self.feature_extractor = LiteFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
+        elif extractor == 'hinception':
+            self.feature_extractor = HInceptionTimeFeatureExtractor(in_channels=n_in_channels, length_TS=cfg.seq_len, n_filters=out_channels, depth=6)
 
         feature_dim = out_channels * 4
 
