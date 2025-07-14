@@ -1,5 +1,6 @@
 import os
 import json
+import gc
 
 import pandas as pd
 import numpy as np
@@ -523,6 +524,12 @@ def run_training_with_stratified_group_kfold():
                 f'fold_{fold}/fold_completed': True
             })
 
+        del model, optimizer, scheduler, main_criterion, seq_type_criterion, orientation_criterion, hybrid_criterions
+        if ema is not None:
+            del ema
+        del train_dataset, val_dataset, train_loader, val_loader
+        del train_subset, val_subset, fold_checkpoints
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
