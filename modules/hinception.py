@@ -30,6 +30,7 @@ class HInceptionTimeFeatureExtractor(nn.Module):
         self.shortcuts = nn.ModuleList()
         
         current_channels = in_channels
+        previous_channels = in_channels  # For residual tracking
         for d in range(depth):
             module = self._build_inception_module(current_channels, use_hybrid_layer=(d == 0))
             self.inception_modules.append(module)
@@ -45,49 +46,32 @@ class HInceptionTimeFeatureExtractor(nn.Module):
             # Add shortcut layer for residual every 3 modules
             if use_residual and d % 3 == 2:
                 shortcut = nn.Sequential(
-                    nn.Conv1d(in_channels if d == 2 else previous_channels, current_channels, kernel_size=1, padding='same', bias=False),
+                    nn.Conv1d(previous_channels, current_channels, kernel_size=1, padding='same', bias=False),
                     nn.BatchNorm1d(current_channels)
                 )
                 self.shortcuts.append(shortcut)
-                previous_channels = current_channels  # Update for next residual
+                previous_channels = current_channels
         
     def _build_inception_module(self, input_channels, use_hybrid_layer=False):
-        layers = []
-        
-        # Bottleneck if enabled and input channels > 1
-        if self.use_bottleneck and input_channels > 1:
-            bottleneck = nn.Conv1d(input_channels, self.bottleneck_size, kernel_size=1, padding='same', bias=False)
-            layers.append(bottleneck)
-            inception_channels = self.bottleneck_size
-        else:
-            inception_channels = input_channels
-        
-        # Inception convolutions
-        convs = []
-        for k in self.kernel_sizes:
-            conv = nn.Conv1d(inception_channels, self.n_filters, kernel_size=k, padding='same', bias=False)
-            convs.append(conv)
-        
-        # Max pooling branch
-        max_pool = nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
-        conv_after_pool = nn.Conv1d(input_channels, self.n_filters, kernel_size=1, padding='same', bias=False)
-        
-        # Store for forward pass
-        return {
-            'bottleneck': layers[0] if layers else None,
-            'convs': nn.ModuleList(convs),
-            'max_pool': max_pool,
-            'conv_after_pool': conv_after_pool,
-            'use_hybrid': use_hybrid_layer,
-            'bn': nn.BatchNorm1d(self.n_filters * (len(self.kernel_sizes) + 1) + (len(self.increasing_trend_kernels) * 3 - len(self.increasing_trend_kernels) if use_hybrid_layer else 0))
-        }
-    
-    def _hybrid_layer(self, x):
+        return InceptionModule(
+            input_channels=input_channels,
+            n_filters=self.n_filters,
+            kernel_sizes=self.kernel_sizes,
+            bottleneck_size=self.bottleneck_size,
+            use_bottleneck=self.use_bottleneck,
+            use_hybrid=use_hybrid_layer,
+            increasing_kernels=self.increasing_trend_kernels,
+            decreasing_kernels=self.decreasing_trend_kernels,
+            peak_kernels=self.peak_kernels,
+            in_channels=self.in_channels
+        )
+
+    def _hybrid_layer(self, x, increasing_kernels, decreasing_kernels, peak_kernels, in_channels):
         conv_list = []
         
         # Increasing detection filters
-        for kernel_size in self.increasing_trend_kernels:
-            filter_ = torch.from_numpy(np.ones((kernel_size, self.in_channels, 1))).float()
+        for kernel_size in increasing_kernels:
+            filter_ = torch.from_numpy(np.ones((kernel_size, in_channels, 1))).float()
             indices = np.arange(kernel_size)
             filter_[indices % 2 == 0] *= -1
             filter_ = filter_.permute(2, 1, 0)  # To (out_channels, in_channels, kernel_size)
@@ -95,8 +79,8 @@ class HInceptionTimeFeatureExtractor(nn.Module):
             conv_list.append(conv)
         
         # Decreasing detection filters
-        for kernel_size in self.decreasing_trend_kernels:
-            filter_ = torch.from_numpy(np.ones((kernel_size, self.in_channels, 1))).float()
+        for kernel_size in decreasing_kernels:
+            filter_ = torch.from_numpy(np.ones((kernel_size, in_channels, 1))).float()
             indices = np.arange(kernel_size)
             filter_[indices % 2 > 0] *= -1
             filter_ = filter_.permute(2, 1, 0)
@@ -104,9 +88,9 @@ class HInceptionTimeFeatureExtractor(nn.Module):
             conv_list.append(conv)
         
         # Peak detection filters
-        for kernel_size in self.peak_kernels:
+        for kernel_size in peak_kernels:
             length = kernel_size + kernel_size // 2
-            filter_ = np.zeros((length, self.in_channels, 1))
+            filter_ = np.zeros((length, in_channels, 1))
             xmesh = np.linspace(0, 1, kernel_size//4 + 1)[1:].reshape(-1, 1, 1)
             filter_left = xmesh ** 2
             filter_right = filter_left[::-1]
@@ -124,39 +108,142 @@ class HInceptionTimeFeatureExtractor(nn.Module):
         return F.relu(hybrid)
     
     def forward(self, x):
-        # x: (bs, c, l)
         input_res = x
+        shortcut_idx = 0
         for d, module in enumerate(self.inception_modules):
-            # Bottleneck
-            if module['bottleneck'] is not None:
-                input_inception = module['bottleneck'](x)
-            else:
-                input_inception = x
-            
-            # Convs
-            convs_out = [conv(input_inception) for conv in module['convs']]
-            
-            # Max pool branch
-            max_pool_out = module['max_pool'](x)
-            conv_after = module['conv_after_pool'](max_pool_out)
-            convs_out.append(conv_after)
-            
-            # Hybrid layer if enabled
-            if module['use_hybrid']:
-                hybrid_out = self._hybrid_layer(x)
-                convs_out.append(hybrid_out)
-            
-            # Concat and activate
-            out = torch.cat(convs_out, dim=1)
-            out = module['bn'](out)
-            out = F.relu(out)
+            out = module(x)
             
             # Residual connection every 3 modules
             if self.use_residual and d % 3 == 2:
-                shortcut = self.shortcuts[d // 3](input_res)
+                shortcut = self.shortcuts[shortcut_idx](input_res)
                 out = F.relu(out + shortcut)
                 input_res = out
+                shortcut_idx += 1
             
             x = out  # Update for next module
         
-        return out  # (bs, hidden, l)
+        return x  # (bs, hidden, l)
+
+class InceptionModule(nn.Module):
+    def __init__(self, input_channels, n_filters, kernel_sizes, bottleneck_size, use_bottleneck, 
+                 use_hybrid, increasing_kernels, decreasing_kernels, peak_kernels, in_channels):
+        super(InceptionModule, self).__init__()
+        
+        self.use_bottleneck = use_bottleneck and input_channels > 1
+        if self.use_bottleneck:
+            self.bottleneck = nn.Conv1d(input_channels, bottleneck_size, kernel_size=1, padding=0, bias=False)  # k=1 preserves length
+            inception_channels = bottleneck_size
+        else:
+            inception_channels = input_channels
+        
+        # Inception convolutions with manual padding
+        self.convs = nn.ModuleList()
+        for k in kernel_sizes:
+            padding = (k - 1) // 2
+            conv = nn.Conv1d(inception_channels, n_filters, kernel_size=k, padding=padding, bias=False)
+            self.convs.append(conv)
+        
+        # Max pooling branch
+        self.max_pool = nn.MaxPool1d(kernel_size=3, stride=1, padding=1)
+        self.conv_after_pool = nn.Conv1d(input_channels, n_filters, kernel_size=1, padding=0, bias=False)
+        
+        # Hybrid params (unchanged)
+        self.use_hybrid = use_hybrid
+        self.increasing_kernels = increasing_kernels
+        self.decreasing_kernels = decreasing_kernels
+        self.peak_kernels = peak_kernels
+        self.in_channels = in_channels
+        
+        # BatchNorm (unchanged)
+        num_conv_filters = len(kernel_sizes) + 1
+        num_hybrid_filters = len(increasing_kernels) + len(decreasing_kernels) + len(peak_kernels) if use_hybrid else 0
+        self.bn = nn.BatchNorm1d(n_filters * num_conv_filters + num_hybrid_filters)
+    
+    def forward(self, x):
+        original_length = x.shape[2]  # Track input length
+        
+        if self.use_bottleneck:
+            input_inception = self.bottleneck(x)
+        else:
+            input_inception = x
+        
+        # Convs (apply match_length to each)
+        convs_out = []
+        for conv in self.convs:
+            conv_out = conv(input_inception)
+            conv_out = self.match_length(conv_out, original_length)
+            convs_out.append(conv_out)
+        
+        # Max pool branch (apply match_length)
+        max_pool_out = self.max_pool(x)
+        conv_after = self.conv_after_pool(max_pool_out)
+        conv_after = self.match_length(conv_after, original_length)
+        convs_out.append(conv_after)
+        
+        # Hybrid layer if enabled (apply match_length)
+        if self.use_hybrid:
+            hybrid_out = self._hybrid_layer(x, self.increasing_kernels, self.decreasing_kernels, 
+                                            self.peak_kernels, self.in_channels, original_length)
+            convs_out.append(hybrid_out)
+        
+        # Concat and activate
+        out = torch.cat(convs_out, dim=1)
+        out = self.bn(out)
+        out = F.relu(out)
+        return out
+    
+    def match_length(self, tensor, target_len):
+        current_len = tensor.shape[2]
+        if current_len > target_len:
+            return tensor[:, :, :target_len]  # Crop excess
+        elif current_len < target_len:
+            pad = target_len - current_len
+            return F.pad(tensor, (0, pad))  # Pad on the right
+        return tensor
+    
+    def _hybrid_layer(self, x, increasing_kernels, decreasing_kernels, peak_kernels, in_channels, target_length):
+        conv_list = []
+        
+        # Increasing detection filters
+        for kernel_size in increasing_kernels:
+            filter_ = torch.from_numpy(np.ones((kernel_size, in_channels, 1))).float()
+            indices = np.arange(kernel_size)
+            filter_[indices % 2 == 0] *= -1
+            filter_ = filter_.permute(2, 1, 0)
+            padding = (kernel_size - 1) // 2
+            conv = F.conv1d(x, filter_.to(x.device), padding=padding, bias=None)
+            conv = self.match_length(conv, target_length)
+            conv_list.append(conv)
+        
+        # Decreasing detection filters
+        for kernel_size in decreasing_kernels:
+            filter_ = torch.from_numpy(np.ones((kernel_size, in_channels, 1))).float()
+            indices = np.arange(kernel_size)
+            filter_[indices % 2 > 0] *= -1
+            filter_ = filter_.permute(2, 1, 0)
+            padding = (kernel_size - 1) // 2
+            conv = F.conv1d(x, filter_.to(x.device), padding=padding, bias=None)
+            conv = self.match_length(conv, target_length)
+            conv_list.append(conv)
+        
+        # Peak detection filters
+        for kernel_size in peak_kernels:
+            length = kernel_size + kernel_size // 2
+            filter_ = np.zeros((length, in_channels, 1))
+            xmesh = np.linspace(0, 1, kernel_size//4 + 1)[1:].reshape(-1, 1, 1)
+            filter_left = xmesh ** 2
+            filter_right = filter_left[::-1]
+            filter_[0:kernel_size//4] = -filter_left
+            filter_[kernel_size//4:kernel_size//2] = -filter_right
+            filter_[kernel_size//2:3*kernel_size//4] = 2 * filter_left
+            filter_[3*kernel_size//4:kernel_size] = 2 * filter_right
+            filter_[kernel_size:5*kernel_size//4] = -filter_left
+            filter_[5*kernel_size//4:] = -filter_right
+            filter_ = torch.from_numpy(filter_).float().permute(2, 1, 0)
+            padding = (length - 1) // 2
+            conv = F.conv1d(x, filter_.to(x.device), padding=padding, bias=None)
+            conv = self.match_length(conv, target_length)
+            conv_list.append(conv)
+        
+        hybrid = torch.cat(conv_list, dim=1)
+        return F.relu(hybrid)
