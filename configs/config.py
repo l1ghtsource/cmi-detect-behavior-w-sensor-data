@@ -259,25 +259,25 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        'path_to_dir': {
+        '': {
             'weight': 1,
-            'prefix': 'some_prefix',
+            'prefix': 'hybrid_imu_only_seq_len120_use_pad_mask_lookahead_lag_lead_cum_kaggle_fe_muonwauxadam_ls0.05_',
             'timemil_ver': '1',
             'model_params': {
                 'n_classes': 18,
             }
         },
     },
-    'imu+tof+thm': {
-        'path_to_dir': {
-            'weight': 1,
-            'prefix': 'some_prefix',
-            'timemil_ver': '1',
-            'model_params': {
-                'n_classes': 18,
-            }
-        },
-    }
+    # 'imu+tof+thm': {
+    #     'path_to_dir': {
+    #         'weight': 1,
+    #         'prefix': 'some_prefix',
+    #         'timemil_ver': '1',
+    #         'model_params': {
+    #             'n_classes': 18,
+    #         }
+    #     },
+    # }
 }
 cfg.is_soft = True
 cfg.use_entmax = False
