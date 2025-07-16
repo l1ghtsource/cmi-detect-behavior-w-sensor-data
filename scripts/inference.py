@@ -8,11 +8,8 @@ from torch.utils.data import DataLoader
 from entmax import entmax_bisect
 
 from configs.config import cfg
-from models.timemil import (
-    MultiSensor_TimeMIL_v1, 
-    MultiSensor_TimeMIL_v2,
-    TimeMIL_SingleSensor_Multibranch_v1,
-    TimeMIL_SingleSensor_Singlebranch_v1
+from models.hybrid_model import (
+    HybridModel_SingleSensor_v1
 )
 from utils.getters import (
     get_ts_dataset, 
@@ -41,7 +38,7 @@ if cfg.use_world_coords:
 if cfg.only_remove_g: # can't be used w/ use_world_coords
     train = remove_gravity_from_acc(train)
 
-if cfg.use_hand_symm:
+if cfg.use_hand_symm and cfg.imu_only:
     right_handed_mask = train['handedness'] == 1
     train.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(train.loc[right_handed_mask, cfg.imu_cols])
 
@@ -117,9 +114,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         print(f'{params=}')
         model_weights.append(params['weight'])
         if use_imu_only:
-            TSModel = TimeMIL_SingleSensor_Singlebranch_v1 if params['timemil_singlebranch'] else TimeMIL_SingleSensor_Multibranch_v1
+            TSModel = HybridModel_SingleSensor_v1
         else:
-            TSModel = MultiSensor_TimeMIL_v1 if params['timemil_ver'] == '1' else MultiSensor_TimeMIL_v2
+            TSModel = HybridModel_SingleSensor_v1 # заглушка, потом я добавлю можель imu tof thm
 
         model = TSModel(**params['model_params']).to(device)
 
@@ -149,7 +146,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
                     for key in batch.keys():
                         batch[key] = batch[key].to(device)
                     if not use_tta:
-                        outputs, aux2_outputs = forward_model(model, batch, imu_only=use_imu_only)
+                        outputs, aux2_outputs, orient_out, _, _, _, _, _, _ = forward_model(model, batch, imu_only=use_imu_only)
                         current_fold_batch_logits.append(outputs.cpu().numpy())
                         current_fold_batch_logits_aux2.append(aux2_outputs.cpu().numpy())
                     else:
@@ -163,7 +160,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
                         for aug_batch in augmented_batches:
                             for key in aug_batch.keys():
                                 aug_batch[key] = aug_batch[key].to(device)
-                            outputs, aux2_outputs = forward_model(model, aug_batch, imu_only=use_imu_only)
+                            outputs, aux2_outputs, orient_out, _, _, _, _, _, _ = forward_model(model, aug_batch, imu_only=use_imu_only)
                             batch_tta_logits.append(outputs.cpu().numpy())
                             batch_tta_logits_aux2.append(aux2_outputs.cpu().numpy())
                         avg_tta_logits = np.mean(batch_tta_logits, axis=0)

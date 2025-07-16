@@ -208,42 +208,42 @@ cfg.scheduler = 'linear' # ['cosine', 'cosine_cycle', 'linear']
 cfg.optim_type = 'muonwauxadam' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
 
 # --- ts augs ---
-cfg.max_augmentations_per_sample = 0#3
+cfg.max_augmentations_per_sample = 1
 
-cfg.jitter_proba = 0#0.8
+cfg.jitter_proba = 0.7 # its good
 cfg.jitter_sensors = ['imu', 'tof', 'thm']
 
-cfg.magnitude_warp_proba = 0#0.3
+cfg.magnitude_warp_proba = 0.0 # useless ?
 cfg.magnitude_warp_sensors = ['imu', 'thm']
 
-cfg.time_warp_proba = 0#0.6
+cfg.time_warp_proba = 0.0 # worst
 cfg.time_warp_sensors = ['imu', 'tof', 'thm']
 
-cfg.scaling_proba = 0#0.5
+cfg.scaling_proba = 0.0 # useless
 cfg.scaling_sensors = ['imu', 'thm']
 
-cfg.window_slice_proba = 0
+cfg.window_slice_proba = 0.0 # bad
 cfg.window_slice_sensors = ['imu', 'tof', 'thm']
 
-cfg.window_warp_proba = 0
+cfg.window_warp_proba = 0.0 # bad
 cfg.window_warp_sensors = ['imu', 'thm']
 
-cfg.permutation_proba = 0
+cfg.permutation_proba = 0.0 # bad
 cfg.permutation_sensors = ['imu', 'tof', 'thm']
 
-cfg.rotation_proba = 0
+cfg.rotation_proba = 0.0 # bad ??
 cfg.rotation_sensors = ['imu']
 cfg.rotation_max_angle = 30
 
-cfg.moda_proba = 0
+cfg.moda_proba = 0.0 # bad ??
 cfg.moda_sensors = ['imu']
 
-cfg.time_mask_proba = 0#0.5
+cfg.time_mask_proba = 0.0 # in testing
 cfg.time_mask_n_features = 3
 cfg.time_mask_max_width_frac = 0.2
 cfg.time_mask_sensors = ['imu', 'thm', 'tof']
 
-cfg.feature_mask_proba = 0#0.5
+cfg.feature_mask_proba = 0.0 # in testing
 cfg.feature_mask_n_features = 1
 cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
@@ -258,8 +258,26 @@ cfg.ema_decay = 0.999
 
 # --- inference params ---
 cfg.weights_pathes = {
-    'imu_only': {},
-    'imu+tof+thm': {}
+    'imu_only': {
+        'path_to_dir': {
+            'weight': 1,
+            'prefix': 'some_prefix',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+            }
+        },
+    },
+    'imu+tof+thm': {
+        'path_to_dir': {
+            'weight': 1,
+            'prefix': 'some_prefix',
+            'timemil_ver': '1',
+            'model_params': {
+                'n_classes': 18,
+            }
+        },
+    }
 }
 cfg.is_soft = True
 cfg.use_entmax = False
