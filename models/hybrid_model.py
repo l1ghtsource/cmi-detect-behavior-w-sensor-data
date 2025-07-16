@@ -278,19 +278,55 @@ class ResidualSEBlock(nn.Module):
         return out
 
 class MetaFeatureExtractor(nn.Module):
-    def forward(self, x):
+    def forward(self, x, pad_mask=None):
         # x shape: (B, L, C)
-        mean = torch.mean(x, dim=1)
-        std = torch.std(x, dim=1)
-        max_val, _ = torch.max(x, dim=1)
-        min_val, _ = torch.min(x, dim=1)
         
-        # Calculate slope: (last - first) / seq_len
-        seq_len = x.size(1)
-        if seq_len > 1:
-            slope = (x[:, -1, :] - x[:, 0, :]) / (seq_len - 1)
+        if pad_mask is None:
+            mean = torch.mean(x, dim=1)
+            std = torch.std(x, dim=1)
+            max_val, _ = torch.max(x, dim=1)
+            min_val, _ = torch.min(x, dim=1)
+            
+            seq_len = x.size(1)
+            if seq_len > 1:
+                slope = (x[:, -1, :] - x[:, 0, :]) / (seq_len - 1)
+            else:
+                slope = torch.zeros_like(x[:, 0, :])
         else:
-            slope = torch.zeros_like(x[:, 0, :])
+            mask = pad_mask.unsqueeze(-1)  # (B, L, 1)
+            
+            masked_x = x * mask
+            valid_count = mask.sum(dim=1).clamp_min(1)  # (B, 1)
+            mean = masked_x.sum(dim=1) / valid_count
+            
+            diff_squared = ((x - mean.unsqueeze(1)) ** 2) * mask
+            variance = diff_squared.sum(dim=1) / valid_count.clamp_min(2)
+            std = torch.sqrt(variance.clamp_min(1e-8))
+            
+            masked_x_max = x.clone()
+            masked_x_max[mask.squeeze(-1) == 0] = float('-inf')
+            max_val, _ = torch.max(masked_x_max, dim=1)
+            
+            masked_x_min = x.clone()
+            masked_x_min[mask.squeeze(-1) == 0] = float('inf')
+            min_val, _ = torch.min(masked_x_min, dim=1)
+            
+            valid_indices = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1)
+            valid_indices = valid_indices * pad_mask
+            
+            first_valid_idx = torch.argmax(pad_mask.float(), dim=1)  # (B,)
+            
+            last_valid_idx = x.size(1) - 1 - torch.argmax(pad_mask.flip(1).float(), dim=1)  # (B,)
+            
+            batch_indices = torch.arange(x.size(0), device=x.device)
+            first_vals = x[batch_indices, first_valid_idx]  # (B, C)
+            last_vals = x[batch_indices, last_valid_idx]    # (B, C)
+            
+            seq_len_valid = (last_valid_idx - first_valid_idx).float().unsqueeze(-1).clamp_min(1)  # (B, 1)
+            slope = (last_vals - first_vals) / seq_len_valid
+            
+            single_valid = (pad_mask.sum(dim=1) == 1).unsqueeze(-1)  # (B, 1)
+            slope = slope * (~single_valid).float()
         
         return torch.cat([mean, std, max_val, min_val, slope], dim=1)
 
@@ -334,7 +370,7 @@ class Public2_SingleSensor_Extractor(nn.Module):
     def forward(self, x, pad_mask=None):
         x = x.squeeze(1) # (bs, l, c)
 
-        meta = self.meta_extractor(x)
+        meta = self.meta_extractor(x, pad_mask=pad_mask)
         meta_proj = self.meta_dense(meta)
 
         branch_outputs = []
@@ -825,7 +861,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
             nn.Linear(final_hidden_dim, num_classes)
         )
             
-    def process_extractor(self, x_dict, extractor_num):
+    def process_extractor(self, x_dict, extractor_num, pad_mask=None):
         extractor_name = f'extractor{extractor_num}'
         branch_features = []
         
@@ -844,7 +880,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
                 feature = self.branch_extractors[f'{branch_name}_pool4'](feature)
                 feature = feature + self.branch_extractors[f'{branch_name}_neck4'](feature)
             elif extractor_num == 5:
-                feature = self.branch_extractors[f'{branch_name}_extractor5'](x)
+                feature = self.branch_extractors[f'{branch_name}_extractor5'](x, pad_mask=pad_mask)
             elif extractor_num == 6:
                 feature = self.branch_extractors[f'{branch_name}_extractor6'](x)
             
@@ -869,7 +905,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
         
         extractor_features = []
         for extractor_num in range(1, 7):
-            feature = self.process_extractor(x_dict, extractor_num)
+            feature = self.process_extractor(x_dict, extractor_num, pad_mask=pad_mask)
             extractor_features.append(feature)
         
         stacked_features = torch.stack(extractor_features, dim=1)  # (bs, 6, final_hidden_dim)
