@@ -259,12 +259,12 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        '': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/avg_models_60row_excel': {
             'weight': 1,
             'prefix': 'hybrid_imu_only_seq_len120_use_pad_mask_lookahead_lag_lead_cum_kaggle_fe_muonwauxadam_ls0.05_',
             'timemil_ver': '1',
             'model_params': {
-                'n_classes': 18,
+                'num_classes': 18,
             }
         },
     },
@@ -274,7 +274,7 @@ cfg.weights_pathes = {
     #         'prefix': 'some_prefix',
     #         'timemil_ver': '1',
     #         'model_params': {
-    #             'n_classes': 18,
+    #             'num_classes': 18,
     #         }
     #     },
     # }
