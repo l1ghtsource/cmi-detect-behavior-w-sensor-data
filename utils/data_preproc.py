@@ -452,6 +452,7 @@ def fast_seq_agg(df):
     for col in cfg.tof_cols:
         if col in res_df.columns:
             res_df[col] = res_df[col].apply(lambda x: np.where(x == -1, 255, x))
+            res_df[col] /= 255 # i call it ShitNorm1d
 
     return res_df
 

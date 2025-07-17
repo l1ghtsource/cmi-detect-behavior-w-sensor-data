@@ -934,3 +934,114 @@ class HybridModel_SingleSensor_v1(nn.Module):
         ext6_out1 = self.ext6_head1(extractor_features[5])
 
         return out1, out2, out3, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1
+    
+class MultiSensor_HybridModel_v1(nn.Module):
+    def __init__(
+        self, 
+        seq_len=cfg.seq_len,
+        imu_vars=cfg.imu_vars,
+        thm_vars=len(cfg.thm_cols),
+        tof_vars=len(cfg.tof_cols),
+        multibigru_dim=128,
+        multibigru_nlayers=3,
+        multibigru_dropout=0.1,
+        head_droupout=0.2, 
+        num_classes=cfg.main_num_classes
+    ):
+        super().__init__()
+
+        self.imu_branch = MultiResidualBiGRU_SingleSensor_Extractor( 
+            seq_len=seq_len,
+            n_imu_vars=imu_vars,
+            hidden_size=multibigru_dim, 
+            n_layers=multibigru_nlayers, 
+            bidir=True,
+            dropout=multibigru_dropout
+        )
+
+        self.thm_branch = MultiResidualBiGRU_SingleSensor_Extractor( 
+            seq_len=seq_len,
+            n_imu_vars=thm_vars,
+            hidden_size=multibigru_dim, 
+            n_layers=multibigru_nlayers, 
+            bidir=True,
+            dropout=multibigru_dropout
+        )
+        
+        self.tof_branch = MultiResidualBiGRU_SingleSensor_Extractor( 
+            seq_len=seq_len,
+            n_imu_vars=tof_vars,
+            hidden_size=multibigru_dim, 
+            n_layers=multibigru_nlayers, 
+            bidir=True,
+            dropout=multibigru_dropout
+        )
+
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=multibigru_dim,
+            num_heads=8,
+            dropout=head_droupout,
+            batch_first=True
+        )
+
+        self.attention_norm = nn.LayerNorm(multibigru_dim)
+
+        final_feature_dim = multibigru_dim * 3
+
+        self.head1 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, num_classes)
+        )
+
+        self.head2 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 2)
+        )
+
+        self.head3 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 4)
+        )
+
+    def forward(self, imu, thm, tof, pad_mask=None):
+        # imu (bs, 1, T, 32); thm (bs, 5, T, 1); tof (bs, 5, T, 64)
+        bs, _, T, _ = imu.shape
+
+        # thm: (bs, 5, T, 1) -> (bs, 1, T, 5)
+        thm = thm.permute(0, 3, 2, 1).contiguous()
+
+        # tof: (bs, 5, T, 64) -> (bs, 1, T, 320)
+        tof = (
+            tof.permute(0, 2, 1, 3) # (bs, T, 5, 64)
+            .reshape(bs, T, -1) # (bs, T, 320)
+            .unsqueeze(1) # (bs, 1, T, 320)
+            .contiguous()
+        )
+
+        imu_proc = self.imu_branch(imu) # (bs, multibigru_dim)
+        thm_proc = self.thm_branch(thm) # (bs, multibigru_dim)
+        tof_proc = self.tof_branch(tof) # (bs, multibigru_dim)
+
+        stacked_features = torch.stack([imu_proc, thm_proc, tof_proc], dim=1) # (bs, 3, multibigru_dim)
+
+        attended_features, _ = self.self_attention(
+            stacked_features, 
+            stacked_features, 
+            stacked_features
+        ) # (bs, 3, multibigru_dim)
+        
+        attended_features = self.attention_norm(attended_features + stacked_features) # (bs, 3, multibigru_dim)
+        
+        final_features = attended_features.view(attended_features.size(0), -1)  # (bs, multibigru_dim * 3)
+        
+        out1 = self.head1(final_features)
+        out2 = self.head2(final_features)
+        out3 = self.head3(final_features)
+
+        return out1, out2, out3
