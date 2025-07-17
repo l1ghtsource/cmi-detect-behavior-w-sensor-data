@@ -35,7 +35,7 @@ from models.modern_tcn import (
     MultiSensor_ModernTCN_v1, ModernTCN_SingleSensor_v1
 )
 from models.multi_bigru import (
-    MultiResidualBiGRU_SingleSensor_v1, MultiSensor_MultiResidualBiGRU_v1
+    MultiResidualBiGRU_SingleSensor_v1
 )
 from models.se_unet import (
     SE_Unet_SingleSensor_v1, MultiSensor_SE_Unet_v1
@@ -249,7 +249,7 @@ def get_ts_model_and_params(imu_only):
             }
             return model_cls, params
         else: # multi sensor model
-            model_cls = MultiSensor_MultiResidualBiGRU_v1
+            model_cls = ...
             params = {
                 'num_classes': cfg.main_num_classes,
             }
