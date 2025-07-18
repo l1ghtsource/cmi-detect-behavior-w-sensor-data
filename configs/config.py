@@ -267,15 +267,15 @@ cfg.weights_pathes = {
             }
         },
     },
-    # 'imu+tof+thm': {
-    #     'path_to_dir': {
-    #         'weight': 1,
-    #         'prefix': 'some_prefix',
-    #         'model_params': {
-    #             'num_classes': 18,
-    #         }
-    #     },
-    # }
+    'imu+tof+thm': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/models_68row_excel': {
+            'weight': 1,
+            'prefix': 'hybrid_seq_len120_use_pad_mask_lookahead_lag_lead_cum_kaggle_fe_muonwauxadam_ls0.05_',
+            'model_params': {
+                'num_classes': 18,
+            }
+        },
+    }
 }
 cfg.is_soft = True
 cfg.use_entmax = False

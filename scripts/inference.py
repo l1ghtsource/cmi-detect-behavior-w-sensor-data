@@ -9,7 +9,8 @@ from entmax import entmax_bisect
 
 from configs.config import cfg
 from models.hybrid_model import (
-    HybridModel_SingleSensor_v1
+    HybridModel_SingleSensor_v1,
+    MultiSensor_HybridModel_v1
 )
 from utils.getters import (
     get_ts_dataset, 
@@ -80,7 +81,7 @@ for w_key in ['imu_only', 'imu+tof+thm']:
         if w_key == 'imu_only':
             TSModel = HybridModel_SingleSensor_v1
         else:
-            TSModel = HybridModel_SingleSensor_v1  # заглушка, потом добавлю модель imu tof thm
+            TSModel = MultiSensor_HybridModel_v1
         
         fold_models = []
         for i in range(cfg.n_splits):
