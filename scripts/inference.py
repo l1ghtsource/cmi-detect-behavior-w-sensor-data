@@ -140,7 +140,10 @@ def create_single_batch(processed_df):
 
 def predict_single_batch(model, batch, use_imu_only):
     if not use_tta:
-        outputs, aux2_outputs, _ = forward_model(model, batch, imu_only=use_imu_only)
+        if use_imu_only:
+            outputs, aux2_outputs, orient, _, _, _, _, _, _ = forward_model(model, batch, imu_only=use_imu_only)
+        else:
+            outputs, aux2_outputs, orient = forward_model(model, batch, imu_only=use_imu_only)
         return outputs.cpu().numpy(), aux2_outputs.cpu().numpy()
     else:
         for key in batch.keys():
@@ -153,7 +156,10 @@ def predict_single_batch(model, batch, use_imu_only):
         for aug_batch in augmented_batches:
             for key in aug_batch.keys():
                 aug_batch[key] = aug_batch[key].to(device)
-            outputs, aux2_outputs, _ = forward_model(model, aug_batch, imu_only=use_imu_only)
+            if use_imu_only:
+                outputs, aux2_outputs, orient, _, _, _, _, _, _ = forward_model(model, batch, imu_only=use_imu_only)
+            else:
+                outputs, aux2_outputs, orient = forward_model(model, batch, imu_only=use_imu_only)
             batch_tta_logits.append(outputs.cpu().numpy())
             batch_tta_logits_aux2.append(aux2_outputs.cpu().numpy())
         
