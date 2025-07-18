@@ -429,6 +429,11 @@ def fe(df):
     
     return df
 
+def _tof_norm(arr: np.ndarray) -> np.ndarray:
+    arr = np.array([np.nan if v is None else v for v in arr], dtype=float)
+    arr[arr == -1] = 255
+    return arr / 255
+
 def fast_seq_agg(df):
     sc = cfg.static_cols
     seq_cols = [c for c in df.columns if c not in sc + ['sequence_counter', 'row_id']]
@@ -451,8 +456,7 @@ def fast_seq_agg(df):
     
     for col in cfg.tof_cols:
         if col in res_df.columns:
-            res_df[col] = res_df[col].apply(lambda x: np.where(x == -1, 255, x))
-            res_df[col] /= 255 # i call it ShitNorm1d
+            res_df[col] = res_df[col].apply(_tof_norm)
 
     return res_df
 
