@@ -31,38 +31,8 @@ from utils.tta import apply_tta
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-train = pd.read_csv(cfg.train_path)
-
-if cfg.use_world_coords:
-    train = convert_to_world_coordinates(train)
-
-if cfg.only_remove_g: # can't be used w/ use_world_coords
-    train = remove_gravity_from_acc(train)
-
-if cfg.use_hand_symm and cfg.imu_only:
-    right_handed_mask = train['handedness'] == 1
-    train.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(train.loc[right_handed_mask, cfg.imu_cols])
-
-if cfg.apply_fe:
-    train = fe(train)
-
-train = le(train)
-train_seq = fast_seq_agg(train)
-
 reverse_mapping, aux1_reverse_mapping, aux2_reverse_mapping = get_rev_mapping()
-
 TSDataset = get_ts_dataset()
-
-train_dataset = TSDataset(
-    dataframe=train_seq,
-    seq_len=cfg.seq_len,
-    main_target=cfg.main_target,
-    orientation_aux_target=cfg.orientation_aux_target,
-    seq_type_aux_target=cfg.seq_type_aux_target,
-    behavior_aux_target=cfg.behavior_aux_target,
-    phase_aux_target=cfg.phase_aux_target,
-    train=True
-)
 
 loaded_models = {
     'imu_only': {},
@@ -128,7 +98,6 @@ def create_single_batch(processed_df):
         dataframe=processed_df,
         seq_len=cfg.seq_len,
         train=False,
-        norm_stats=train_dataset.norm_stats
     )
     
     batch = test_dataset[0]
