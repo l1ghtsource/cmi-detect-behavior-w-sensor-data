@@ -173,6 +173,9 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         with torch.no_grad():
             for i, model in enumerate(model_data['models']):
                 logits, logits_aux2 = predict_single_batch(model, batch, use_imu_only)
+                if cfg.use_entmax: # apply entmax
+                    logits = entmax_bisect(torch.tensor(logits, device=device), alpha=cfg.entmax_alpha, dim=1)
+                    logits_aux2 = entmax_bisect(torch.tensor(logits_aux2, device=device), alpha=cfg.entmax_alpha, dim=1)
                 fold_logits.append(logits)
                 fold_logits_aux2.append(logits_aux2)
 
