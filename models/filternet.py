@@ -19,6 +19,7 @@ class BaseNet(nn.Module):
         num_output_classes=[cfg.main_num_classes, 2],
         output_type="many_to_one_takelast",
         keep_intermediates=False,
+        do_multi=False,
         **other_kwargs,
     ):
 
@@ -269,6 +270,14 @@ class FilterNet_SingleSensor_v1(BaseNet):
         stride_amt=2,
         **other_kwargs,
     ):
+        if self.do_multi:
+            w_pre = 2 * w_pre
+            w_strided = 2 * w_strided
+            w_interp = 2 * w_interp
+            w_dense_pre_l = 2 * w_dense_pre_l
+            w_l = 2 * w_l
+            w_dense_post_l = 2 * w_dense_post_l
+            
         # if scale != 1:
         w_pre = int((w_pre * scale))  # / 6) * 6
         w_strided = int((w_strided * scale))  # / 6) * 6
