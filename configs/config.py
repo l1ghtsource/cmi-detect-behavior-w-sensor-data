@@ -78,7 +78,7 @@ cfg.phase_aux_target = 'phase'
 cfg.group = 'subject'
 cfg.seq_len = 120
 cfg.n_splits = 5
-cfg.curr_fold = 1
+cfg.curr_folds = [0, 1, 2, 3, 4]
 cfg.seed = 42
 cfg.selected_model = 'hybrid' # ['timemil', 'decomposewhar', 'convtran', 'hybrid', 'cnn1d', 'timecnn', 'moderntcn', 'filternet', 'harmamba', 'medformer', 'husformer', 'multubigru', 'se_unet', 'squeezeformer', 'panns', 'wavenet', 'baseline', 'imunet', 'public']
 

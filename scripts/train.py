@@ -286,8 +286,8 @@ def run_training_with_stratified_group_kfold():
     
     for fold, (train_idx, val_idx) in enumerate(sgkf.split(train_seq, targets, groups)):
         print(f'fold {fold+1}/{cfg.n_splits}')
-        # if fold != cfg.curr_fold:
-        #     continue
+        if fold not in cfg.curr_folds:
+            continue
         
         if cfg.do_wandb_log:
             run_name = f'{prefix}fold_{fold}'
