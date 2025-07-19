@@ -453,259 +453,6 @@ class MultiResidualBiGRU_SingleSensor_Extractor(nn.Module):
         
         return features
     
-# class HybridModel_SingleSensor_v1(nn.Module):
-#     def __init__(self, 
-#                  channel_size=cfg.imu_vars, 
-#                  emb_size_public=128,
-#                  dim_ff_public=256,
-#                  dropout_public=0.3,
-#                  convtran_emb_size=cfg.convtran_emb_size,
-#                  convtran_num_heads=cfg.convtran_num_heads, 
-#                  convtran_dim_ff=cfg.convtran_dim_ff, 
-#                  convtran_dropout=cfg.convtran_dropout,
-#                  out_size_public2=256+32,
-#                  cnn1d_out_channels=32,
-#                  multibigru_dim=128,
-#                  multibigru_layers=3,
-#                  multibigru_dropout=0.1,
-#                  seq_len=cfg.seq_len,
-#                  head_droupout=0.2,
-#                  num_classes=cfg.main_num_classes):
-#         super().__init__()
-
-#         self.extractor1 = Public_SingleSensor_Extractor(
-#             channel_size=channel_size, 
-#             emb_size=emb_size_public, 
-#             dim_ff=dim_ff_public, 
-#             dropout=dropout_public
-#         ) # output dim = dim_ff_public // 2 = 64
-
-#         self.extractor2 = FilterNetFeatureExtractor() # output dim = DEFAULT_WIDTH = 100
-
-#         self.extractor3 = ConvTran_SingleSensor_NoTranLol_Extractor(
-#             channel_size=channel_size, 
-#             seq_len=seq_len, 
-#             emb_size=convtran_emb_size, 
-#             num_heads=convtran_num_heads, 
-#             dim_ff=convtran_dim_ff, 
-#             dropout=convtran_dropout
-#         ) # output dim = convtran_emb_size = 64
-
-#         self.extractor4 = Resnet1DFeatureExtractor(
-#             n_in_channels=channel_size, out_channels=cnn1d_out_channels
-#         ) # output dim = cnn1d_out_channels * 4 = 32 * 4 = 128
-#         self.pool4 = SEPlusMean(cnn1d_out_channels * 4)
-#         self.neck4 = MLPNeck(cnn1d_out_channels * 4)
-
-#         self.extractor5 = Public2_SingleSensor_Extractor(channel_size=channel_size)
-
-#         self.extractor6 = MultiResidualBiGRU_SingleSensor_Extractor(
-#             seq_len=seq_len,
-#             n_imu_vars=channel_size,
-#             hidden_size=multibigru_dim, 
-#             n_layers=multibigru_layers, 
-#             bidir=True,
-#             dropout=multibigru_dropout
-#         )
-
-#         # 64 + 100 + 64 + 128 + 288 + 128 = 772
-#         general_hdim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + (cnn1d_out_channels * 4) + (out_size_public2) + (multibigru_dim)
-
-#         self.head1 = nn.Sequential(
-#             nn.Linear(general_hdim, general_hdim),
-#             nn.ReLU(),
-#             nn.Dropout(head_droupout),
-#             nn.Linear(general_hdim, num_classes)
-#         ) 
-
-#         self.head2 = nn.Sequential(
-#             nn.Linear(general_hdim, general_hdim),
-#             nn.ReLU(),
-#             nn.Dropout(head_droupout),
-#             nn.Linear(general_hdim, 2)
-#         ) 
-
-#         self.head3 = nn.Sequential(
-#             nn.Linear(general_hdim, general_hdim),
-#             nn.ReLU(),
-#             nn.Dropout(head_droupout),
-#             nn.Linear(general_hdim, 4)
-#         ) 
-
-#     def forward(self, x, pad_mask=None):
-#         # input is (bs, 1, T, C)
-
-#         x1 = self.extractor1(x) # (bs, dim_ff_public // 2)
-#         x2 = self.extractor2(x) # (bs, DEFAULT_WIDTH)
-#         x3 = self.extractor3(x) # (bs, convtran_emb_size)
-
-#         x_ = x.permute(0, 1, 3, 2) # (bs, 1, C, T)
-#         x_ = x_.squeeze(1) # (bs, C, T)
-
-#         x4 = self.extractor4(x_) # (bs, cnn1d_out_channels * 4, T)
-#         x4 = self.pool4(x4) # (bs, cnn1d_out_channels * 4)
-#         x4 = x4 + self.neck4(x4) # (bs, cnn1d_out_channels * 4)
-
-#         x5 = self.extractor5(x) # (bs, 256 + 32)
-
-#         x6 = self.extractor6(x) # (bs, multibigru_dim)
-
-#         x_cat = torch.cat([x1, x2, x3, x4, x5, x6], dim=1) # (bs, general_hdim)
-
-#         out1 = self.head1(x_cat) # (bs, num_classes)
-#         out2 = self.head2(x_cat) # (bs, 2)
-#         out3 = self.head3(x_cat) # (bs, 4)
-
-#         return out1, out2, out3
-
-# class HybridModel_SingleSensor_v1(nn.Module):
-#     def __init__(self, 
-#                  final_hidden_dim=256,
-#                  emb_size_public=128,
-#                  dim_ff_public=256,
-#                  dropout_public=0.3,
-#                  convtran_emb_size=cfg.convtran_emb_size,
-#                  convtran_num_heads=cfg.convtran_num_heads, 
-#                  convtran_dim_ff=cfg.convtran_dim_ff, 
-#                  convtran_dropout=cfg.convtran_dropout,
-#                  out_size_public2=256+32,
-#                  cnn1d_out_channels=32,
-#                  multibigru_dim=128,
-#                  multibigru_layers=3,
-#                  multibigru_dropout=0.1,
-#                  seq_len=cfg.seq_len,
-#                  head_droupout=0.2,
-#                  num_classes=cfg.main_num_classes):
-#         super().__init__()
-        
-#         self.channel_sizes = {
-#             'imu': 3,      # x_imu: 0-2
-#             'rot': 4,      # x_rot: 3-6  
-#             'fe1': 13,     # x_fe1: 7-19
-#             'fe2': 9,      # x_fe2: 20-28
-#             'full': 29     # x_full: 0-28
-#         }
-        
-#         self.branch_extractors = nn.ModuleDict()
-        
-#         for branch_name, channel_size in self.channel_sizes.items():
-#             self.branch_extractors[f'{branch_name}_extractor1'] = Public_SingleSensor_Extractor(
-#                 channel_size=channel_size, 
-#                 emb_size=emb_size_public, 
-#                 dim_ff=dim_ff_public, 
-#                 dropout=dropout_public
-#             )
-            
-#             self.branch_extractors[f'{branch_name}_extractor2'] = FilterNetFeatureExtractor(input_channels=channel_size)
-            
-#             self.branch_extractors[f'{branch_name}_extractor3'] = ConvTran_SingleSensor_NoTranLol_Extractor(
-#                 channel_size=channel_size, 
-#                 seq_len=seq_len, 
-#                 emb_size=convtran_emb_size, 
-#                 num_heads=convtran_num_heads, 
-#                 dim_ff=convtran_dim_ff, 
-#                 dropout=convtran_dropout
-#             )
-            
-#             self.branch_extractors[f'{branch_name}_extractor4'] = Resnet1DFeatureExtractor(
-#                 n_in_channels=channel_size, out_channels=cnn1d_out_channels
-#             )
-#             self.branch_extractors[f'{branch_name}_pool4'] = SEPlusMean(cnn1d_out_channels * 4)
-#             self.branch_extractors[f'{branch_name}_neck4'] = MLPNeck(cnn1d_out_channels * 4)
-            
-#             self.branch_extractors[f'{branch_name}_extractor5'] = Public2_SingleSensor_Extractor(
-#                 channel_size=channel_size
-#             )
-            
-#             self.branch_extractors[f'{branch_name}_extractor6'] = MultiResidualBiGRU_SingleSensor_Extractor(
-#                 seq_len=seq_len,
-#                 n_imu_vars=channel_size,
-#                 hidden_size=multibigru_dim, 
-#                 n_layers=multibigru_layers, 
-#                 bidir=True,
-#                 dropout=multibigru_dropout
-#             )
-        
-#         # 64 + 100 + 64 + 128 + 288 + 128 = 772
-#         branch_feature_dim = (dim_ff_public // 2) + (DEFAULT_WIDTH) + (convtran_emb_size) + \
-#                            (cnn1d_out_channels * 4) + (out_size_public2) + (multibigru_dim)
-        
-#         self.branch_projections = nn.ModuleDict()
-#         for branch_name in self.channel_sizes.keys():
-#             self.branch_projections[f'{branch_name}_projection'] = nn.Sequential(
-#                 nn.Linear(branch_feature_dim, final_hidden_dim),
-#                 nn.ReLU(),
-#                 nn.Dropout(head_droupout),
-#                 nn.BatchNorm1d(final_hidden_dim)
-#             )
-        
-#         final_feature_dim = final_hidden_dim * 5
-        
-#         self.head1 = nn.Sequential(
-#             nn.Linear(final_feature_dim, final_feature_dim // 2),
-#             nn.ReLU(),
-#             nn.Dropout(head_droupout),
-#             nn.Linear(final_feature_dim // 2, num_classes)
-#         )
-
-#         self.head2 = nn.Sequential(
-#             nn.Linear(final_feature_dim, final_feature_dim // 2),
-#             nn.ReLU(),
-#             nn.Dropout(head_droupout),
-#             nn.Linear(final_feature_dim // 2, 2)
-#         )
-
-#         self.head3 = nn.Sequential(
-#             nn.Linear(final_feature_dim, final_feature_dim // 2),
-#             nn.ReLU(),
-#             nn.Dropout(head_droupout),
-#             nn.Linear(final_feature_dim // 2, 4)
-#         )
-            
-#     def process_branch(self, x, branch_name):
-#         x1 = self.branch_extractors[f'{branch_name}_extractor1'](x)
-#         x2 = self.branch_extractors[f'{branch_name}_extractor2'](x)
-#         x3 = self.branch_extractors[f'{branch_name}_extractor3'](x)
-        
-#         x_ = x.permute(0, 1, 3, 2).squeeze(1)  # (bs, C, T)
-#         x4 = self.branch_extractors[f'{branch_name}_extractor4'](x_)
-#         x4 = self.branch_extractors[f'{branch_name}_pool4'](x4)
-#         x4 = x4 + self.branch_extractors[f'{branch_name}_neck4'](x4)
-        
-#         x5 = self.branch_extractors[f'{branch_name}_extractor5'](x)
-#         x6 = self.branch_extractors[f'{branch_name}_extractor6'](x)
-        
-#         x_cat = torch.cat([x1, x2, x3, x4, x5, x6], dim=1)
-        
-#         projected = self.branch_projections[f'{branch_name}_projection'](x_cat)
-        
-#         return projected
-    
-#     def forward(self, _x, pad_mask=None):
-#         # input is (bs, 1, T, C)
-        
-#         x_imu = _x[:, :, :, :3]
-#         x_rot = _x[:, :, :, 3:7] 
-#         x_fe1 = _x[:, :, :, 7:20]
-#         x_fe2 = _x[:, :, :, 20:29]
-#         x_full = _x
-        
-#         imu_features = self.process_branch(x_imu, 'imu')
-#         rot_features = self.process_branch(x_rot, 'rot')
-#         fe1_features = self.process_branch(x_fe1, 'fe1')
-#         fe2_features = self.process_branch(x_fe2, 'fe2')
-#         full_features = self.process_branch(x_full, 'full')
-        
-#         final_features = torch.cat([
-#             imu_features, rot_features, fe1_features, fe2_features, full_features
-#         ], dim=1)
-        
-#         out1 = self.head1(final_features)
-#         out2 = self.head2(final_features)
-#         out3 = self.head3(final_features)
-
-#         return out1, out2, out3
-    
 class HybridModel_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  final_hidden_dim=256,
@@ -744,7 +491,10 @@ class HybridModel_SingleSensor_v1(nn.Module):
                 dropout=dropout_public
             )
             
-            self.branch_extractors[f'{branch_name}_extractor2'] = FilterNetFeatureExtractor(input_channels=channel_size)
+            self.branch_extractors[f'{branch_name}_extractor2'] = FilterNetFeatureExtractor(
+                input_channels=channel_size,
+                do_multi=False
+            )
             
             self.branch_extractors[f'{branch_name}_extractor3'] = ConvTran_SingleSensor_NoTranLol_Extractor(
                 channel_size=channel_size, 
@@ -934,314 +684,6 @@ class HybridModel_SingleSensor_v1(nn.Module):
         ext6_out1 = self.ext6_head1(extractor_features[5])
 
         return out1, out2, out3, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1
-    
-# --- multisensor extractors start ---
-
-class MultiSensor_MultiBiGRU_Extractor_v1(nn.Module):
-    def __init__(
-        self, 
-        seq_len=cfg.seq_len,
-        imu_vars=cfg.imu_vars,
-        thm_vars=len(cfg.thm_cols),
-        tof_vars=len(cfg.tof_cols),
-        multibigru_dim=128,
-        multibigru_nlayers=3,
-        multibigru_dropout=0.1,
-        head_droupout=0.2, 
-    ):
-        super().__init__()
-
-        self.imu_branch = MultiResidualBiGRU_SingleSensor_Extractor( 
-            seq_len=seq_len,
-            n_imu_vars=imu_vars,
-            hidden_size=multibigru_dim, 
-            n_layers=multibigru_nlayers, 
-            bidir=True,
-            dropout=multibigru_dropout
-        )
-
-        self.thm_branch = MultiResidualBiGRU_SingleSensor_Extractor( 
-            seq_len=seq_len,
-            n_imu_vars=thm_vars,
-            hidden_size=multibigru_dim, 
-            n_layers=multibigru_nlayers, 
-            bidir=True,
-            dropout=multibigru_dropout
-        )
-        
-        self.tof_branch = MultiResidualBiGRU_SingleSensor_Extractor( 
-            seq_len=seq_len,
-            n_imu_vars=tof_vars,
-            hidden_size=multibigru_dim, 
-            n_layers=multibigru_nlayers, 
-            bidir=True,
-            dropout=multibigru_dropout
-        )
-
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=multibigru_dim,
-            num_heads=8,
-            dropout=head_droupout,
-            batch_first=True
-        )
-
-        self.attention_norm = nn.LayerNorm(multibigru_dim)
-
-    def forward(self, imu, thm, tof, pad_mask=None):
-        # imu (bs, 1, T, 32); thm (bs, 5, T, 1); tof (bs, 5, T, 64)
-        bs, _, T, _ = imu.shape
-
-        # thm: (bs, 5, T, 1) -> (bs, 1, T, 5)
-        thm = thm.permute(0, 3, 2, 1).contiguous()
-
-        # tof: (bs, 5, T, 64) -> (bs, 1, T, 320)
-        tof = (
-            tof.permute(0, 2, 1, 3) # (bs, T, 5, 64)
-            .reshape(bs, T, -1) # (bs, T, 320)
-            .unsqueeze(1) # (bs, 1, T, 320)
-            .contiguous()
-        )
-
-        imu_proc = self.imu_branch(imu) # (bs, multibigru_dim)
-        thm_proc = self.thm_branch(thm) # (bs, multibigru_dim)
-        tof_proc = self.tof_branch(tof) # (bs, multibigru_dim)
-
-        stacked_features = torch.stack([imu_proc, thm_proc, tof_proc], dim=1) # (bs, 3, multibigru_dim)
-
-        attended_features, _ = self.self_attention(
-            stacked_features, 
-            stacked_features, 
-            stacked_features
-        ) # (bs, 3, multibigru_dim)
-        
-        attended_features = self.attention_norm(attended_features + stacked_features) # (bs, 3, multibigru_dim)
-        
-        final_features = attended_features.view(attended_features.size(0), -1)  # (bs, multibigru_dim * 3)
-
-        return final_features
-
-class MultiSensor_PublicModel_Extractor_v1(nn.Module):
-    def __init__(
-        self, 
-        seq_len=cfg.seq_len,
-        imu_vars=cfg.imu_vars,
-        thm_vars=len(cfg.thm_cols),
-        tof_vars=len(cfg.tof_cols),
-        head_droupout=0.2, 
-        emb_size_public=128,
-        dim_ff_public=256,
-        dropout_public=0.3,
-    ):
-        super().__init__()
-
-        self.imu_branch = Public_SingleSensor_Extractor( 
-            channel_size=imu_vars, 
-            emb_size=emb_size_public, 
-            dim_ff=dim_ff_public, 
-            dropout=dropout_public
-        )
-
-        self.thm_branch = Public_SingleSensor_Extractor( 
-            channel_size=thm_vars, 
-            emb_size=emb_size_public, 
-            dim_ff=dim_ff_public, 
-            dropout=dropout_public
-        )
-        
-        self.tof_branch = Public_SingleSensor_Extractor( 
-            channel_size=tof_vars, 
-            emb_size=emb_size_public, 
-            dim_ff=dim_ff_public, 
-            dropout=dropout_public
-        )
-
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=dim_ff_public // 2,
-            num_heads=8,
-            dropout=head_droupout,
-            batch_first=True
-        )
-
-        self.attention_norm = nn.LayerNorm(dim_ff_public // 2)
-
-    def forward(self, imu, thm, tof, pad_mask=None):
-        # imu (bs, 1, T, 32); thm (bs, 5, T, 1); tof (bs, 5, T, 64)
-        bs, _, T, _ = imu.shape
-
-        # thm: (bs, 5, T, 1) -> (bs, 1, T, 5)
-        thm = thm.permute(0, 3, 2, 1).contiguous()
-
-        # tof: (bs, 5, T, 64) -> (bs, 1, T, 320)
-        tof = (
-            tof.permute(0, 2, 1, 3) # (bs, T, 5, 64)
-            .reshape(bs, T, -1) # (bs, T, 320)
-            .unsqueeze(1) # (bs, 1, T, 320)
-            .contiguous()
-        )
-
-        imu_proc = self.imu_branch(imu) # (bs, out_size_public2)
-        thm_proc = self.thm_branch(thm) # (bs, out_size_public2)
-        tof_proc = self.tof_branch(tof) # (bs, out_size_public2)
-
-        stacked_features = torch.stack([imu_proc, thm_proc, tof_proc], dim=1) # (bs, 3, out_size_public2)
-
-        attended_features, _ = self.self_attention(
-            stacked_features, 
-            stacked_features, 
-            stacked_features
-        ) # (bs, 3, out_size_public2)
-        
-        attended_features = self.attention_norm(attended_features + stacked_features) # (bs, 3, out_size_public2)
-        
-        final_features = attended_features.view(attended_features.size(0), -1)  # (bs, out_size_public2 * 3)
-
-        return final_features
-    
-class MultiSensor_FilterNet_Extractor_v1(nn.Module):
-    def __init__(
-        self, 
-        seq_len=cfg.seq_len,
-        imu_vars=cfg.imu_vars,
-        thm_vars=len(cfg.thm_cols),
-        tof_vars=len(cfg.tof_cols),
-        head_droupout=0.2, 
-    ):
-        super().__init__()
-
-        self.imu_branch = FilterNetFeatureExtractor(input_channels=imu_vars)
-
-        self.thm_branch = FilterNetFeatureExtractor(input_channels=thm_vars)
-        
-        self.tof_branch = FilterNetFeatureExtractor(input_channels=tof_vars)
-
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=DEFAULT_WIDTH,
-            num_heads=10, # cuz DEFAULT_WIDTH = 100
-            dropout=head_droupout,
-            batch_first=True
-        )
-
-        self.attention_norm = nn.LayerNorm(DEFAULT_WIDTH)
-
-        final_feature_dim = DEFAULT_WIDTH * 3
-
-    def forward(self, imu, thm, tof, pad_mask=None):
-        # imu (bs, 1, T, 32); thm (bs, 5, T, 1); tof (bs, 5, T, 64)
-        bs, _, T, _ = imu.shape
-
-        # thm: (bs, 5, T, 1) -> (bs, 1, T, 5)
-        thm = thm.permute(0, 3, 2, 1).contiguous()
-
-        # tof: (bs, 5, T, 64) -> (bs, 1, T, 320)
-        tof = (
-            tof.permute(0, 2, 1, 3) # (bs, T, 5, 64)
-            .reshape(bs, T, -1) # (bs, T, 320)
-            .unsqueeze(1) # (bs, 1, T, 320)
-            .contiguous()
-        )
-
-        imu_proc = self.imu_branch(imu) # (bs, out_size_public2)
-        thm_proc = self.thm_branch(thm) # (bs, out_size_public2)
-        tof_proc = self.tof_branch(tof) # (bs, out_size_public2)
-
-        stacked_features = torch.stack([imu_proc, thm_proc, tof_proc], dim=1) # (bs, 3, out_size_public2)
-
-        attended_features, _ = self.self_attention(
-            stacked_features, 
-            stacked_features, 
-            stacked_features
-        ) # (bs, 3, out_size_public2)
-        
-        attended_features = self.attention_norm(attended_features + stacked_features) # (bs, 3, out_size_public2)
-        
-        final_features = attended_features.view(attended_features.size(0), -1)  # (bs, out_size_public2 * 3)
-
-        return final_features
-    
-class MultiSensor_Resnet1D_Extractor_v1(nn.Module):
-    def __init__(
-        self, 
-        seq_len=cfg.seq_len,
-        imu_vars=cfg.imu_vars,
-        thm_vars=len(cfg.thm_cols),
-        tof_vars=len(cfg.tof_cols),
-        cnn1d_out_channels=32,
-        head_droupout=0.2, 
-    ):
-        super().__init__()
-
-        self.imu_branch = Resnet1DFeatureExtractor(
-            n_in_channels=imu_vars, out_channels=cnn1d_out_channels
-        )
-        self.imu_se = SEPlusMean(cnn1d_out_channels * 4)
-        self.imu_neck = MLPNeck(cnn1d_out_channels * 4)
-
-        self.thm_branch = Resnet1DFeatureExtractor(
-            n_in_channels=thm_vars, out_channels=cnn1d_out_channels
-        )
-        self.thm_se = SEPlusMean(cnn1d_out_channels * 4)
-        self.thm_neck = MLPNeck(cnn1d_out_channels * 4)
-
-        self.tof_branch = Resnet1DFeatureExtractor(
-            n_in_channels=tof_vars, out_channels=cnn1d_out_channels
-        )
-        self.tof_se = SEPlusMean(cnn1d_out_channels * 4)
-        self.tof_neck = MLPNeck(cnn1d_out_channels * 4)
-        
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=cnn1d_out_channels * 4,
-            num_heads=8,
-            dropout=head_droupout,
-            batch_first=True
-        )
-
-        self.attention_norm = nn.LayerNorm(cnn1d_out_channels * 4)
-
-    def forward(self, imu, thm, tof, pad_mask=None):
-        # imu (bs, 1, T, 32); thm (bs, 5, T, 1); tof (bs, 5, T, 64)
-        bs, _, T, _ = imu.shape
-
-        # thm: (bs, 5, T, 1) -> (bs, 1, T, 5)
-        thm = thm.permute(0, 3, 2, 1).contiguous()
-
-        # tof: (bs, 5, T, 64) -> (bs, 1, T, 320)
-        tof = (
-            tof.permute(0, 2, 1, 3) # (bs, T, 5, 64)
-            .reshape(bs, T, -1) # (bs, T, 320)
-            .unsqueeze(1) # (bs, 1, T, 320)
-            .contiguous()
-        )
-
-        imu = imu.permute(0, 1, 3, 2).squeeze(1)
-        imu = self.imu_branch(imu) # (bs, cnn1d_out_channels * 4)
-        imu = self.imu_se(imu) # (bs, cnn1d_out_channels * 4)
-        imu_proc = imu + self.imu_neck(imu) # (bs, cnn1d_out_channels * 4)
-
-        thm = thm.permute(0, 1, 3, 2).squeeze(1)
-        thm = self.thm_branch(thm) # (bs, cnn1d_out_channels * 4)
-        thm = self.thm_se(thm) # (bs, cnn1d_out_channels * 4)
-        thm_proc = thm + self.thm_neck(thm) # (bs, cnn1d_out_channels * 4)
-
-        tof = tof.permute(0, 1, 3, 2).squeeze(1)
-        tof = self.tof_branch(tof) # (bs, cnn1d_out_channels * 4)
-        tof = self.tof_se(tof) # (bs, cnn1d_out_channels * 4)
-        tof_proc = tof + self.tof_neck(tof) # (bs, cnn1d_out_channels * 4)
-
-        stacked_features = torch.stack([imu_proc, thm_proc, tof_proc], dim=1) # (bs, 3, out_size_public2)
-
-        attended_features, _ = self.self_attention(
-            stacked_features, 
-            stacked_features, 
-            stacked_features
-        ) # (bs, 3, out_size_public2)
-        
-        attended_features = self.attention_norm(attended_features + stacked_features) # (bs, 3, out_size_public2)
-        
-        final_features = attended_features.view(attended_features.size(0), -1)  # (bs, out_size_public2 * 3)
-
-        return final_features
-
-# --- multisensor extractors end ---
 
 class MultiSensor_HybridModel_v1(nn.Module):
     def __init__(self, 
@@ -1250,7 +692,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
                  dim_ff_public=256,
                  dropout_public=0.3,
                  cnn1d_out_channels=32,
-                 multibigru_dim=128,
+                 multibigru_dim=256, # made it x2
                  multibigru_layers=3,
                  multibigru_dropout=0.1,
                  seq_len=cfg.seq_len,
@@ -1282,7 +724,10 @@ class MultiSensor_HybridModel_v1(nn.Module):
                 dropout=dropout_public
             )
             
-            self.branch_extractors[f'{branch_name}_extractor2'] = FilterNetFeatureExtractor(input_channels=channel_size)
+            self.branch_extractors[f'{branch_name}_extractor2'] = FilterNetFeatureExtractor(
+                input_channels=channel_size,
+                do_multi=True # made it x2
+            )
             
             self.branch_extractors[f'{branch_name}_extractor3'] = Resnet1DFeatureExtractor(
                 n_in_channels=channel_size, out_channels=cnn1d_out_channels
@@ -1301,7 +746,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
         
         extractor_feature_dims = {
             'extractor1': (dim_ff_public // 2) * 11,
-            'extractor2': (DEFAULT_WIDTH) * 11,
+            'extractor2': (DEFAULT_WIDTH * 2) * 11, # made it x2
             'extractor3': (cnn1d_out_channels * 4) * 11,
             'extractor4': (multibigru_dim) * 11
         }
@@ -1346,31 +791,6 @@ class MultiSensor_HybridModel_v1(nn.Module):
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 4)
         )
-
-        # self.ext1_head1 = nn.Sequential(
-        #     nn.Linear(final_hidden_dim, final_hidden_dim),
-        #     nn.ReLU(),
-        #     nn.Dropout(head_droupout),
-        #     nn.Linear(final_hidden_dim, num_classes)
-        # ) 
-        # self.ext2_head1 = nn.Sequential(
-        #     nn.Linear(final_hidden_dim, final_hidden_dim),
-        #     nn.ReLU(),
-        #     nn.Dropout(head_droupout),
-        #     nn.Linear(final_hidden_dim, num_classes)
-        # ) 
-        # self.ext3_head1 = nn.Sequential(
-        #     nn.Linear(final_hidden_dim, final_hidden_dim),
-        #     nn.ReLU(),
-        #     nn.Dropout(head_droupout),
-        #     nn.Linear(final_hidden_dim, num_classes)
-        # ) 
-        # self.ext4_head1 = nn.Sequential(
-        #     nn.Linear(final_hidden_dim, final_hidden_dim),
-        #     nn.ReLU(),
-        #     nn.Dropout(head_droupout),
-        #     nn.Linear(final_hidden_dim, num_classes)
-        # ) 
             
     def process_extractor(self, x_dict, extractor_num, pad_mask=None):
         extractor_name = f'extractor{extractor_num}'
@@ -1433,15 +853,8 @@ class MultiSensor_HybridModel_v1(nn.Module):
         
         final_features = attended_features.view(attended_features.size(0), -1)  # (bs, final_hidden_dim * 4)
         
-        # final_features = torch.cat(extractor_features, dim=1)
-        
         out1 = self.head1(final_features)
         out2 = self.head2(final_features)
         out3 = self.head3(final_features)
-
-        # ext1_out1 = self.ext1_head1(extractor_features[0])
-        # ext2_out1 = self.ext2_head1(extractor_features[1])
-        # ext3_out1 = self.ext3_head1(extractor_features[2])
-        # ext4_out1 = self.ext4_head1(extractor_features[3])
 
         return out1, out2, out3
