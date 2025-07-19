@@ -22,6 +22,7 @@ class BaseNet(nn.Module):
         do_multi=False,
         **other_kwargs,
     ):
+        self.do_multi = do_multi
 
         self.output_type = output_type
         self.num_output_classes = num_output_classes
