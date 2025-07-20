@@ -231,6 +231,12 @@ class Medformer_SingleSensor_v1(nn.Module):
         return output1, output2
     
 class MultiSensor_Medformer_v1(nn.Module):
+    """
+    IMU (1 × 7 vars) + ToF (5 × 64 vars) + Thermal (5 × 1 vars)
+    — multiscale Medformer with separate intra-sensor encoders and a
+    cross-sensor encoder that works on the *list-of-scales* representation
+    expected by MedformerLayer.
+    """
     def __init__(
         self,
         seq_len=cfg.seq_len,
@@ -250,194 +256,147 @@ class MultiSensor_Medformer_v1(nn.Module):
         patch_len_list="2,4,8,8,16,16,16,32,32,32,32,32",
         activation="gelu",
         output_attention=False,
-        no_inter_attn=False
+        no_inter_attn=False,
     ):
-        super(MultiSensor_Medformer_v1, self).__init__()
-        
-        # Core parameters
+        super().__init__()
+
+        # ─────────── basic parameters ───────────
         self.seq_len = seq_len
-        self.imu_vars = imu_vars
-        self.tof_vars = tof_vars
-        self.thm_vars = thm_vars
+        self.patch_len_list = list(map(int, patch_len_list.split(",")))
+        self.patch_num_list = [
+            (seq_len - p) // p + 2 for p in self.patch_len_list
+        ]  # Li for every scale
+        self.num_scales = len(self.patch_len_list)
+
+        # projection dim for the classifier
+        total_tokens = sum(self.patch_num_list) * (
+            num_imu_sensors + num_tof_sensors + num_thm_sensors
+        )
+        self.projection_dim = d_model * total_tokens
+
+        # ─────────── patch embeddings ───────────
+        stride_list = self.patch_len_list
+        self.imu_embedding = ListPatchEmbedding(
+            imu_vars, d_model, seq_len, self.patch_len_list, stride_list, dropout, False
+        )
+        self.tof_embedding = ListPatchEmbedding(
+            tof_vars, d_model, seq_len, self.patch_len_list, stride_list, dropout, False
+        )
+        self.thm_embedding = ListPatchEmbedding(
+            thm_vars, d_model, seq_len, self.patch_len_list, stride_list, dropout, False
+        )
+
+        # ─────────── encoders ───────────
+        self.imu_encoder = self._build_encoder(
+            d_model, n_heads, intra_layers, d_ff, dropout, activation, output_attention, no_inter_attn, patch_len_list=self.patch_len_list
+        )
+        self.tof_encoder = self._build_encoder(
+            d_model, n_heads, intra_layers, d_ff, dropout, activation, output_attention, no_inter_attn, patch_len_list=self.patch_len_list
+        )
+        self.thm_encoder = self._build_encoder(
+            d_model, n_heads, intra_layers, d_ff, dropout, activation, output_attention, no_inter_attn, patch_len_list=self.patch_len_list
+        )
+        self.cross_encoder = self._build_encoder(
+            d_model, n_heads, cross_layers, d_ff, dropout, activation, output_attention, no_inter_attn, patch_len_list=self.patch_len_list
+        )
+
+        # ─────────── sensor-type tokens ───────────
+        self.register_parameter(
+            "sensor_type_embedding", nn.Parameter(torch.randn(3, d_model))
+        )
+
+        # ─────────── classification head ───────────
+        self.activation = F.gelu
+        self.dropout = nn.Dropout(dropout)
+        self.projection1 = nn.Linear(self.projection_dim, num_classes)
+        self.projection2 = nn.Linear(self.projection_dim, 2)
+        self.projection3 = nn.Linear(self.projection_dim, 4)
+
+        # counts needed later
         self.num_imu_sensors = num_imu_sensors
         self.num_tof_sensors = num_tof_sensors
         self.num_thm_sensors = num_thm_sensors
-        self.num_classes = num_classes
-        self.d_model = d_model
-        self.output_attention = output_attention
-        
-        # Patch parameters
-        patch_len_list = list(map(int, patch_len_list.split(",")))
-        stride_list = patch_len_list
-        
-        # Calculate patch numbers
-        patch_num_list = [
-            int((seq_len - patch_len) / stride + 2)
-            for patch_len, stride in zip(patch_len_list, stride_list)
-        ]
-        self.patch_num_list = patch_num_list
-        
-        # === INTRA-SENSOR PROCESSING ===
-        
-        # IMU Patch Embedding (for each IMU sensor)
-        self.imu_embedding = ListPatchEmbedding(
-            imu_vars, d_model, seq_len, patch_len_list, stride_list, dropout, False
-        )
-        
-        # ToF Patch Embedding (for each ToF sensor)
-        self.tof_embedding = ListPatchEmbedding(
-            tof_vars, d_model, seq_len, patch_len_list, stride_list, dropout, False
-        )
-        
-        # Thermal Patch Embedding (for each thermal sensor)
-        self.thm_embedding = ListPatchEmbedding(
-            thm_vars, d_model, seq_len, patch_len_list, stride_list, dropout, False
-        )
-        
-        # Intra-sensor encoders
-        self.imu_encoder = self._build_encoder(
-            len(patch_len_list), d_model, n_heads, intra_layers, d_ff, 
-            dropout, activation, output_attention, no_inter_attn
-        )
-        
-        self.tof_encoder = self._build_encoder(
-            len(patch_len_list), d_model, n_heads, intra_layers, d_ff,
-            dropout, activation, output_attention, no_inter_attn
-        )
-        
-        self.thm_encoder = self._build_encoder(
-            len(patch_len_list), d_model, n_heads, intra_layers, d_ff,
-            dropout, activation, output_attention, no_inter_attn
-        )
-        
-        # === CROSS-SENSOR PROCESSING ===
-        
-        # Cross-sensor encoder
-        self.cross_encoder = self._build_encoder(
-            len(patch_len_list), d_model, n_heads, cross_layers, d_ff,
-            dropout, activation, output_attention, no_inter_attn
-        )
-        
-        # Sensor type embeddings
-        self.sensor_type_embedding = nn.Parameter(
-            torch.randn(3, d_model)  # 3 sensor types: IMU, ToF, Thermal
-        )
-        
-        # === CLASSIFICATION HEAD ===
-        
-        self.activation = F.gelu
-        self.dropout = nn.Dropout(dropout)
-        
-        # Calculate total projection dimension
-        total_sensors = num_imu_sensors + num_tof_sensors + num_thm_sensors
-        projection_dim = d_model * len(patch_num_list) * total_sensors
-        
-        self.projection1 = nn.Linear(projection_dim, num_classes)
-        self.projection2 = nn.Linear(projection_dim, 2)
-        self.projection3 = nn.Linear(projection_dim, 4)
-    
-    def _build_encoder(self, num_patches, d_model, n_heads, layers, d_ff, 
-                      dropout, activation, output_attention, no_inter_attn):
-        """Build encoder with specified parameters"""
+
+    # ──────────────────────────────────────────────────────────────────────
+    # helpers
+    # ──────────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _build_encoder(
+        d_model, n_heads, layers, d_ff, dropout, activation, output_attention, no_inter_attn, patch_len_list
+    ):
         return Encoder(
             [
                 EncoderLayer(
                     MedformerLayer(
-                        num_patches, d_model, n_heads, dropout,
-                        output_attention, no_inter_attn
+                        num_scales=len(patch_len_list.split(",")),
+                        d_model=d_model,
+                        n_heads=n_heads,
+                        dropout=dropout,
+                        output_attention=output_attention,
+                        no_inter_attn=no_inter_attn,
                     ),
-                    d_model, d_ff, dropout=dropout, activation=activation
+                    d_model=d_model,
+                    d_ff=d_ff,
+                    dropout=dropout,
+                    activation=activation,
                 )
                 for _ in range(layers)
             ],
-            norm_layer=torch.nn.LayerNorm(d_model)
+            norm_layer=nn.LayerNorm(d_model),
         )
-    
-    def _process_sensor_data(self, data, embedding, encoder, sensor_type_idx):
+
+    def _process_sensor_group(self, data, embedding, encoder, sensor_type_idx):
         """
-        Process data from one sensor type
-        
-        Args:
-            data: [B, num_sensors, L, vars]
-            embedding: Patch embedding layer
-            encoder: Intra-sensor encoder
-            sensor_type_idx: Index for sensor type embedding
-            
-        Returns:
-            Processed sensor features [B, num_sensors, total_patches, d_model]
+        data shape: [B, N_sensors, L, vars]
+        Returns list of length `num_scales`,
+        each tensor [B, (N_sensors * Li), d_model]
         """
-        B, num_sensors, L, vars = data.shape
-        
-        # Process each sensor separately
-        sensor_outputs = []
-        
-        for i in range(num_sensors):
-            # Get data for one sensor: [B, L, vars]
-            sensor_data = data[:, i, :, :]
-            
-            # Patch embedding
-            embedded = embedding(sensor_data)  # [B, total_patches, d_model]
-            
-            # Add sensor type embedding
-            embedded = embedded + self.sensor_type_embedding[sensor_type_idx].unsqueeze(0).unsqueeze(0)
-            
-            # Intra-sensor encoding
-            encoded, _ = encoder(embedded, attn_mask=None)  # [B, total_patches, d_model]
-            
-            sensor_outputs.append(encoded)
-        
-        # Stack outputs: [B, num_sensors, total_patches, d_model]
-        return torch.stack(sensor_outputs, dim=1)
-    
+        B, N, _, _ = data.shape
+        scale_buffers = [[] for _ in range(self.num_scales)]  # gather per scale
+
+        sensor_token = self.sensor_type_embedding[sensor_type_idx].view(1, 1, -1)
+
+        for s_idx in range(N):
+            x = data[:, s_idx]  # [B, L, vars]
+            scale_list = embedding(x)  # list[Tensor] len = num_scales
+
+            # add sensor-type embedding & intra-sensor transformer
+            scale_list = [t + sensor_token for t in scale_list]
+            encoded_list, _ = encoder(scale_list, attn_mask=None)
+
+            for sc in range(self.num_scales):
+                scale_buffers[sc].append(encoded_list[sc])
+
+        # concat sensors along token dimension for every scale
+        return [torch.cat(buf, dim=1) for buf in scale_buffers]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # forward
+    # ──────────────────────────────────────────────────────────────────────
     def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
-        """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-            tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
-            thm_data: [B, 5, L, 1] - Thermal sensor data
-        """
-        B = imu_data.shape[0]
-        
-        # === INTRA-SENSOR PROCESSING ===
-        
-        # Process each sensor type
-        imu_features = self._process_sensor_data(
-            imu_data, self.imu_embedding, self.imu_encoder, sensor_type_idx=0
-        )  # [B, 1, total_patches, d_model]
-        
-        tof_features = self._process_sensor_data(
-            tof_data, self.tof_embedding, self.tof_encoder, sensor_type_idx=1  
-        )  # [B, 5, total_patches, d_model]
-        
-        thm_features = self._process_sensor_data(
-            thm_data, self.thm_embedding, self.thm_encoder, sensor_type_idx=2
-        )  # [B, 5, total_patches, d_model]
-        
-        # === CROSS-SENSOR PROCESSING ===
-        
-        # Concatenate all sensor features along sensor dimension
-        # [B, (1+5+5), total_patches, d_model] = [B, 11, total_patches, d_model]
-        all_features = torch.cat([imu_features, tof_features, thm_features], dim=1)
-        
-        # Reshape for cross-sensor attention: [B, 11*total_patches, d_model]
-        B, total_sensors, total_patches, d_model = all_features.shape
-        cross_input = all_features.reshape(B, total_sensors * total_patches, d_model)
-        
-        # Cross-sensor encoding
-        cross_output, attns = self.cross_encoder(cross_input, attn_mask=None)
-        
-        # === CLASSIFICATION ===
-        
-        # Apply activation and dropout
-        output = self.activation(cross_output)
-        output = self.dropout(output)
-        
-        # Flatten for classification: [B, total_sensors * total_patches * d_model]
-        output = output.reshape(B, -1)
-        
-        # Final projection
-        output1 = self.projection1(output)
-        output2 = self.projection2(output)
-        output3 = self.projection3(output)
-        
-        return output1, output2, output3
+        # -------- per-type encoding --------
+        imu_feats = self._process_sensor_group(imu_data, self.imu_embedding,
+                                               self.imu_encoder, sensor_type_idx=0)
+        tof_feats = self._process_sensor_group(tof_data, self.tof_embedding,
+                                               self.tof_encoder, sensor_type_idx=1)
+        thm_feats = self._process_sensor_group(thm_data, self.thm_embedding,
+                                               self.thm_encoder, sensor_type_idx=2)
+
+        # -------- merge three sensor types (scale by scale) --------
+        cross_input = [
+            torch.cat([imu_feats[s], tof_feats[s], thm_feats[s]], dim=1)
+            for s in range(self.num_scales)
+        ]  # list[len=num_scales]
+
+        # -------- cross-sensor encoder --------
+        cross_out, _ = self.cross_encoder(cross_input, attn_mask=None)
+
+        # -------- classification head --------
+        tokens = torch.cat(cross_out, dim=1)          # [B, total_tokens, d_model]
+        x = self.dropout(self.activation(tokens))
+        x = x.flatten(start_dim=1)                    # [B, projection_dim]
+
+        out1 = self.projection1(x)
+        out2 = self.projection2(x)
+        out3 = self.projection3(x)
+        return out1, out2, out3
