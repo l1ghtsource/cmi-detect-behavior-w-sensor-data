@@ -272,153 +272,229 @@ class SensorFusionModule(nn.Module):
 
 class MultiSensor_SE_Unet_v1(nn.Module):
     def __init__(
-            self, 
-            model_width_coef=32, 
-            reduction=16, 
-            use_second_se=False, 
-            preprocessor_dropout=0, 
-            se_dropout=0,
-            initial_dropout=0,
-            center_dropout=0,
-            num_classes=18
-        ):
-        super(MultiSensor_SE_Unet_v1, self).__init__()
+            self,
+            model_width_coef: int = 32,
+            reduction: int = 16,
+            use_second_se: bool = False,
+            preprocessor_dropout: float = 0,
+            se_dropout: float = 0,
+            initial_dropout: float = 0,
+            center_dropout: float = 0,
+            num_classes: int = 18,
+    ):
+        super().__init__()
 
-        features = model_width_coef
-        
+        features = model_width_coef      # = 32 по умолчанию
+        # -------------------------- IMU ---------------------------
         self.imu_encoder1 = nn.Sequential(
-            NonResidualConvSE(7, features, reduction=reduction//2, dropout=initial_dropout),
-            NonResidualConvSE(features, features, reduction=reduction//2, dropout=initial_dropout),
-            Conv1dBlockPreprocessedSE(features, features, reduction, use_second_se, preprocessor_dropout, se_dropout)
+            NonResidualConvSE(cfg.imu_vars, features,
+                              reduction=reduction // 2,
+                              dropout=initial_dropout),
+            NonResidualConvSE(features, features,
+                              reduction=reduction // 2,
+                              dropout=initial_dropout),
+            Conv1dBlockPreprocessedSE(features, features,
+                                      reduction,
+                                      use_second_se,
+                                      preprocessor_dropout,
+                                      se_dropout),
         )
-        self.imu_pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.imu_encoder2 = Conv1dBlockPreprocessedSE(features, features*2, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.imu_pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.imu_encoder3 = Conv1dBlockPreprocessedSE(features*2, features*4, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        
+        self.imu_pool1 = nn.MaxPool1d(2, 2)
+        self.imu_encoder2 = Conv1dBlockPreprocessedSE(
+            features, features * 2,
+            reduction, use_second_se,
+            preprocessor_dropout, se_dropout)
+        self.imu_pool2 = nn.MaxPool1d(2, 2)
+        self.imu_encoder3 = Conv1dBlockPreprocessedSE(
+            features * 2, features * 4,
+            reduction, use_second_se,
+            preprocessor_dropout, se_dropout)
+
+        # ----------------------- ToF stack ------------------------
         self.tof_single_encoder1 = nn.Sequential(
-            NonResidualConvSE(64, features, reduction=reduction//2, dropout=initial_dropout),
-            NonResidualConvSE(features, features, reduction=reduction//2, dropout=initial_dropout),
-            Conv1dBlockPreprocessedSE(features, features, reduction, use_second_se, preprocessor_dropout, se_dropout)
+            NonResidualConvSE(64, features,
+                              reduction=reduction // 2,
+                              dropout=initial_dropout),
+            NonResidualConvSE(features, features,
+                              reduction=reduction // 2,
+                              dropout=initial_dropout),
+            Conv1dBlockPreprocessedSE(features, features,
+                                      reduction, use_second_se,
+                                      preprocessor_dropout, se_dropout),
         )
-        self.tof_pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.tof_single_encoder2 = Conv1dBlockPreprocessedSE(features, features*2, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.tof_pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.tof_single_encoder3 = Conv1dBlockPreprocessedSE(features*2, features*4, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        
-        self.tof_sensor_attention = MultiSensorAttention(features*4, num_heads=4)
-        
+        self.tof_pool1 = nn.MaxPool1d(2, 2)
+        self.tof_single_encoder2 = Conv1dBlockPreprocessedSE(
+            features, features * 2,
+            reduction, use_second_se,
+            preprocessor_dropout, se_dropout)
+        self.tof_pool2 = nn.MaxPool1d(2, 2)
+        self.tof_single_encoder3 = Conv1dBlockPreprocessedSE(
+            features * 2, features * 4,
+            reduction, use_second_se,
+            preprocessor_dropout, se_dropout)
+
+        # БЫЛО:  MultiSensorAttention(features*4, 4)  # 128
+        # СТАЛО: Attention принимает 256-мерные векторы
+        self.tof_sensor_attention = MultiSensorAttention(features * 4 * 2,
+                                                         num_heads=4)
+
+        # ----------------------- THM stack ------------------------
         self.thm_single_encoder1 = nn.Sequential(
-            NonResidualConvSE(1, features//2, reduction=reduction//4, dropout=initial_dropout),
-            NonResidualConvSE(features//2, features//2, reduction=reduction//4, dropout=initial_dropout),
-            Conv1dBlockPreprocessedSE(features//2, features//2, reduction, use_second_se, preprocessor_dropout, se_dropout)
+            NonResidualConvSE(1, features // 2,
+                              reduction=reduction // 4,
+                              dropout=initial_dropout),
+            NonResidualConvSE(features // 2, features // 2,
+                              reduction=reduction // 4,
+                              dropout=initial_dropout),
+            Conv1dBlockPreprocessedSE(features // 2, features // 2,
+                                      reduction, use_second_se,
+                                      preprocessor_dropout, se_dropout),
         )
-        self.thm_pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.thm_single_encoder2 = Conv1dBlockPreprocessedSE(features//2, features, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        self.thm_pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.thm_single_encoder3 = Conv1dBlockPreprocessedSE(features, features*2, reduction, use_second_se, preprocessor_dropout, se_dropout)
-        
-        self.thm_sensor_attention = MultiSensorAttention(features*2, num_heads=4)
-        
+        self.thm_pool1 = nn.MaxPool1d(2, 2)
+        self.thm_single_encoder2 = Conv1dBlockPreprocessedSE(
+            features // 2, features,
+            reduction, use_second_se,
+            preprocessor_dropout, se_dropout)
+        self.thm_pool2 = nn.MaxPool1d(2, 2)
+        self.thm_single_encoder3 = Conv1dBlockPreprocessedSE(
+            features, features * 2,
+            reduction, use_second_se,
+            preprocessor_dropout, se_dropout)
+
+        # БЫЛО: MultiSensorAttention(features*2, 4)  # 64
+        # СТАЛО: 128-мерный вход
+        self.thm_sensor_attention = MultiSensorAttention(features * 2 * 2,
+                                                         num_heads=4)
+
+        # ---------------- pooled heads ----------------------------
         self.imu_global_avg_pool = nn.AdaptiveAvgPool1d(1)
         self.imu_global_max_pool = nn.AdaptiveMaxPool1d(1)
-        
+
         self.tof_global_avg_pool = nn.AdaptiveAvgPool1d(1)
         self.tof_global_max_pool = nn.AdaptiveMaxPool1d(1)
-        
+
         self.thm_global_avg_pool = nn.AdaptiveAvgPool1d(1)
         self.thm_global_max_pool = nn.AdaptiveMaxPool1d(1)
-        
-        fusion_dim = features * 4
+
+        # ---------------- fusion & classifiers --------------------
+        fusion_dim = features * 4                                        # 128
         self.sensor_fusion = SensorFusionModule(
-            imu_dim=features*4*2,
-            tof_dim=features*4*2,  
-            thm_dim=features*2*2,
-            fusion_dim=fusion_dim
-        )
-        
-        self.classifier1 = nn.Sequential(
-            nn.Linear(fusion_dim, fusion_dim//2),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(fusion_dim//2, fusion_dim//4),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(fusion_dim//4, num_classes)
-        )
-        
-        self.classifier2 = nn.Sequential(
-            nn.Linear(fusion_dim, fusion_dim//2),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(fusion_dim//2, fusion_dim//4),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(fusion_dim//4, 2)
+            imu_dim=features * 4 * 2,    # 256
+            tof_dim=features * 4 * 2,    # 256
+            thm_dim=features * 2 * 2,    # 128
+            fusion_dim=fusion_dim,       # 128
         )
 
-    def process_single_sensor_stack(self, sensor_data, encoder1, pool1, encoder2, pool2, encoder3, avg_pool, max_pool):
-        batch_size, num_sensors, seq_len, features = sensor_data.shape
-        
+        self.classifier1 = nn.Sequential(
+            nn.Linear(fusion_dim, fusion_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(fusion_dim // 2, fusion_dim // 4),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(fusion_dim // 4, num_classes),
+        )
+        self.classifier2 = nn.Sequential(
+            nn.Linear(fusion_dim, fusion_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(fusion_dim // 2, fusion_dim // 4),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(fusion_dim // 4, 2),
+        )
+        self.classifier3 = nn.Sequential(
+            nn.Linear(fusion_dim, fusion_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(fusion_dim // 2, fusion_dim // 4),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(fusion_dim // 4, 4),
+        )
+
+    # --------------------------------------------------------------
+    # вспомогательная функция для обработки одного стека датчиков
+    # --------------------------------------------------------------
+    def process_single_sensor_stack(
+            self,
+            sensor_data,
+            encoder1, pool1,
+            encoder2, pool2,
+            encoder3,
+            avg_pool, max_pool,
+    ):
+        """
+        sensor_data: [B, N, L, C_in]
+        возвращает: [B, N, C_out*2]
+        """
+        bsz, num_sensors, seq_len, _ = sensor_data.shape
         sensor_features = []
+
         for i in range(num_sensors):
-            single_sensor = sensor_data[:, i, :, :].permute(0, 2, 1)  # [B, features, L]
-            
+            # [B, C_in, L]
+            single_sensor = sensor_data[:, i, :, :].permute(0, 2, 1)
+
             enc1 = encoder1(single_sensor)
             enc2 = encoder2(pool1(enc1))
             enc3 = encoder3(pool2(enc2))
-            
-            avg_pooled = avg_pool(enc3)  # [B, channels, 1]
-            max_pooled = max_pool(enc3)  # [B, channels, 1]
-            pooled = torch.cat([avg_pooled, max_pooled], dim=1)  # [B, channels*2, 1]
-            pooled = pooled.squeeze(-1)  # [B, channels*2]
-            
-            sensor_features.append(pooled)
-        
-        stacked_features = torch.stack(sensor_features, dim=1)
-        return stacked_features
 
+            avg_pooled = avg_pool(enc3)        # [B, C, 1]
+            max_pooled = max_pool(enc3)        # [B, C, 1]
+            pooled = torch.cat([avg_pooled, max_pooled], dim=1)  # [B, 2C, 1]
+            pooled = pooled.squeeze(-1)                           # [B, 2C]
+            sensor_features.append(pooled)
+
+        # [B, N, 2C]
+        return torch.stack(sensor_features, dim=1)
+
+    # --------------------------------------------------------------
     def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         """
-        Args:
-            imu_data: [B, 1, L, 7] - IMU sensor data
-            tof_data: [B, 5, L, 64] - Time-of-Flight sensor data  
-            thm_data: [B, 5, L, 1] - Thermal sensor data
-        Returns:
-            tuple of (target_logits, aux_logits, aux2_logits)
+        imu_data: [B, 1, L, 7]
+        tof_data: [B, 5, L, 64]
+        thm_data: [B, 5, L, 1]
         """
-        
-        imu_x = imu_data.squeeze(1).permute(0, 2, 1)  # [B, 7, L]
-        
+        # ------------------- IMU -------------------
+        imu_x = imu_data.squeeze(1).permute(0, 2, 1)   # [B, 7, L]
+
         imu_enc1 = self.imu_encoder1(imu_x)
         imu_enc2 = self.imu_encoder2(self.imu_pool1(imu_enc1))
         imu_enc3 = self.imu_encoder3(self.imu_pool2(imu_enc2))
-        
-        imu_avg_pooled = self.imu_global_avg_pool(imu_enc3)
-        imu_max_pooled = self.imu_global_max_pool(imu_enc3)
-        imu_features = torch.cat([imu_avg_pooled, imu_max_pooled], dim=1).squeeze(-1)
-        
-        tof_sensor_features = self.process_single_sensor_stack(
-            tof_data, self.tof_single_encoder1, self.tof_pool1, 
-            self.tof_single_encoder2, self.tof_pool2, self.tof_single_encoder3,
-            self.tof_global_avg_pool, self.tof_global_max_pool
-        )
-        
-        tof_attended = self.tof_sensor_attention(tof_sensor_features)  # [B, 5, feature_dim]
-        tof_features = tof_attended.mean(dim=1)  # [B, feature_dim]
-        
-        thm_sensor_features = self.process_single_sensor_stack(
-            thm_data, self.thm_single_encoder1, self.thm_pool1,
-            self.thm_single_encoder2, self.thm_pool2, self.thm_single_encoder3,
-            self.thm_global_avg_pool, self.thm_global_max_pool
-        )
-        
-        thm_attended = self.thm_sensor_attention(thm_sensor_features)  # [B, 5, feature_dim]
-        thm_features = thm_attended.mean(dim=1)  # [B, feature_dim]
-        
-        fused_features = self.sensor_fusion(imu_features, tof_features, thm_features)
-        
-        target_logits1 = self.classifier1(fused_features)
-        target_logits2 = self.classifier2(fused_features)
-        
-        return target_logits1, target_logits2
+
+        imu_avg = self.imu_global_avg_pool(imu_enc3)
+        imu_max = self.imu_global_max_pool(imu_enc3)
+        imu_features = torch.cat([imu_avg, imu_max], dim=1).squeeze(-1)  # [B, 256]
+
+        # ------------------- ToF -------------------
+        tof_stack = self.process_single_sensor_stack(
+            tof_data,
+            self.tof_single_encoder1, self.tof_pool1,
+            self.tof_single_encoder2, self.tof_pool2,
+            self.tof_single_encoder3,
+            self.tof_global_avg_pool, self.tof_global_max_pool,
+        )                                              # [B, 5, 256]
+
+        tof_att = self.tof_sensor_attention(tof_stack) # [B, 5, 256]
+        tof_features = tof_att.mean(dim=1)             # [B, 256]
+
+        # ------------------- THM -------------------
+        thm_stack = self.process_single_sensor_stack(
+            thm_data,
+            self.thm_single_encoder1, self.thm_pool1,
+            self.thm_single_encoder2, self.thm_pool2,
+            self.thm_single_encoder3,
+            self.thm_global_avg_pool, self.thm_global_max_pool,
+        )                                              # [B, 5, 128]
+
+        thm_att = self.thm_sensor_attention(thm_stack) # [B, 5, 128]
+        thm_features = thm_att.mean(dim=1)             # [B, 128]
+
+        # ------------------- Fusion & heads --------
+        fused = self.sensor_fusion(imu_features, tof_features, thm_features)
+
+        out_main = self.classifier1(fused)
+        out_aux1 = self.classifier2(fused)
+        out_aux2 = self.classifier3(fused)
+
+        return out_main, out_aux1, out_aux2
