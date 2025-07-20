@@ -530,12 +530,13 @@ class SensorAttention(nn.Module):
 class MultiSensor_ModernTCN_v1(nn.Module):
     def __init__(self, class_num=18):
         super().__init__()
-        
+
         base_params = {
             'task_name': 'feature_extraction',
             'revin': False,
-            'patch_size': 1,
-            'patch_stride': 1,
+            'patch_size': 8,
+            'patch_stride': 4,
+            'stem_ratio': 1,
             'downsample_ratio': 2,
             'ffn_ratio': 1,
             'small_kernel_merged': False,
@@ -545,44 +546,41 @@ class MultiSensor_ModernTCN_v1(nn.Module):
         imu_params = {
             **base_params,
             'num_blocks': [1, 1],
-            'large_size': [51, 51],
-            'small_size': [5, 5],
-            'dims': [62, 128],
-            'dw_dims': [62, 128]
+            'large_size': [11, 11],
+            'small_size': [3, 3],
+            'dims': [48, 96],
+            'dw_dims': [48, 96],
         }
 
         tof_params = {
             **base_params,
             'num_blocks': [1, 1],
-            'large_size': [51, 51],
-            'small_size': [5, 5],
-            'dims': [62, 128],
-            'dw_dims': [62, 128]
+            'large_size': [11, 11],
+            'small_size': [3, 3],
+            'dims': [48, 96],
+            'dw_dims': [48, 96],
         }
 
         thm_params = {
             **base_params,
             'num_blocks': [1, 1],
-            'large_size': [51, 51],
-            'small_size': [5, 5],
-            'dims': [62, 128],
-            'dw_dims': [62, 128]
+            'large_size': [11, 11],
+            'small_size': [3, 3],
+            'dims': [48, 96],
+            'dw_dims': [48, 96],
         }
         
         self.imu_branch = ModernTCN_SingleSensor_v1(
-            in_channels=7,
-            nvars=1,
+            nvars=cfg.imu_vars,
             **imu_params
         )
         
         self.tof_branch = ModernTCN_SingleSensor_v1(
-            in_channels=64,
-            nvars=5,
+            nvars=5*64,
             **tof_params
         )
         
         self.thm_branch = ModernTCN_SingleSensor_v1(
-            in_channels=1,
             nvars=5,
             **thm_params
         )
@@ -612,6 +610,12 @@ class MultiSensor_ModernTCN_v1(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(128, 2)
         )
+        self.classifier3 = nn.Sequential(
+            nn.Linear(self.D_imu + self.D_tof + self.D_thm, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 4)
+        )
 
     def forward(self, imu_data, tof_data, thm_data, pad_mask=None):
         imu_data = imu_data.permute(0, 1, 3, 2)  # [B, 1, 7, L]
@@ -620,11 +624,13 @@ class MultiSensor_ModernTCN_v1(nn.Module):
         imu_feat = imu_feat.squeeze(1)   # [B, D_imu]
         
         tof_data = tof_data.permute(0, 1, 3, 2)  # [B, 5, 64, L]
+        B, _, _, L = tof_data.shape
+        tof_data = tof_data.reshape(B, 1, 5 * 64, L) # [B, 1, 5*64, L]
         tof_feat = self.tof_branch.forward_feature(tof_data)
         tof_feat = tof_feat.mean(dim=3)  # [B, 5, D_tof]
         tof_feat = self.tof_attn(tof_feat)  # [B, D_tof]
         
-        thm_data = thm_data.permute(0, 1, 3, 2)  # [B, 5, 1, L]
+        thm_data = thm_data.permute(0, 3, 1, 2)  # [B, 1, 5, L]
         thm_feat = self.thm_branch.forward_feature(thm_data)
         thm_feat = thm_feat.mean(dim=3)  # [B, 5, D_thm]
         thm_feat = self.thm_attn(thm_feat)  # [B, D_thm]
@@ -643,5 +649,6 @@ class MultiSensor_ModernTCN_v1(nn.Module):
         attn_output = attn_output.mean(dim=1)  # [B, D_imu+D_tof+D_thm]
         x1 = self.classifier1(attn_output)
         x2 = self.classifier2(attn_output)
+        x3 = self.classifier3(attn_output)
         
-        return x1, x2
+        return x1, x2, x3
