@@ -406,11 +406,11 @@ class CrossModalAttention(nn.Module):
         return fused_features
 
 class Squeezeformer_MultiSensor_v1(nn.Module):
-    def __init__(self, embed_dim=256, num_heads=48, head_dim=512, num_classes=18):
+    def __init__(self, embed_dim=256, num_heads=8, head_dim=512, num_classes=18):
         super().__init__()
         self.embed_dim = embed_dim
         
-        self.imu_encoder = SensorEncoder(7, embed_dim, num_heads, num_layers=3)
+        self.imu_encoder = SensorEncoder(cfg.imu_vars, embed_dim, num_heads, num_layers=3)
         self.tof_encoder = SensorEncoder(64, embed_dim, num_heads, num_layers=3)
         self.thm_encoder = SensorEncoder(1, embed_dim, num_heads, num_layers=3)
         
@@ -438,6 +438,7 @@ class Squeezeformer_MultiSensor_v1(nn.Module):
         
         self.label1_head = nn.Linear(head_dim, num_classes)  # 18
         self.label2_head = nn.Linear(head_dim, 2)   # 2
+        self.label3_head = nn.Linear(head_dim, 4)   # 4
         
     def forward(self, imu_data, thm_data, tof_data, pad_mask=None):
         """
@@ -448,6 +449,8 @@ class Squeezeformer_MultiSensor_v1(nn.Module):
             pad_mask: [B, L] - padding mask (1=valid, 0=padding) [optional!]
         """
         B, _, L, _ = imu_data.shape
+
+        pad_mask = None # test mode
         
         imu_features = self.imu_encoder(imu_data, pad_mask=pad_mask)    # [B, 1, L, embed_dim]
         tof_features = self.tof_encoder(tof_data, pad_mask=pad_mask)    # [B, 5, L, embed_dim]
@@ -500,5 +503,6 @@ class Squeezeformer_MultiSensor_v1(nn.Module):
         
         label1 = self.label1_head(x)  # [B, 18]
         label2 = self.label2_head(x)  # [B, 2]
+        label3 = self.label3_head(x)  # [B, 2]
         
-        return label1, label2
+        return label1, label2, label3
