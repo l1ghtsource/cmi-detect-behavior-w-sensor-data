@@ -293,6 +293,13 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(mDim, 2),
         )
+
+        self._fc_orient = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 4),
+        )
         
         # self.alpha = nn.Parameter(torch.ones(1))
         
@@ -314,6 +321,8 @@ class MultiSensor_TimeMIL_v1(nn.Module):
             warmup: bool - whether to use warmup strategy [optional!]
         """
         B, _, L, _ = imu_data.shape
+
+        pad_mask = None # test mode
         
         # Process each sensor type and collect features
         all_features = []
@@ -398,8 +407,9 @@ class MultiSensor_TimeMIL_v1(nn.Module):
         # Final classification
         logits_main = self._fc_main(x)
         logits_seq_type = self._fc_seq_type(x)
+        logits_orient = self._fc_orient(x)
             
-        return logits_main, logits_seq_type
+        return logits_main, logits_seq_type, logits_orient
             
 # ya ebal eto govnishe
 class TimeMIL_SingleSensor_Singlebranch_v1(nn.Module):
@@ -1071,6 +1081,13 @@ class MultiSensor_TimeMIL_v2(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(mDim, 2),
         )
+
+        self._fc_orient = nn.Sequential(
+            nn.Linear(mDim, mDim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(mDim, 4),
+        )
         
         # self.alpha = nn.Parameter(torch.ones(1))
         initialize_weights(self)
@@ -1110,6 +1127,8 @@ class MultiSensor_TimeMIL_v2(nn.Module):
             warmup: bool - whether to use warmup strategy
         """
         B, _, L, _ = imu_data.shape
+
+        pad_mask = None # test mode
         
         imu_features = self.process_sensor_data(self.imu_processor, imu_data, pad_mask)  # [B, L, mDim]
         tof_features = self.process_sensor_data(self.tof_processor, tof_data, pad_mask)  # [B, L, mDim]  
@@ -1152,5 +1171,6 @@ class MultiSensor_TimeMIL_v2(nn.Module):
         
         logits_main = self._fc_main(x)
         logits_seq_type = self._fc_seq_type(x)
+        logits_orient = self._fc_orient(x)
         
-        return logits_main, logits_seq_type
+        return logits_main, logits_seq_type, logits_orient
