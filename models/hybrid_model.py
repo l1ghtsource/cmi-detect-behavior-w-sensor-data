@@ -887,4 +887,4 @@ class MultiSensor_HybridModel_v1(nn.Module):
         ext3_out1 = self.ext3_head1(extractor_features[2])
         ext4_out1 = self.ext4_head1(extractor_features[3])
 
-        return out1, out2, out3, ext1_out1, ext1_out2, ext1_out3, ext1_out4
+        return out1, out2, out3, ext1_out1, ext2_out1, ext3_out1, ext4_out1
