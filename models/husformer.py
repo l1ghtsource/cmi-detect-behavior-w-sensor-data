@@ -115,7 +115,7 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
         self.channels = 1 + 5 + 5  # IMU(1) + ToF(5) + THM(5)
 
         # Projection layers for modalities
-        self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
+        self.proj_imu = nn.Conv1d(cfg.imu_vars, d_m, kernel_size=1, padding=0, bias=False)
         self.proj_tof = nn.Conv1d(64, d_m, kernel_size=1, padding=0, bias=False)
         self.proj_thm = nn.Conv1d(1, d_m, kernel_size=1, padding=0, bias=False)
 
@@ -130,6 +130,7 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
         self.proj1 = self.proj2 = nn.Linear(d_m, d_m)
         self.out_layer = nn.Linear(d_m, output_dim)
         self.out_layer2 = nn.Linear(d_m, 2)
+        self.out_layer3 = nn.Linear(d_m, 4)
 
     def get_network(self, self_type, layers):
         return TransformerEncoder(
@@ -170,8 +171,9 @@ class MultiSensor_HUSFORMER_v1(nn.Module):
         final_out = self.final_conv(merged).squeeze(1)      # [B, d_m]
         output = self.out_layer(final_out)
         output2 = self.out_layer2(final_out)
+        output3 = self.out_layer3(final_out)
 
-        return output, output2
+        return output, output2, output3
     
 # imu only modification 
 class SingleSensor_HUSFORMER_v1(nn.Module):
@@ -251,7 +253,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         self.embed_dropout = embed_dropout
         self.attn_mask = attn_mask
 
-        self.orig_d_imu = 7  # IMU variables
+        self.orig_d_imu = cfg.imu_vars  # IMU variables
         self.orig_d_tof = 1  # ToF: 8x8 maps, 1 channel input
         self.orig_d_thm = 1 * 5   # Thermal: 5 sensors * 1 variable each = 5
         
@@ -262,7 +264,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         self.channels = 1 + 5 + 5  # IMU(1) + ToF(5) + THM(5)
 
         # Projection layers for modalities
-        self.proj_imu = nn.Conv1d(7, d_m, kernel_size=1, padding=0, bias=False)
+        self.proj_imu = nn.Conv1d(cfg.imu_vars, d_m, kernel_size=1, padding=0, bias=False)
         self.proj_tof = nn.Conv2d(1, d_m, kernel_size=(3, 3), padding=1, bias=False)
         self.proj_thm = nn.Conv1d(1, d_m, kernel_size=1, padding=0, bias=False)
 
@@ -277,6 +279,7 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         self.proj1 = self.proj2 = nn.Linear(d_m, d_m)
         self.out_layer = nn.Linear(d_m, output_dim)
         self.out_layer2 = nn.Linear(d_m, 2)
+        self.out_layer3 = nn.Linear(d_m, 4)
 
     def get_network(self, self_type, layers):
         return TransformerEncoder(
@@ -321,5 +324,6 @@ class MultiSensor_HUSFORMER_v2(nn.Module):
         final_out = self.final_conv(merged).squeeze(1)       # [B, d_m]
         output = self.out_layer(final_out)
         output2 = self.out_layer2(final_out)
+        output3 = self.out_layer3(final_out)
 
-        return output, output2
+        return output, output2, output3
