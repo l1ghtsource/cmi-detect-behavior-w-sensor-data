@@ -617,7 +617,7 @@ class MultiSensor_HARMamba_v1(nn.Module):
             embed_dim=embed_dim,
             channels=1,
             num_classes=0,
-            c_in=7,
+            c_in=cfg.imu_vars,
             revin=True,
             **kwargs
         )
@@ -652,13 +652,16 @@ class MultiSensor_HARMamba_v1(nn.Module):
         if fusion_type == 'concat':
             self.classifier1 = nn.Linear(embed_dim * 3, num_classes)
             self.classifier2 = nn.Linear(embed_dim * 3, 2)
+            self.classifier3 = nn.Linear(embed_dim * 3, 4)
         elif fusion_type == 'add':
             self.classifier1 = nn.Linear(embed_dim, num_classes)
             self.classifier2 = nn.Linear(embed_dim, 2)
+            self.classifier3 = nn.Linear(embed_dim, 4)
         elif fusion_type == 'attention':
             self.attention_fusion = MultiModalAttentionFusion(embed_dim, num_modalities=3)
             self.classifier1 = nn.Linear(embed_dim, num_classes)
             self.classifier2 = nn.Linear(embed_dim, 2)
+            self.classifier3 = nn.Linear(embed_dim, 4)
     
     def forward(self, imu_data, thm_data, tof_data, pad_mask=False):
         """
@@ -689,8 +692,9 @@ class MultiSensor_HARMamba_v1(nn.Module):
         
         logits1 = self.classifier1(fused_features)
         logits2 = self.classifier2(fused_features)
+        logits3 = self.classifier3(fused_features)
 
-        return logits1, logits2
+        return logits1, logits2, logits3
 
 class MultiModalAttentionFusion(nn.Module):
     def __init__(self, embed_dim, num_modalities):
