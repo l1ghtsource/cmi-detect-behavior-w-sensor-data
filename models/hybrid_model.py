@@ -692,7 +692,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
                  dim_ff_public=256,
                  dropout_public=0.3,
                  cnn1d_out_channels=32,
-                 multibigru_dim=256, # made it x2
+                 multibigru_dim=128,
                  multibigru_layers=3,
                  multibigru_dropout=0.1,
                  seq_len=cfg.seq_len,
@@ -726,7 +726,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
             
             self.branch_extractors[f'{branch_name}_extractor2'] = FilterNetFeatureExtractor(
                 input_channels=channel_size,
-                do_multi=True # made it x2
+                do_multi=False
             )
             
             self.branch_extractors[f'{branch_name}_extractor3'] = Resnet1DFeatureExtractor(
@@ -746,7 +746,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
         
         extractor_feature_dims = {
             'extractor1': (dim_ff_public // 2) * 11,
-            'extractor2': (DEFAULT_WIDTH * 2) * 11, # made it x2
+            'extractor2': (DEFAULT_WIDTH) * 11,
             'extractor3': (cnn1d_out_channels * 4) * 11,
             'extractor4': (multibigru_dim) * 11
         }
@@ -791,6 +791,31 @@ class MultiSensor_HybridModel_v1(nn.Module):
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 4)
         )
+
+        self.ext1_head1 = nn.Sequential(
+            nn.Linear(final_hidden_dim, final_hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_hidden_dim, num_classes)
+        ) 
+        self.ext2_head1 = nn.Sequential(
+            nn.Linear(final_hidden_dim, final_hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_hidden_dim, num_classes)
+        ) 
+        self.ext3_head1 = nn.Sequential(
+            nn.Linear(final_hidden_dim, final_hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_hidden_dim, num_classes)
+        ) 
+        self.ext4_head1 = nn.Sequential(
+            nn.Linear(final_hidden_dim, final_hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_hidden_dim, num_classes)
+        ) 
             
     def process_extractor(self, x_dict, extractor_num, pad_mask=None):
         extractor_name = f'extractor{extractor_num}'
@@ -840,7 +865,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
         for extractor_num in range(1, 5):
             feature = self.process_extractor(x_dict, extractor_num, pad_mask=pad_mask)
             extractor_features.append(feature)
-        
+
         stacked_features = torch.stack(extractor_features, dim=1)  # (bs, 4, final_hidden_dim)
         
         attended_features, _ = self.self_attention(
@@ -857,4 +882,9 @@ class MultiSensor_HybridModel_v1(nn.Module):
         out2 = self.head2(final_features)
         out3 = self.head3(final_features)
 
-        return out1, out2, out3
+        ext1_out1 = self.ext1_head1(extractor_features[0])
+        ext2_out1 = self.ext2_head1(extractor_features[1])
+        ext3_out1 = self.ext3_head1(extractor_features[2])
+        ext4_out1 = self.ext4_head1(extractor_features[3])
+
+        return out1, out2, out3, ext1_out1, ext1_out2, ext1_out3, ext1_out4
