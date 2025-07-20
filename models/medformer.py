@@ -234,7 +234,7 @@ class MultiSensor_Medformer_v1(nn.Module):
     def __init__(
         self,
         seq_len=cfg.seq_len,
-        imu_vars=7,
+        imu_vars=cfg.imu_vars,
         tof_vars=64,
         thm_vars=1,
         num_imu_sensors=1,
@@ -334,6 +334,7 @@ class MultiSensor_Medformer_v1(nn.Module):
         
         self.projection1 = nn.Linear(projection_dim, num_classes)
         self.projection2 = nn.Linear(projection_dim, 2)
+        self.projection3 = nn.Linear(projection_dim, 4)
     
     def _build_encoder(self, num_patches, d_model, n_heads, layers, d_ff, 
                       dropout, activation, output_attention, no_inter_attn):
@@ -437,5 +438,6 @@ class MultiSensor_Medformer_v1(nn.Module):
         # Final projection
         output1 = self.projection1(output)
         output2 = self.projection2(output)
+        output3 = self.projection3(output)
         
-        return output1, output2
+        return output1, output2, output3
