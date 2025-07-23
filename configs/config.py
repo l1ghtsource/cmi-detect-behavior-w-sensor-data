@@ -116,7 +116,7 @@ cfg.fe_gravity = False # gravity vector [vx, vy, vz]
 cfg.kaggle_fe = True # some fe before init ds (so augs works bad)
 cfg.fe_relative_quat = False # add relative quat to first frame
 cfg.use_quat6d = False # better rot repr for nn
-cfg.imu_only = True # use only imu sensor
+cfg.imu_only = False #True # use only imu sensor
 cfg.imu_add = 0 # new features
 
 # if cfg.fe_mag_ang:
@@ -182,7 +182,7 @@ cfg.convtran_dropout = 0.1
 cfg.convtran_type = 'notran' # ['default', 'notran', 'multiscale', 'residual', 'inception', 'se']
 
 # --- cnn1d ---
-cfg.cnn1d_extractor = 'resnet' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet', 'hinception]
+cfg.cnn1d_extractor = 'hinception' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet', 'hinception']
 cfg.cnn1d_out_channels = 32
 cfg.cnn1d_pooling = 'se_mean' # ['gap', 'gem', 'se_mean']
 cfg.cnn1d_use_neck = True
@@ -202,7 +202,7 @@ cfg.weight_decay = 3e-4
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
 cfg.max_norm = 2.0
-cfg.use_lookahead = True
+cfg.use_lookahead = False#True
 cfg.use_sam = False
 cfg.scheduler = 'linear' # ['cosine', 'cosine_cycle', 'linear']
 cfg.optim_type = 'muonwauxadam' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
@@ -243,7 +243,7 @@ cfg.time_mask_n_features = 3
 cfg.time_mask_max_width_frac = 0.2
 cfg.time_mask_sensors = ['imu', 'thm', 'tof']
 
-cfg.feature_mask_proba = 0.0 # in testing
+cfg.feature_mask_proba = 0.5 # its good
 cfg.feature_mask_n_features = 1
 cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
