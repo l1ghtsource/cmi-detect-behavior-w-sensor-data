@@ -5,12 +5,12 @@ from configs.config import cfg
 class ReshapeNet_SingleSensor_v1(nn.Module):
     def __init__(self, num_classes=cfg.main_num_classes):
         super().__init__()
-        self.model = timm.create_model('timm/resnet18.a1_in1k', pretrained=True, in_chans=3)
+        self.model = timm.create_model('efficientnet_b5', pretrained=True, in_chans=3)
         self.pool = nn.AdaptiveAvgPool2d(1)
-        self.dropout = nn.Dropout(p=0.3)
-        self.fc1 = nn.Linear(512, out_features=num_classes, bias=True)
-        self.fc2 = nn.Linear(512, out_features=2, bias=True)
-        self.fc3 = nn.Linear(512, out_features=4, bias=True)
+        self.dropout = nn.Dropout(p=0.5)
+        self.fc1 = nn.Linear(2048, out_features=num_classes, bias=True)
+        self.fc2 = nn.Linear(2048, out_features=2, bias=True)
+        self.fc3 = nn.Linear(2048, out_features=4, bias=True)
 
     def extract_features(self, x):
         feature1 = self.model.forward_features(x)
