@@ -437,6 +437,6 @@ class EfficientNet1dExtractor(nn.Module):
         x = x.permute(0, 3, 1, 2) 
         x = self.encoder(x)
         bs, C, S, T = x.shape
-        x = x.view(bs, C * S, T)
+        x = x.reshape(bs, C * S, T)
         x = self.pool(x).squeeze(-1)
         return x # encoder.out_channels * num_sensors
