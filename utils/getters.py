@@ -325,7 +325,7 @@ def get_ts_model_and_params(imu_only):
         if imu_only: # only imu sensor
             model_cls = FilterNet_SingleSensor_v1
             params = {
-                'num_output_classes': [cfg.main_num_classes, 2],
+                'num_classes': [cfg.main_num_classes, 2],
             }
             return model_cls, params
         else: # multi sensor model
