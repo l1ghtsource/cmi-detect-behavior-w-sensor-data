@@ -182,7 +182,7 @@ cfg.convtran_dropout = 0.1
 cfg.convtran_type = 'notran' # ['default', 'notran', 'multiscale', 'residual', 'inception', 'se']
 
 # --- cnn1d ---
-cfg.cnn1d_extractor = 'hinception' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet', 'hinception']
+cfg.cnn1d_extractor = 'resnet' # ['inception_time', 'lite', 'resnet', 'efficientnet', 'densenet', 'hinception']
 cfg.cnn1d_out_channels = 32
 cfg.cnn1d_pooling = 'se_mean' # ['gap', 'gem', 'se_mean']
 cfg.cnn1d_use_neck = True
