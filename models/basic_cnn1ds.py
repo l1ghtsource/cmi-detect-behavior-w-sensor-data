@@ -61,56 +61,102 @@ class MLPNeck(nn.Module):
         return self.neck(x)
 
 class CNN1D_SingleSensor_v1(nn.Module):
-    def __init__(
-        self,
-        extractor=cfg.cnn1d_extractor,
-        out_channels=cfg.cnn1d_out_channels,
-        pooling=cfg.cnn1d_pooling,
-        use_neck=cfg.cnn1d_use_neck,
-        n_in_channels=cfg.imu_vars,
-        num_classes=cfg.main_num_classes,
-    ) -> None:
+    def __init__(self, 
+                 seq_len=cfg.seq_len,
+                 cnn1d_out_channels=32,
+                 head_droupout=0.2,
+                 attention_n_heads=8,
+                 attention_dropout=0.2,
+                 num_classes=cfg.main_num_classes):
         super().__init__()
-
-        if extractor == 'inception_time':
-            self.feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
-        elif extractor == 'resnet':
-            self.feature_extractor = Resnet1DFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
-        elif extractor == 'efficientnet':
-            self.feature_extractor = EfficientNet1DFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
-        elif extractor == 'densenet':
-            self.feature_extractor = DenseNet1DFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
-        elif extractor == 'lite':
-            self.feature_extractor = LiteFeatureExtractor(n_in_channels=n_in_channels, out_channels=out_channels)
-        elif extractor == 'hinception':
-            self.feature_extractor = HInceptionTimeFeatureExtractor(in_channels=n_in_channels, length_TS=cfg.seq_len, n_filters=out_channels, depth=6)
-
-        feature_dim = out_channels * 4
-
-        if pooling == 'gap':
-            self.pool = nn.AdaptiveAvgPool1d(1)
-            self._pool_forward = lambda t: self.pool(t).squeeze(-1)
-        elif pooling == 'gem':
-            self.pool = GeMPool()
-            self._pool_forward = self.pool
-        elif pooling == 'se_mean':
-            self.pool = SEPlusMean(feature_dim)
-            self._pool_forward = self.pool
         
-        self.use_neck = use_neck
-        if self.use_neck:
-            self.neck = MLPNeck(feature_dim)
+        self.channel_sizes = {
+            'imu': 3,      # x_imu: 0-2
+            'rot': 4,      # x_rot: 3-6  
+            'fe1': 13+3,     # x_fe1: 7-19+3
+            'fe2': 9,      # x_fe2: 20+3-28+3
+            'full': 29+3     # x_full: 0-28+3
+        }
+        
+        self.branch_extractors = nn.ModuleDict()
+        
+        for branch_name, channel_size in self.channel_sizes.items():
+            self.branch_extractors[f'{branch_name}_extractor1'] = Resnet1DFeatureExtractor(
+                n_in_channels=channel_size, out_channels=cnn1d_out_channels
+            )
+            self.branch_extractors[f'{branch_name}_pool1'] = SEPlusMean(cnn1d_out_channels * 4)
+            self.branch_extractors[f'{branch_name}_neck1'] = MLPNeck(cnn1d_out_channels * 4)
 
-        self.head1 = nn.Linear(feature_dim, num_classes)
-        self.head2 = nn.Linear(feature_dim, 2)
+        final_hidden_dim = (cnn1d_out_channels * 4) * 5
+        
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=cnn1d_out_channels * 4,
+            num_heads=attention_n_heads,
+            dropout=attention_dropout,
+            batch_first=True
+        )
 
-    def forward(self, x, pad_mask=None):
-        # input: (bs, 1, l, c)
-        x = x.squeeze(1).transpose(1, 2) # (bs, c, l)
-        x = self.feature_extractor(x)
-        x = self._pool_forward(x)
-        if self.use_neck:
-            x = x + self.neck(x)
-        y1 = self.head1(x)
-        y2 = self.head2(x)
-        return y1, y2
+        self.attention_norm = nn.LayerNorm(cnn1d_out_channels * 4)
+
+        final_feature_dim = final_hidden_dim * 1
+
+        self.head1 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, num_classes)
+        )
+
+        self.head2 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 2)
+        )
+
+        self.head3 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 4)
+        )
+            
+    def process_extractor(self, x_dict, pad_mask=None):
+        branch_features = []
+        
+        for branch_name in self.channel_sizes.keys():
+            x = x_dict[branch_name]
+            feature = self.branch_extractors[f'{branch_name}_extractor1'](x)
+            feature = self.branch_extractors[f'{branch_name}_pool1'](feature)
+            feature = feature + self.branch_extractors[f'{branch_name}_neck1'](feature)
+            branch_features.append(feature)
+        
+        stacked_features = torch.stack(branch_features, dim=1)
+        attended_features, _ = self.self_attention(
+            stacked_features, 
+            stacked_features, 
+            stacked_features
+        )
+        attended_features = self.attention_norm(attended_features + stacked_features)
+        final_features = attended_features.view(attended_features.size(0), -1)
+        
+        return final_features
+    
+    def forward(self, _x, pad_mask=None):
+        # input is (bs, 1, T, C)
+        
+        x_dict = {
+            'imu': _x[:, :, :, :3],
+            'rot': _x[:, :, :, 3:7],
+            'fe1': _x[:, :, :, 7:20+3],
+            'fe2': _x[:, :, :, 20+3:29+3],
+            'full': _x
+        }
+        
+        final_features = self.process_extractor(x_dict, pad_mask=pad_mask)
+
+        out1 = self.head1(final_features)
+        out2 = self.head2(final_features)
+        out3 = self.head3(final_features)
+
+        return out1, out2, out3

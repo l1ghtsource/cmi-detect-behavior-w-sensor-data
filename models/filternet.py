@@ -247,7 +247,7 @@ class CGLLayer(nn.Sequential):
 
         super().__init__(*layers)
 
-class FilterNet_SingleSensor_v1(BaseNet):
+class FilterNet_SingleSensor_Test(BaseNet):
     def build(
         self,
         n_pre=1,
@@ -455,3 +455,133 @@ class FilterNet_SingleSensor_v1(BaseNet):
         # No softmax because the pytorch cross_entropy loss function wants the raw outputs.
 
         return ys
+    
+class FilterNetFeatureExtractor(FilterNet_SingleSensor_Test):
+    def build(self, *args, **kwargs):
+        super().build(*args, **kwargs)
+        self.end_stacks = nn.ModuleList()
+    
+    def _forward(self, X, pad_mask=None):
+        X = X[:, 0, :, :].transpose(1, 2)          # [B, C, T]
+        Xs = [X]
+        Xs.append(self.down_stack_1(Xs[-1]))
+
+        to_merge = [Xs[-1]]
+        for module in self.down_stack_2:
+            out = module(Xs[-1])
+            Xs.append(out)
+            to_merge.append(
+                F.interpolate(out, size=to_merge[0].shape[-1],
+                              mode="linear", align_corners=False)
+            )
+
+        merged = torch.cat(to_merge, dim=1)
+        Xs.append(merged)
+        Xs.append(self.lstm_stack(Xs[-1]))         # [B, hidden_dim, T']
+
+        if self.keep_intermediates:
+            self.Xs = Xs
+
+        feats = Xs[-1]                             # [B, hidden_dim, T']
+        feats = feats[:, :, -1]                    # [B, hidden_dim]
+        return feats
+
+    def forward(self, X, pad_mask=None):
+        return self._forward(X, pad_mask)
+    
+class FilterNet_SingleSensor_v1(nn.Module):
+    def __init__(self, 
+                 seq_len=cfg.seq_len,
+                 head_droupout=0.2,
+                 attention_n_heads=8,
+                 attention_dropout=0.2,
+                 num_classes=cfg.main_num_classes):
+        super().__init__()
+        
+        self.channel_sizes = {
+            'imu': 3,      # x_imu: 0-2
+            'rot': 4,      # x_rot: 3-6  
+            'fe1': 13+3,     # x_fe1: 7-19+3
+            'fe2': 9,      # x_fe2: 20+3-28+3
+            'full': 29+3     # x_full: 0-28+3
+        }
+        
+        self.branch_extractors = nn.ModuleDict()
+        
+        for branch_name, channel_size in self.channel_sizes.items():
+            self.branch_extractors[f'{branch_name}_extractor1'] = FilterNetFeatureExtractor(
+                input_channels=channel_size,
+                do_multi=False
+            )
+
+        final_hidden_dim = (DEFAULT_WIDTH) * 5
+        
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=DEFAULT_WIDTH,
+            num_heads=attention_n_heads,
+            dropout=attention_dropout,
+            batch_first=True
+        )
+
+        self.attention_norm = nn.LayerNorm(DEFAULT_WIDTH)
+
+        final_feature_dim = final_hidden_dim * 1
+
+        self.head1 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, num_classes)
+        )
+
+        self.head2 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 2)
+        )
+
+        self.head3 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 4)
+        )
+            
+    def process_extractor(self, x_dict, pad_mask=None):
+        branch_features = []
+        
+        for branch_name in self.channel_sizes.keys():
+            x = x_dict[branch_name]
+            feature = self.branch_extractors[f'{branch_name}_extractor1'](x)
+            branch_features.append(feature)
+        
+        stacked_features = torch.stack(branch_features, dim=1)
+        attended_features, _ = self.self_attention(
+            stacked_features, 
+            stacked_features, 
+            stacked_features
+        )
+        attended_features = self.attention_norm(attended_features + stacked_features)
+        final_features = attended_features.view(attended_features.size(0), -1)
+        
+        return final_features
+    
+    def forward(self, _x, pad_mask=None):
+        # input is (bs, 1, T, C)
+        
+        x_dict = {
+            'imu': _x[:, :, :, :3],
+            'rot': _x[:, :, :, 3:7],
+            'fe1': _x[:, :, :, 7:20+3],
+            'fe2': _x[:, :, :, 20+3:29+3],
+            'full': _x
+        }
+        
+        final_features = self.process_extractor(x_dict, pad_mask=pad_mask)
+
+        out1 = self.head1(final_features)
+        out2 = self.head2(final_features)
+        out3 = self.head3(final_features)
+
+        return out1, out2, out3

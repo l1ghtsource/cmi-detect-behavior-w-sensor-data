@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from modules.inceptiontime_replacers import Resnet1DFeatureExtractor
 from models.convtran import SEBlock228
-from models.filternet import FilterNet_SingleSensor_v1, DEFAULT_WIDTH
+from models.filternet import FilterNet_SingleSensor_Test, DEFAULT_WIDTH
 from models.basic_cnn1ds import SEPlusMean, MLPNeck
 from models.multi_bigru import ResidualBiGRU
 from configs.config import cfg
@@ -118,7 +118,7 @@ class Public_SingleSensor_Extractor(nn.Module):
 
         return x # [batch, dim_ff // 2] = [batch, 128]
 
-class FilterNetFeatureExtractor(FilterNet_SingleSensor_v1):
+class FilterNetFeatureExtractor(FilterNet_SingleSensor_Test):
     def build(self, *args, **kwargs):
         super().build(*args, **kwargs)
         self.end_stacks = nn.ModuleList()

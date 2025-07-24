@@ -212,16 +212,15 @@ class ConvTran_SingleSensor_v1(nn.Module):
         out1 = self.out1(out)
         out2 = self.out2(out)
         return out1, out2
-    
-class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
+
+class ConvTran_SingleSensor_NoTranLol_Extractor(nn.Module):
     def __init__(self, 
                  channel_size=cfg.imu_vars, 
                  seq_len=cfg.seq_len, 
                  emb_size=cfg.convtran_emb_size, 
                  num_heads=cfg.convtran_num_heads, 
                  dim_ff=cfg.convtran_dim_ff, 
-                 dropout=cfg.convtran_dropout, 
-                 num_classes=cfg.main_num_classes):
+                 dropout=cfg.convtran_dropout):
         super().__init__()
 
         self.embed_layer = nn.Sequential(
@@ -254,8 +253,6 @@ class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
         self.norm = nn.LayerNorm(emb_size, eps=1e-5)
 
         self.gap = nn.AdaptiveAvgPool1d(1)
-        self.out1 = nn.Linear(emb_size, num_classes)
-        self.out2 = nn.Linear(emb_size, 2)
 
     def forward(self, x, pad_mask=None):
         # x: (bs, 1, T, C) → (bs, 1, C, T)
@@ -271,11 +268,114 @@ class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
         x = self.norm(x + self.ffn(x))              # residual + FFN
         x = x.permute(0, 2, 1)                      # (bs, emb, T)
 
-        x = self.gap(x).squeeze(-1)                 # (bs, emb)
-        cls_logits = self.out1(x)
-        reg_logits = self.out2(x)
+        x = self.gap(x).squeeze(-1)                 # (bs, emb) = (bs, 64)
 
-        return cls_logits, reg_logits
+        return x
+
+class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
+    def __init__(self, 
+                 convtran_emb_size=cfg.convtran_emb_size,
+                 convtran_num_heads=cfg.convtran_num_heads, 
+                 convtran_dim_ff=cfg.convtran_dim_ff, 
+                 convtran_dropout=cfg.convtran_dropout,
+                 seq_len=cfg.seq_len,
+                 head_droupout=0.2,
+                 attention_n_heads=8,
+                 attention_dropout=0.2,
+                 num_classes=cfg.main_num_classes):
+        super().__init__()
+        
+        self.channel_sizes = {
+            'imu': 3,      # x_imu: 0-2
+            'rot': 4,      # x_rot: 3-6  
+            'fe1': 13+3,     # x_fe1: 7-19+3
+            'fe2': 9,      # x_fe2: 20+3-28+3
+            'full': 29+3     # x_full: 0-28+3
+        }
+        
+        self.branch_extractors = nn.ModuleDict()
+        
+        for branch_name, channel_size in self.channel_sizes.items():
+            self.branch_extractors[f'{branch_name}_extractor1'] = ConvTran_SingleSensor_NoTranLol_Extractor(
+                channel_size=channel_size, 
+                seq_len=seq_len, 
+                emb_size=convtran_emb_size, 
+                num_heads=convtran_num_heads, 
+                dim_ff=convtran_dim_ff, 
+                dropout=convtran_dropout
+            )
+
+        final_hidden_dim = (convtran_emb_size) * 5
+        
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=convtran_emb_size,
+            num_heads=attention_n_heads,
+            dropout=attention_dropout,
+            batch_first=True
+        )
+
+        self.attention_norm = nn.LayerNorm(convtran_emb_size)
+
+        final_feature_dim = final_hidden_dim * 1
+
+        self.head1 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, num_classes)
+        )
+
+        self.head2 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 2)
+        )
+
+        self.head3 = nn.Sequential(
+            nn.Linear(final_feature_dim, final_feature_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(head_droupout),
+            nn.Linear(final_feature_dim // 2, 4)
+        )
+            
+    def process_extractor(self, x_dict, pad_mask=None):
+        branch_features = []
+        
+        for branch_name in self.channel_sizes.keys():
+            x = x_dict[branch_name]
+            feature = self.branch_extractors[f'{branch_name}_extractor1'](x)
+            branch_features.append(feature)
+        
+        stacked_features = torch.stack(branch_features, dim=1)
+        attended_features, _ = self.self_attention(
+            stacked_features, 
+            stacked_features, 
+            stacked_features
+        )
+        attended_features = self.attention_norm(attended_features + stacked_features)
+        final_features = attended_features.view(attended_features.size(0), -1)
+        
+        return final_features
+    
+    def forward(self, _x, pad_mask=None):
+        # input is (bs, 1, T, C)
+        
+        x_dict = {
+            'imu': _x[:, :, :, :3],
+            'rot': _x[:, :, :, 3:7],
+            'fe1': _x[:, :, :, 7:20+3],
+            'fe2': _x[:, :, :, 20+3:29+3],
+            'full': _x
+        }
+        
+        final_features = self.process_extractor(x_dict, pad_mask=pad_mask)
+
+        out1 = self.head1(final_features)
+        out2 = self.head2(final_features)
+        out3 = self.head3(final_features)
+
+        return out1, out2, out3
 
 class ConvTran_SingleSensor_SE_v1(nn.Module):
     def __init__(self, 
