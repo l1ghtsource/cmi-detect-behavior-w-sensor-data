@@ -116,7 +116,7 @@ cfg.fe_gravity = False # gravity vector [vx, vy, vz]
 cfg.kaggle_fe = True # some fe before init ds (so augs works bad)
 cfg.fe_relative_quat = False # add relative quat to first frame
 cfg.use_quat6d = False # better rot repr for nn
-cfg.imu_only = False #True # use only imu sensor
+cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 
 # if cfg.fe_mag_ang:
@@ -202,10 +202,10 @@ cfg.weight_decay = 3e-4
 cfg.num_warmup_steps_ratio = 0.03
 cfg.label_smoothing = 0.05
 cfg.max_norm = 2.0
-cfg.use_lookahead = False#True
+cfg.use_lookahead = False
 cfg.use_sam = False
-cfg.scheduler = 'linear' # ['cosine', 'cosine_cycle', 'linear']
-cfg.optim_type = 'muonwauxadam' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
+cfg.scheduler = 'cosine' # ['cosine', 'cosine_cycle', 'linear']
+cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 1
@@ -259,23 +259,25 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        '/kaggle/input/excel-exps-cmi-imu/noavg_top1_models_63row_excel': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/avg_models_60row_excel': {
             'weight': 1,
             'prefix': 'hybrid_imu_only_seq_len120_use_pad_mask_lookahead_lag_lead_cum_kaggle_fe_muonwauxadam_ls0.05_',
+            'timemil_ver': '1',
             'model_params': {
                 'num_classes': 18,
             }
         },
     },
-    'imu+tof+thm': {
-        '/kaggle/input/timemil-soupchik-imu-16-06/models_68row_excel': {
-            'weight': 1,
-            'prefix': 'hybrid_seq_len120_use_pad_mask_lookahead_lag_lead_cum_kaggle_fe_muonwauxadam_ls0.05_',
-            'model_params': {
-                'num_classes': 18,
-            }
-        },
-    }
+    # 'imu+tof+thm': {
+    #     'path_to_dir': {
+    #         'weight': 1,
+    #         'prefix': 'some_prefix',
+    #         'timemil_ver': '1',
+    #         'model_params': {
+    #             'num_classes': 18,
+    #         }
+    #     },
+    # }
 }
 cfg.is_soft = True
 cfg.use_entmax = False
