@@ -126,7 +126,8 @@ class CNN1D_SingleSensor_v1(nn.Module):
         
         for branch_name in self.channel_sizes.keys():
             x = x_dict[branch_name]
-            feature = self.branch_extractors[f'{branch_name}_extractor1'](x)
+            x_ = x.permute(0, 1, 3, 2).squeeze(1)
+            feature = self.branch_extractors[f'{branch_name}_extractor1'](x_)
             feature = self.branch_extractors[f'{branch_name}_pool1'](feature)
             feature = feature + self.branch_extractors[f'{branch_name}_neck1'](feature)
             branch_features.append(feature)
