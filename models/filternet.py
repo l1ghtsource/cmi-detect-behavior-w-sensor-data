@@ -493,7 +493,7 @@ class FilterNet_SingleSensor_v1(nn.Module):
     def __init__(self, 
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
-                 attention_n_heads=8,
+                 attention_n_heads=10,
                  attention_dropout=0.2,
                  num_classes=cfg.main_num_classes):
         super().__init__()
