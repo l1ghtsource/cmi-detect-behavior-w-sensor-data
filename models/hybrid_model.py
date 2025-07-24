@@ -470,6 +470,8 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  multibigru_dropout=0.1,
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
+                 attention_n_heads=8,
+                 attention_dropout=0.2,
                  num_classes=cfg.main_num_classes):
         super().__init__()
         
@@ -523,7 +525,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
                 bidir=True,
                 dropout=multibigru_dropout
             )
-        
+
         extractor_feature_dims = {
             'extractor1': (dim_ff_public // 2) * 5,
             'extractor2': (DEFAULT_WIDTH) * 5,
@@ -544,8 +546,8 @@ class HybridModel_SingleSensor_v1(nn.Module):
         
         self.self_attention = nn.MultiheadAttention(
             embed_dim=final_hidden_dim,
-            num_heads=8,
-            dropout=head_droupout,
+            num_heads=attention_n_heads,
+            dropout=attention_dropout,
             batch_first=True
         )
 
@@ -657,7 +659,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
         for extractor_num in range(1, 7):
             feature = self.process_extractor(x_dict, extractor_num, pad_mask=pad_mask)
             extractor_features.append(feature)
-        
+
         stacked_features = torch.stack(extractor_features, dim=1)  # (bs, 6, final_hidden_dim)
         
         attended_features, _ = self.self_attention(
@@ -684,7 +686,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
         ext6_out1 = self.ext6_head1(extractor_features[5])
 
         return out1, out2, out3, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1
-
+    
 class MultiSensor_HybridModel_v1(nn.Module):
     def __init__(self, 
                  final_hidden_dim=256,
@@ -697,6 +699,8 @@ class MultiSensor_HybridModel_v1(nn.Module):
                  multibigru_dropout=0.1,
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
+                 attention_n_heads=8,
+                 attention_dropout=0.2,
                  num_classes=cfg.main_num_classes):
         super().__init__()
         
@@ -762,8 +766,8 @@ class MultiSensor_HybridModel_v1(nn.Module):
         
         self.self_attention = nn.MultiheadAttention(
             embed_dim=final_hidden_dim,
-            num_heads=8,
-            dropout=head_droupout,
+            num_heads=attention_n_heads,
+            dropout=attention_dropout,
             batch_first=True
         )
 
