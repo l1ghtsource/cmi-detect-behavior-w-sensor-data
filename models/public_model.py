@@ -12,7 +12,7 @@ class SEBlock(nn.Module):
         self.squeeze = nn.AdaptiveAvgPool1d(1)
         self.excitation = nn.Sequential(
             nn.Linear(channels, channels // reduction, bias=False),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Linear(channels // reduction, channels, bias=False),
             nn.Sigmoid()
         )
@@ -122,7 +122,7 @@ class EnhancedSEBlock(nn.Module):
         self.max_pool = nn.AdaptiveMaxPool1d(1)
         self.excitation = nn.Sequential(
             nn.Linear(channels * 2, channels // reduction, bias=False),
-            nn.SiLU(inplace=True),
+            nn.SiLU(),
             nn.Linear(channels // reduction, channels, bias=False),
             nn.Sigmoid()
         )
@@ -143,7 +143,7 @@ class MultiScaleConv1d(nn.Module):
             self.convs.append(nn.Sequential(
                 nn.Conv1d(in_channels, out_channels, ks, padding=ks//2, bias=False),
                 nn.BatchNorm1d(out_channels),
-                nn.ReLU(inplace=True)
+                nn.ReLU()
             ))
         
     def forward(self, x):
