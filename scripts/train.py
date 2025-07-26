@@ -291,6 +291,95 @@ def run_training_with_stratified_group_kfold():
 
     prefix = get_prefix(cfg.imu_only)
 
+    if cfg.curr_folds == 'full_data':
+        print('training on the full dataset — validation disabled')
+
+        TSDataset = get_ts_dataset()
+        full_dataset = TSDataset(
+            dataframe=train_seq,
+            seq_len=cfg.seq_len,
+            main_target=cfg.main_target,
+            orientation_aux_target=cfg.orientation_aux_target,
+            seq_type_aux_target=cfg.seq_type_aux_target,
+            behavior_aux_target=cfg.behavior_aux_target,
+            phase_aux_target=cfg.phase_aux_target,
+            train=True
+        )
+        full_loader = DataLoader(
+            full_dataset,
+            batch_size=cfg.bs,
+            shuffle=True,
+            pin_memory=True,
+            persistent_workers=True,
+            prefetch_factor=4,
+            num_workers=4,
+            generator=g,
+            worker_init_fn=lambda wid: np.random.seed(cfg.seed + wid)
+        )
+
+        TSModel, m_params = get_ts_model_and_params(imu_only=cfg.imu_only)
+        model = TSModel(**m_params).to(device)
+        ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
+        optimizer = get_optimizer(model=model, lr=cfg.lr,
+                                  lr_muon=cfg.lr_muon,
+                                  weight_decay=cfg.weight_decay)
+        if cfg.use_lookahead:
+            optimizer = Lookahead(optimizer)
+        if cfg.use_sam:
+            optimizer = SAM(optimizer)
+
+        main_criterion = nn.CrossEntropyLoss(
+            label_smoothing=cfg.label_smoothing,
+            weight=(class_weights_main_tensor if cfg.use_main_target_weighting else None)
+        )
+        seq_type_criterion = nn.CrossEntropyLoss(
+            weight=(class_weights_seq_type_tensor if cfg.use_seq_type_aux_target_weighting else None)
+        )
+        orientation_criterion = nn.CrossEntropyLoss()
+        hybrid_criterions = [nn.CrossEntropyLoss() for _ in range(6)]
+
+        num_training_steps = cfg.n_epochs * len(full_loader)
+        num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
+        scheduler = (
+            get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps)
+            if cfg.scheduler == 'cosine' else
+            get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=4)
+            if cfg.scheduler == 'cosine_cycle' else
+            get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps)
+        )
+
+        current_step = 0
+        for epoch in range(cfg.n_epochs):
+            print(f'epoch={epoch}')
+            train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
+                full_loader, model, optimizer,
+                main_criterion, hybrid_criterions,
+                seq_type_criterion, orientation_criterion,
+                device, scheduler, ema,
+                current_step, num_warmup_steps, fold='full'
+            )
+            print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=}')
+
+            if cfg.do_wandb_log:
+                wandb.log({
+                    'full/train_loss': train_loss,
+                    'full/train_avg_f1': avg_m_train,
+                    'full/train_binary_f1': bm_train,
+                    'full/train_macro_f1': mm_train,
+                    'full/epoch': epoch
+                })
+
+        model_path = os.path.join(cfg.model_dir, f'{prefix}model_full_data_final.pt')
+        torch.save(model.state_dict(), model_path)
+        if cfg.use_ema and ema is not None:
+            ema_state = {n: p for n, p in ema.shadow.items()}
+            torch.save(ema_state, os.path.join(cfg.model_dir, f'{prefix}model_full_data_final_ema.pt'))
+
+        if cfg.do_wandb_log:
+            wandb.finish()
+
+        return [model], None
+
     sgkf = StratifiedGroupKFold(n_splits=cfg.n_splits, shuffle=True, random_state=cfg.seed)
     targets = train_seq[cfg.main_target].values
     groups = train_seq[cfg.group].values
