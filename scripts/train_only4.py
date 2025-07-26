@@ -106,21 +106,21 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
-            main_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, ext5_out1_loss, ext6_out1_loss, seq_type_loss, orientation_loss = mixup_criterion(
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
+            main_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, seq_type_loss, orientation_loss = mixup_criterion(
                 outputs, seq_type_outputs, orientation_outputs, 
-                ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1,
+                ext1_out1, ext2_out1, ext3_out1, ext4_out1,
                 targets_a, targets_b, 
                 seq_type_targets_a, seq_type_targets_b, 
                 orientation_targets_a, orientation_targets_b, lam
             )      
-            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss +  ext5_out1_loss + ext6_out1_loss) / 6  
+            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss) / 4
             loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
         else:
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
@@ -129,9 +129,7 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
             ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
             ext3_out1_loss = hybrid_criterions[2](ext3_out1, targets)
             ext4_out1_loss = hybrid_criterions[3](ext4_out1, targets)
-            ext5_out1_loss = hybrid_criterions[4](ext5_out1, targets)
-            ext6_out1_loss = hybrid_criterions[5](ext6_out1, targets)
-            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss +  ext5_out1_loss + ext6_out1_loss) / 6  
+            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss) / 4
             seq_type_loss = seq_type_criterion(seq_type_outputs, seq_type_aux_targets)
             orientation_loss = orientation_criterion(orientation_outputs, orientation_aux_targets)
             loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
@@ -161,8 +159,6 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
                 f'fold_{fold}/train_ext2_out1_loss': ext2_out1_loss.item(),
                 f'fold_{fold}/train_ext3_out1_loss': ext3_out1_loss.item(),
                 f'fold_{fold}/train_ext4_out1_loss': ext4_out1_loss.item(),
-                f'fold_{fold}/train_ext5_out1_loss': ext5_out1_loss.item(),
-                f'fold_{fold}/train_ext6_out1_loss': ext6_out1_loss.item(),
                 f'fold_{fold}/train_seq_type_loss': seq_type_loss.item(),
                 f'fold_{fold}/train_orientation_loss': orientation_loss.item(),
                 f'fold_{fold}/learning_rate': scheduler.get_last_lr()[0],
@@ -194,7 +190,7 @@ def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_c
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
@@ -203,9 +199,7 @@ def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_c
             ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
             ext3_out1_loss = hybrid_criterions[2](ext3_out1, targets)
             ext4_out1_loss = hybrid_criterions[3](ext4_out1, targets)
-            ext5_out1_loss = hybrid_criterions[4](ext5_out1, targets)
-            ext6_out1_loss = hybrid_criterions[5](ext6_out1, targets)
-            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss +  ext5_out1_loss + ext6_out1_loss) / 6  
+            ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss) / 4  
             seq_type_loss = seq_type_criterion(seq_type_outputs, seq_type_aux_targets)
             orientation_loss = orientation_criterion(orientation_outputs, orientation_aux_targets)
             loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
@@ -252,7 +246,7 @@ def get_oof_predictions(model, val_loader, output_index=0):
         for batch in val_loader:
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
+            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             
             if output_index == 0:
                 selected_output = outputs
@@ -265,12 +259,8 @@ def get_oof_predictions(model, val_loader, output_index=0):
             elif output_index == 4:
                 selected_output = ext4_out1
             elif output_index == 5:
-                selected_output = ext5_out1
-            elif output_index == 6:
-                selected_output = ext6_out1
-            elif output_index == 7:
                 selected_output = seq_type_outputs
-            elif output_index == 8:
+            elif output_index == 6:
                 selected_output = orientation_outputs
                 
             all_preds.append(selected_output.cpu().numpy())
@@ -303,22 +293,16 @@ def run_training_with_stratified_group_kfold():
     oof_preds_ext2_top1 = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext3_top1 = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext4_top1 = np.zeros((len(train_seq), cfg.main_num_classes))
-    oof_preds_ext5_top1 = np.zeros((len(train_seq), cfg.main_num_classes))
-    oof_preds_ext6_top1 = np.zeros((len(train_seq), cfg.main_num_classes))
     
     oof_preds_ext1_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext2_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext3_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext4_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
-    oof_preds_ext5_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
-    oof_preds_ext6_top3_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     
     oof_preds_ext1_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext2_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext3_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     oof_preds_ext4_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
-    oof_preds_ext5_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
-    oof_preds_ext6_top5_avg = np.zeros((len(train_seq), cfg.main_num_classes))
     
     oof_targets = train_seq[cfg.main_target].values
     
@@ -435,7 +419,7 @@ def run_training_with_stratified_group_kfold():
 
         orientation_criterion = nn.CrossEntropyLoss()
 
-        hybrid_criterions = [nn.CrossEntropyLoss() for _ in range(6)]
+        hybrid_criterions = [nn.CrossEntropyLoss() for _ in range(4)]
 
         num_training_steps = cfg.n_epochs * len(train_loader)
         num_warmup_steps = int(cfg.num_warmup_steps_ratio * num_training_steps)
@@ -551,12 +535,6 @@ def run_training_with_stratified_group_kfold():
         preds_ext4_top1 = get_oof_predictions(model, val_loader, output_index=4)
         oof_preds_ext4_top1[val_idx] = preds_ext4_top1
         
-        preds_ext5_top1 = get_oof_predictions(model, val_loader, output_index=5)
-        oof_preds_ext5_top1[val_idx] = preds_ext5_top1
-        
-        preds_ext6_top1 = get_oof_predictions(model, val_loader, output_index=6)
-        oof_preds_ext6_top1[val_idx] = preds_ext6_top1
-        
         averaged_weights_top3 = average_model_weights(fold_checkpoints, 3)
         model.load_state_dict(averaged_weights_top3)
         
@@ -574,12 +552,6 @@ def run_training_with_stratified_group_kfold():
         
         preds_ext4_top3_avg = get_oof_predictions(model, val_loader, output_index=4)
         oof_preds_ext4_top3_avg[val_idx] = preds_ext4_top3_avg
-        
-        preds_ext5_top3_avg = get_oof_predictions(model, val_loader, output_index=5)
-        oof_preds_ext5_top3_avg[val_idx] = preds_ext5_top3_avg
-        
-        preds_ext6_top3_avg = get_oof_predictions(model, val_loader, output_index=6)
-        oof_preds_ext6_top3_avg[val_idx] = preds_ext6_top3_avg
 
         averaged_weights_top5 = average_model_weights(fold_checkpoints, 5)
         model.load_state_dict(averaged_weights_top5)
@@ -598,12 +570,6 @@ def run_training_with_stratified_group_kfold():
         
         preds_ext4_top5_avg = get_oof_predictions(model, val_loader, output_index=4)
         oof_preds_ext4_top5_avg[val_idx] = preds_ext4_top5_avg
-        
-        preds_ext5_top5_avg = get_oof_predictions(model, val_loader, output_index=5)
-        oof_preds_ext5_top5_avg[val_idx] = preds_ext5_top5_avg
-        
-        preds_ext6_top5_avg = get_oof_predictions(model, val_loader, output_index=6)
-        oof_preds_ext6_top5_avg[val_idx] = preds_ext6_top5_avg
 
         model.load_state_dict(torch.load(best_checkpoint['model_path']))
         if cfg.use_ema and best_checkpoint['ema_path'] and os.path.exists(best_checkpoint['ema_path']):
@@ -641,13 +607,13 @@ def run_training_with_stratified_group_kfold():
     oof_m_top3_avg, oof_bm_top3_avg, oof_mm_top3_avg = comp_metric(oof_targets, oof_pred_labels_top3_avg)
     oof_m_top5_avg, oof_bm_top5_avg, oof_mm_top5_avg = comp_metric(oof_targets, oof_pred_labels_top5_avg)
     
-    extractor_names = ['ext1', 'ext2', 'ext3', 'ext4', 'ext5', 'ext6']
+    extractor_names = ['ext1', 'ext2', 'ext3', 'ext4']
     extractor_oof_preds_top1 = [oof_preds_ext1_top1, oof_preds_ext2_top1, oof_preds_ext3_top1, 
-                                oof_preds_ext4_top1, oof_preds_ext5_top1, oof_preds_ext6_top1]
+                                oof_preds_ext4_top1]
     extractor_oof_preds_top3_avg = [oof_preds_ext1_top3_avg, oof_preds_ext2_top3_avg, oof_preds_ext3_top3_avg,
-                                    oof_preds_ext4_top3_avg, oof_preds_ext5_top3_avg, oof_preds_ext6_top3_avg]
+                                    oof_preds_ext4_top3_avg]
     extractor_oof_preds_top5_avg = [oof_preds_ext1_top5_avg, oof_preds_ext2_top5_avg, oof_preds_ext3_top5_avg,
-                                    oof_preds_ext4_top5_avg, oof_preds_ext5_top5_avg, oof_preds_ext6_top5_avg]
+                                    oof_preds_ext4_top5_avg]
     
     extractor_metrics = {}
     
