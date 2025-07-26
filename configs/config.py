@@ -259,25 +259,21 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        '/kaggle/input/timemil-soupchik-imu-16-06/avg_models_60row_excel': {
+        '/kaggle/input/excel-exps-cmi-imu/noavg_top3_models_74row_excel': { # top3 models (avg) - 74 row
             'weight': 1,
-            'prefix': 'hybrid_imu_only_seq_len120_use_pad_mask_lookahead_lag_lead_cum_kaggle_fe_muonwauxadam_ls0.05_',
-            'timemil_ver': '1',
             'model_params': {
                 'num_classes': 18,
             }
         },
     },
-    # 'imu+tof+thm': {
-    #     'path_to_dir': {
-    #         'weight': 1,
-    #         'prefix': 'some_prefix',
-    #         'timemil_ver': '1',
-    #         'model_params': {
-    #             'num_classes': 18,
-    #         }
-    #     },
-    # }
+    'imu+tof+thm': {
+        '/kaggle/input/timemil-soupchik-imu-16-06/avg_by_model': { # 5folds avg models in ver21 - 72 75 76 77 rows
+            'weight': 1,
+            'model_params': {
+                'num_classes': 18,
+            }
+        },
+    }
 }
 cfg.is_soft = True
 cfg.use_entmax = False
