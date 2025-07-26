@@ -294,6 +294,32 @@ def run_training_with_stratified_group_kfold():
     if cfg.curr_folds == 'full_data':
         print('training on the full dataset — validation disabled')
 
+        fold = 'full_data'
+        if cfg.do_wandb_log:
+            run_name = f'{prefix}fold_{fold}'
+            
+            wandb.init(
+                project=cfg.wandb_project,
+                name=run_name,
+                config={
+                    'fold': fold,
+                    'seq_len': cfg.seq_len,
+                    'batch_size': cfg.bs,
+                    'learning_rate': cfg.lr,
+                    'n_epochs': cfg.n_epochs,
+                    'use_mixup': cfg.use_mixup,
+                    'use_ema': cfg.use_ema,
+                    'imu_only': cfg.imu_only,
+                    'seed': cfg.seed,
+                    'weight_decay': cfg.weight_decay,
+                    'label_smoothing': cfg.label_smoothing,
+                    'patience': cfg.patience,
+                    'use_lookahead': cfg.use_lookahead,
+                    'optimizer': cfg.optim_type,
+                },
+                tags=[f'fold_{fold}']
+            )
+
         TSDataset = get_ts_dataset()
         full_dataset = TSDataset(
             dataframe=train_seq,
