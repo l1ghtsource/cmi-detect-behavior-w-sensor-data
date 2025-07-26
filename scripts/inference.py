@@ -2,6 +2,8 @@ import pandas as pd
 import polars as pl
 import numpy as np
 from scipy.stats import mode
+import glob
+import os
 
 import torch
 from torch.utils.data import DataLoader
@@ -53,25 +55,35 @@ for w_key in ['imu_only', 'imu+tof+thm']:
         else:
             TSModel = MultiSensor_HybridModel_v1
         
+        ckpt_files = sorted(
+            glob.glob(os.path.join(weights_path, '*.pt'))
+        )
+        if not ckpt_files:
+            print(f'  no checkpoints found in {weights_path}')
+            continue
+
         fold_models = []
-        for i in range(cfg.n_splits):
-            print(f'loading fold {i+1}')
+        for ckpt in ckpt_files:
+            print(f'  loading checkpoint: {os.path.basename(ckpt)}')
+
+            is_ema = ckpt.endswith('_ema.pt') or '_ema_' in os.path.basename(ckpt)
             model = TSModel(**params['model_params']).to(device)
-            
-            model_path = f'{weights_path}/{params["prefix"]}model_fold{i}.pt'
-            model.load_state_dict(torch.load(model_path, map_location=device))
-            
-            if cfg.use_ema:
-                model_path = f'{weights_path}/{params["prefix"]}model_ema_fold{i}.pt'
-                ema_state_dict = torch.load(model_path, map_location=device)
-                for name, param in model.named_parameters():
-                    if name in ema_state_dict:
-                        param.data = ema_state_dict[name]
-            
+
+            state_dict = torch.load(ckpt, map_location=device)
+            model.load_state_dict(state_dict, strict=False)
+
+            if not is_ema and cfg.use_ema:
+                ema_ckpt = ckpt.replace('.pt', '_ema.pt')
+                if os.path.isfile(ema_ckpt):
+                    ema_state = torch.load(ema_ckpt, map_location=device)
+                    for name, p in model.named_parameters():
+                        if name in ema_state:
+                            p.data.copy_(ema_state[name])
+
             model.eval()
             fold_models.append(model)
-        
-        loaded_models[w_key][weights_path] = {
+
+        loaded_models.setdefault(w_key, {})[weights_path] = {
             'models': fold_models,
             'params': params,
             'weight': params['weight']
