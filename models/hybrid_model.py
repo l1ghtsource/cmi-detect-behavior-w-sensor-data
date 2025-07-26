@@ -15,7 +15,7 @@ class SEBlock(nn.Module):
         self.squeeze = nn.AdaptiveAvgPool1d(1)
         self.excitation = nn.Sequential(
             nn.Linear(channels, channels // reduction, bias=False),
-            nn.SiLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(channels // reduction, channels, bias=False),
             nn.Sigmoid()
         )
@@ -50,11 +50,11 @@ class ResidualSECNNBlock(nn.Module):
         
     def forward(self, x):
         shortcut = self.shortcut(x)
-        out = F.silu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
         out = self.se(out)
         out += shortcut
-        out = F.silu(out)
+        out = F.relu(out)
         out = self.pool(out)
         out = self.dropout(out)
         
@@ -111,9 +111,9 @@ class Public_SingleSensor_Extractor(nn.Module):
         
         attended = self.attention(gru_out)
         
-        x = F.silu(self.bn_dense1(self.dense1(attended)))
+        x = F.relu(self.bn_dense1(self.dense1(attended)))
         x = self.drop1(x)
-        x = F.silu(self.bn_dense2(self.dense2(x)))
+        x = F.relu(self.bn_dense2(self.dense2(x)))
         x = self.drop2(x)
 
         return x # [batch, dim_ff // 2] = [batch, 128]
@@ -183,7 +183,7 @@ class ConvTran_SingleSensor_NoTranLol_Extractor(nn.Module):
 
         self.ffn = nn.Sequential(
             nn.Linear(emb_size, dim_ff),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(dim_ff, emb_size),
             nn.Dropout(dropout)
@@ -217,7 +217,7 @@ class EnhancedSEBlock(nn.Module):
         self.max_pool = nn.AdaptiveMaxPool1d(1)
         self.excitation = nn.Sequential(
             nn.Linear(channels * 2, channels // reduction, bias=False),
-            nn.SiLU(),
+            nn.SiLU(inplace=True),
             nn.Linear(channels // reduction, channels, bias=False),
             nn.Sigmoid()
         )
@@ -238,7 +238,7 @@ class MultiScaleConv1d(nn.Module):
             self.convs.append(nn.Sequential(
                 nn.Conv1d(in_channels, out_channels, ks, padding=ks//2, bias=False),
                 nn.BatchNorm1d(out_channels),
-                nn.SiLU()
+                nn.ReLU(inplace=True)
             ))
         
     def forward(self, x):
@@ -268,11 +268,11 @@ class ResidualSEBlock(nn.Module):
         
     def forward(self, x):
         shortcut = self.shortcut(x)
-        out = F.silu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
         out = self.se(out)
         out += shortcut
-        out = F.silu(out)
+        out = F.relu(out)
         out = self.pool(out)
         out = self.dropout(out)
         return out
@@ -341,7 +341,7 @@ class Public2_SingleSensor_Extractor(nn.Module):
         self.meta_dense = nn.Sequential(
             nn.Linear(5 * channel_size, 32),
             nn.BatchNorm1d(32),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(0.2),
         )
 
@@ -420,7 +420,7 @@ class MultiResidualBiGRU_SingleSensor_Extractor(nn.Module):
         self.feature_fusion = nn.Sequential(
             nn.Linear(pooled_size, hidden_size),
             nn.LayerNorm(hidden_size),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(dropout)
         )
 
@@ -431,7 +431,7 @@ class MultiResidualBiGRU_SingleSensor_Extractor(nn.Module):
         
         x = self.imu_input_projection(x)  # (B, L, hidden_size)
         x = self.input_ln(x)
-        x = nn.functional.silu(x)
+        x = nn.functional.relu(x)
         x = self.input_dropout(x)
         
         if h is None:
@@ -539,7 +539,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
         for extractor_name, feature_dim in extractor_feature_dims.items():
             self.extractor_projections[f'{extractor_name}_projection'] = nn.Sequential(
                 nn.Linear(feature_dim, final_hidden_dim),
-                nn.SiLU(),
+                nn.ReLU(),
                 nn.Dropout(head_droupout),
                 nn.BatchNorm1d(final_hidden_dim)
             )
@@ -557,58 +557,58 @@ class HybridModel_SingleSensor_v1(nn.Module):
 
         self.head1 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, num_classes)
         )
 
         self.head2 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 2)
         )
 
         self.head3 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 4)
         )
 
         self.ext1_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext2_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext3_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext4_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext5_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         )
         self.ext6_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         )
@@ -759,7 +759,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
         for extractor_name, feature_dim in extractor_feature_dims.items():
             self.extractor_projections[f'{extractor_name}_projection'] = nn.Sequential(
                 nn.Linear(feature_dim, final_hidden_dim),
-                nn.SiLU(),
+                nn.ReLU(),
                 nn.Dropout(head_droupout),
                 nn.BatchNorm1d(final_hidden_dim)
             )
@@ -777,46 +777,46 @@ class MultiSensor_HybridModel_v1(nn.Module):
 
         self.head1 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, num_classes)
         )
 
         self.head2 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 2)
         )
 
         self.head3 = nn.Sequential(
             nn.Linear(final_feature_dim, final_feature_dim // 2),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_feature_dim // 2, 4)
         )
 
         self.ext1_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext2_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext3_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
         self.ext4_head1 = nn.Sequential(
             nn.Linear(final_hidden_dim, final_hidden_dim),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.Dropout(head_droupout),
             nn.Linear(final_hidden_dim, num_classes)
         ) 
