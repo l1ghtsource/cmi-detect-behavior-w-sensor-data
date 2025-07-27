@@ -460,6 +460,36 @@ def fast_seq_agg(df):
 
     return res_df
 
+def kalman_1d(z: np.ndarray,
+              Q: float = 1e-5,
+              R: float = 1e-2,
+              x0: float | None = None,
+              P0: float = 1.0) -> np.ndarray:
+    n = len(z)
+    x_hat = np.empty(n)
+    x_est = z[0] if x0 is None else x0
+    P = P0
+    for k in range(n):
+        x_pred = x_est
+        P = P + Q
+        K = P / (P + R)
+        x_est = x_pred + K * (z[k] - x_pred)
+        P = (1.0 - K) * P
+        x_hat[k] = x_est
+    return x_hat
+
+def apply_kalman_to_sequences(df: pd.DataFrame,
+                              sensor_cols: list[str] = ['acc_x', 'acc_y', 'acc_z'],
+                              Q: float = 1e-5,
+                              R: float = 1e-2) -> pd.DataFrame:
+    out = df.copy()
+    for col in sensor_cols:
+        if col in out.columns:
+            out[col] = out[col].apply(
+                lambda seq: kalman_1d(np.asarray(seq, dtype=float), Q=Q, R=R)
+            )
+    return out
+
 def le(df):
     mapper_main = {
         "Above ear - pull hair": 0,

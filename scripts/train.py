@@ -39,7 +39,8 @@ from utils.data_preproc import (
     convert_to_world_coordinates, 
     remove_gravity_from_acc,
     apply_symmetry,
-    fe
+    fe,
+    apply_kalman_to_sequences
 )
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
@@ -81,6 +82,7 @@ if cfg.apply_fe:
 
 train = le(train)
 train_seq = fast_seq_agg(train)
+train_seq = apply_kalman_to_sequences(train_seq, Q=1e-4, R=1e-4)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

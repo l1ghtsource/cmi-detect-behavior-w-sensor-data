@@ -81,6 +81,7 @@ if cfg.apply_fe:
 
 train = le(train)
 train_seq = fast_seq_agg(train)
+train_seq = apply_kalman_to_sequences(train_seq, Q=1e-4, R=1e-4)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
