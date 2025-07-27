@@ -169,9 +169,9 @@ def remove_gravity_from_acc(df):
 def apply_symmetry(data): # TODO: test it?? its can be wrong..
     transformed = data.copy()
     transformed['acc_x'] = -transformed['acc_x']
-    transformed['acc_z'] = -transformed['acc_z']
+    transformed['acc_y'] = -transformed['acc_y']
     transformed['rot_x'] = -transformed['rot_x']
-    transformed['rot_z'] = -transformed['rot_z']
+    transformed['rot_y'] = -transformed['rot_y']
     return transformed
 
 def fe(df):
