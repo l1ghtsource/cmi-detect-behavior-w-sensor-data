@@ -98,7 +98,8 @@ def preprocess_single_row(test_df, use_imu_only):
 
     if cfg.use_hand_symm and use_imu_only:
         right_handed_mask = test_df['handedness'] == 1
-        test_df.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(test_df.loc[right_handed_mask, cfg.imu_cols])
+        cols = test_df.columns.tolist()
+        test_df.loc[right_handed_mask, cols] = apply_symmetry(test_df.loc[right_handed_mask, cols])
 
     if cfg.apply_fe:
         test_df = fe(test_df)
