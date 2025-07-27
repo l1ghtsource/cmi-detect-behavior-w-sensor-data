@@ -165,147 +165,133 @@ class Extractor(nn.Sequential):
         )
 
 class ModelIafossV2(nn.Module):
-    def __init__(self, n=8, nh=256, act=nn.SiLU(inplace=True), ps=0.5):
+    def __init__(
+        self,
+        n: int = 8,
+        nh: int = 256,
+        num_classes: int = 1,
+        act: nn.Module = nn.SiLU(inplace=True),
+        ps: float = 0.5,
+    ):
         super().__init__()
-        self.ex = nn.ModuleList(
-            [
-                nn.Sequential(
-                    Extractor(1, n, 127, maxpool=2, act=act),
-                    ResBlockGeM(n, n, kernel_size=31, downsample=4, act=act),
-                    ResBlockGeM(n, n, kernel_size=31, act=act),
-                ),
-                nn.Sequential(
-                    Extractor(1, n, 127, maxpool=2, act=act),
-                    ResBlockGeM(n, n, kernel_size=31, downsample=4, act=act),
-                    ResBlockGeM(n, n, kernel_size=31, act=act),
-                ),
-            ]
+        self.n = n
+
+        self.stem = nn.Sequential(
+            nn.Conv1d(in_channels=None,
+                      out_channels=n,
+                      kernel_size=127, padding=127//2, bias=False),
+            nn.BatchNorm1d(n),
+            act,
+            nn.Conv1d(n, n, kernel_size=127, padding=127//2, bias=False),
+            GeM(kernel_size=2),
+            ResBlockGeM(n, n, kernel_size=31, downsample=4, act=act),
+            ResBlockGeM(n, n, kernel_size=31,               act=act),
         )
-        self.conv1 = nn.ModuleList(
-            [
-                nn.Sequential(
-                    ResBlockGeM(
-                        1 * n, 1 * n, kernel_size=31, downsample=4, act=act
-                    ),  # 512
-                    ResBlockGeM(1 * n, 1 * n, kernel_size=31, act=act),
-                ),
-                nn.Sequential(
-                    ResBlockGeM(
-                        1 * n, 1 * n, kernel_size=31, downsample=4, act=act
-                    ),  # 512
-                    ResBlockGeM(1 * n, 1 * n, kernel_size=31, act=act),
-                ),
-                nn.Sequential(
-                    ResBlockGeM(
-                        3 * n, 3 * n, kernel_size=31, downsample=4, act=act
-                    ),  # 512
-                    ResBlockGeM(3 * n, 3 * n, kernel_size=31, act=act),
-                ),  # 128
-            ]
+
+        self.conv1 = nn.Sequential(
+            ResBlockGeM(n,   n,   kernel_size=31, downsample=4, act=act),
+            ResBlockGeM(n,   n,   kernel_size=31,               act=act),
+            ResBlockGeM(n, 3*n,  kernel_size=31, downsample=4, act=act),
+            ResBlockGeM(3*n, 3*n, kernel_size=31,               act=act),
         )
+
         self.conv2 = nn.Sequential(
-            ResBlockGeM(6 * n, 4 * n, kernel_size=15, downsample=4, act=act),
-            ResBlockGeM(4 * n, 4 * n, kernel_size=15, act=act),  # 128
-            ResBlockGeM(4 * n, 8 * n, kernel_size=7, downsample=4, act=act),  # 32
-            ResBlockGeM(8 * n, 8 * n, kernel_size=7, act=act),  # 8
+            ResBlockGeM(6*n, 4*n, kernel_size=15, downsample=4, act=act),
+            ResBlockGeM(4*n, 4*n, kernel_size=15,               act=act),
+            ResBlockGeM(4*n, 8*n, kernel_size=7,  downsample=4, act=act),
+            ResBlockGeM(8*n, 8*n, kernel_size=7,                act=act),
         )
+
         self.head = nn.Sequential(
             AdaptiveConcatPool1d(),
             nn.Flatten(),
-            nn.Linear(n * 8 * 2, nh),
-            nn.BatchNorm1d(nh),
-            nn.Dropout(ps),
-            act,
+            nn.Linear(8*n*2, nh),
+            nn.BatchNorm1d(nh), nn.Dropout(ps), act,
             nn.Linear(nh, nh),
-            nn.BatchNorm1d(nh),
-            nn.Dropout(ps),
-            act,
-            nn.Linear(nh, 1),
+            nn.BatchNorm1d(nh), nn.Dropout(ps), act,
+            nn.Linear(nh, num_classes),
         )
 
-    def forward(self, x):
-        x0 = [
-            self.ex[0](x[:, 0].unsqueeze(1)),
-            self.ex[0](x[:, 1].unsqueeze(1)),
-            self.ex[1](x[:, 2].unsqueeze(1)),
-        ]
-        x1 = [
-            self.conv1[0](x0[0]),
-            self.conv1[0](x0[1]),
-            self.conv1[1](x0[2]),
-            self.conv1[2](torch.cat([x0[0], x0[1], x0[2]], 1)),
-        ]
-        x2 = torch.cat(x1, 1)
-        return self.head(self.conv2(x2))
+    def forward(self, x: torch.Tensor):
+        x = x.squeeze(1).permute(0, 2, 1)
+        C_in = x.size(1)
 
-class Combined1D2D(nn.Module):
-    def __init__(self, model1d, encoder="resnet18", emb_1d=128):
+        if isinstance(self.stem[0], nn.Conv1d) and self.stem[0].in_channels is None:
+            self.stem[0] = nn.Conv1d(C_in, self.n,
+                                     kernel_size=127, padding=127//2, bias=False).to(x.device)
+
+        out = self.stem(x)
+        x1a = self.conv1[:2](out)
+        x1b = self.conv1[2:](torch.cat([out, out, out], dim=1))
+        x1 = torch.cat([x1a, x1b], dim=1)
+        features = self.conv2(x1)
+        return self.head(features)
+
+class CQT2D(nn.Module):
+    def __init__(
+        self,
+        encoder: str = "resnet18",
+        num_classes: int = 18,
+        sample_rate: int = 10,
+        hop_length: int = 8,
+        n_cqt: int = 3,
+    ):
         super().__init__()
-        self.model1d = model1d
-
-        # Replace last linear layer to return a embedding of size emb_1d
-        head = list(self.model1d.head.children())
-        new_linear = nn.Linear(head[-1].in_features, emb_1d)
-        self.model1d.head = nn.Sequential(*head[:-1] + [new_linear])
+        self.n_cqt = n_cqt
 
         self.model2d = timm.create_model(
             encoder,
             pretrained=True,
-            num_classes=0,  # 0 = feature extraction
-            in_chans=4,
+            num_classes=0,
+            in_chans=n_cqt + 1,
         )
 
-        # Find the embedding size of model2d
-        o = self.model2d(torch.randn(2, 4, 224, 224))
-        emb_2d = o.shape[-1]
+        with torch.no_grad():
+            dummy = torch.randn(1, n_cqt + 1, 224, 224)
+            emb_2d = self.model2d(dummy).shape[-1]
 
         self.head = nn.Sequential(
-            nn.Linear(emb_1d + emb_2d, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(emb_2d, 128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, num_classes),
         )
 
         self.spec_transform = Spectrogram.CQT1992v2(
-            sr=2048,
+            sr=sample_rate,
             fmin=20,
-            fmax=1000,
-            hop_length=8,  # img width = sig_length / hop_length
+            fmax=1_000,
+            hop_length=hop_length,
             window="flattop",
-            # Oversampling freq axis
             bins_per_octave=48,
             filter_scale=0.25,
         )
 
-    def frequency_encoding(self, x):
-        device = x.device
-        bs, fbins, t = x.shape[0], x.shape[2], x.shape[3]
-        freq_encoding = 2 * torch.arange(fbins, device=device) / fbins - 1  # -1 to +1
-        freq_encoding = torch.stack([freq_encoding] * t, -1).unsqueeze(0)
-        freq_encoding = torch.stack([freq_encoding] * bs)
-        return torch.cat([x, freq_encoding], 1)
+    @staticmethod
+    def _add_frequency_encoding(spec: torch.Tensor) -> torch.Tensor:
+        B, C, F, T = spec.shape
+        freq_enc = 2 * torch.arange(F, device=spec.device) / F - 1
+        freq_enc = freq_enc[None, None, :, None].repeat(B, 1, 1, T)
+        return torch.cat([spec, freq_enc], dim=1)
 
-    def prepare_image(self, x):
-        bs = x.shape[0]
-        x_reshaped = x.reshape(-1, 4096)
-        spec = self.spec_transform(x_reshaped)
-        spec = spec.reshape(bs, 3, spec.shape[1], spec.shape[2])
+    def _prepare_image(self, x: torch.Tensor) -> torch.Tensor:
+        B, _, T, C_src = x.shape
+        x = x.squeeze(1).permute(0, 3, 2)
+        spec = self.spec_transform(x.reshape(-1, T))
+        F, T2 = spec.shape[-2], spec.shape[-1]
+        spec = spec.reshape(B, C_src, F, T2)
+
+        if C_src >= self.n_cqt:
+            spec = spec[:, :self.n_cqt]
+        else:
+            pad = self.n_cqt - C_src
+            spec = torch.cat([spec,
+                              spec[:, -1:].repeat(1, pad, 1, 1)], dim=1)
 
         spec = standard_scaler(spec)
-        spec = self.frequency_encoding(spec)
+        spec = self._add_frequency_encoding(spec)
         return spec
 
-    def forward(self, x):
-        out_1d = self.model1d(x)
-        out_2d = self.model2d(self.prepare_image(x))
-        embedding = torch.cat([out_1d, out_2d], -1)
-        return self.head(embedding)
-
-
-if __name__ == "__main__":
-    x = torch.randn(size=(32, 3, 4096))
-
-    model_1d = ModelIafossV2()  # Load from checkpoint etc.
-    model = Combined1D2D(model_1d, "resnet18")
-
-    out = model(x)
-    print(out.shape)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        img = self._prepare_image(x)
+        feats = self.model2d(img)
+        return self.head(feats)
