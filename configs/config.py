@@ -259,7 +259,7 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        '/kaggle/input/excel-exps-cmi-imu/noavg_top3_models_74row_excel': { # top3 models (avg) - 74 row
+        '/kaggle/input/cmi-rows-79-80-fulldatamodels/imu': { # full data model - 79 row
             'weight': 1,
             'model_params': {
                 'num_classes': 18,
@@ -267,7 +267,7 @@ cfg.weights_pathes = {
         },
     },
     'imu+tof+thm': {
-        '/kaggle/input/timemil-soupchik-imu-16-06/avg_by_model': { # 5folds avg models in ver21 - 72 75 76 77 rows
+        '/kaggle/input/timemil-soupchik-imu-16-06/top3_avg_models_76row_excel': { # top3 avg model - 76 row
             'weight': 1,
             'model_params': {
                 'num_classes': 18,
@@ -275,6 +275,8 @@ cfg.weights_pathes = {
         },
     }
 }
+cfg.ext_weights_imu = [] #[0.76034298, 0.88646032, 0.36542368, 0.16731129, 0.49523816, 0.83187372, 0.88942603] # -> 0.8337930121036714 (was 0.829743509510857)
+cfg.ext_weights_all = [] #[0.79060402, 0.28657821, 0.46755736, 0.44863906, 0.26708854] # -> 0.8799300236232007 (was 0.8783956558301291)
 cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25

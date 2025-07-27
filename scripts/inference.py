@@ -135,7 +135,16 @@ def predict_single_batch(model, batch, use_imu_only):
         for aug_batch in augmented_batches:
             for key in aug_batch.keys():
                 aug_batch[key] = aug_batch[key].to(device)
-            outputs, aux2_outputs, *_ = forward_model(model, batch, imu_only=use_imu_only)
+            if use_imu_only:
+                outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4, ext5, ext6 = forward_model(model, batch, imu_only=use_imu_only)
+                if cfg.ext_weights_imu != []:
+                    w0, w1, w2, w3, w4, w5, w6 = cfg.ext_weights_imu
+                    outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4 + w5 * ext5 + w6 * ext6
+            else:
+                outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4 = forward_model(model, batch, imu_only=use_imu_only)
+                if cfg.ext_weights_all != []:
+                    w0, w1, w2, w3, w4 = cfg.ext_weights_all
+                    outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4
             batch_tta_logits.append(outputs.cpu().numpy())
             batch_tta_logits_aux2.append(aux2_outputs.cpu().numpy())
         
