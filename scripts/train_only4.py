@@ -73,7 +73,8 @@ if cfg.only_remove_g: # can't be used w/ use_world_coords
 
 if cfg.use_hand_symm and cfg.imu_only:
     right_handed_mask = train['handedness'] == 1
-    train.loc[right_handed_mask, cfg.imu_cols] = apply_symmetry(train.loc[right_handed_mask, cfg.imu_cols])
+    cols = train.columns.tolist()
+    train.loc[right_handed_mask, cols] = apply_symmetry(train.loc[right_handed_mask, cols])
 
 if cfg.apply_fe:
     train = fe(train)
