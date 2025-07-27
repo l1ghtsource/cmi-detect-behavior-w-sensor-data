@@ -490,7 +490,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  head_droupout=0.2,
                  attention_n_heads=8,
                  attention_dropout=0.2,
-                 use_dct=True,
+                 use_dct=cfg.use_dct,
                  num_classes=cfg.main_num_classes):
         super().__init__()
         

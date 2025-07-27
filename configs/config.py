@@ -118,6 +118,7 @@ cfg.fe_relative_quat = False # add relative quat to first frame
 cfg.use_quat6d = False # better rot repr for nn
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
+cfg.use_dct = True # dct -> bp -> idct
 
 # if cfg.fe_mag_ang:
 #     cfg.imu_add += 4
