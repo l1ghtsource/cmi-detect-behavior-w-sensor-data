@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_dct import dct, idct
 
 from modules.inceptiontime_replacers import Resnet1DFeatureExtractor
 from models.convtran import SEBlock228
@@ -452,6 +453,23 @@ class MultiResidualBiGRU_SingleSensor_Extractor(nn.Module):
         features = self.feature_fusion(pooled_features)  # (B, hidden_size)
         
         return features
+
+class DCTMaskBlock(nn.Module):
+    def __init__(self, seq_len, n_channels, init_kernels=None):
+        super().__init__()
+        self.seq_len = seq_len
+        self.conv = nn.Conv1d(1, n_channels, kernel_size=1, bias=False)
+        nn.init.constant_(self.conv.weight, 1.0)
+        self.act = nn.Sigmoid()
+
+    def forward(self, x):
+        bs, C, T = x.shape
+        x_dct = dct(x, norm='ortho')
+        ones = torch.ones(bs, 1, T, device=x.device)
+        w = self.act(self.conv(ones))
+        x_dct = x_dct * w
+        x_idct = idct(x_dct, norm='ortho') # / (T * 2.0)
+        return x_idct.permute(0, 2, 1)
     
 class HybridModel_SingleSensor_v1(nn.Module):
     def __init__(self, 
@@ -472,8 +490,13 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  head_droupout=0.2,
                  attention_n_heads=8,
                  attention_dropout=0.2,
+                 use_dct=True,
                  num_classes=cfg.main_num_classes):
         super().__init__()
+        
+        self.use_dct = use_dct
+        if self.use_dct:
+            self.dct_bp = DCTMaskBlock(seq_len=seq_len, n_channels=32)
         
         self.channel_sizes = {
             'imu': 3,      # x_imu: 0-2
@@ -484,7 +507,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
         }
         
         self.branch_extractors = nn.ModuleDict()
-        
+
         for branch_name, channel_size in self.channel_sizes.items():
             self.branch_extractors[f'{branch_name}_extractor1'] = Public_SingleSensor_Extractor(
                 channel_size=channel_size, 
@@ -646,7 +669,12 @@ class HybridModel_SingleSensor_v1(nn.Module):
     
     def forward(self, _x, pad_mask=None):
         # input is (bs, 1, T, C)
-        
+
+        if self.use_dct:
+            x_wave = _x.squeeze(1).permute(0, 2, 1)
+            x_wave = self.dct_bp(x_wave)
+            _x = x_wave.unsqueeze(1)
+
         x_dict = {
             'imu': _x[:, :, :, :3],
             'rot': _x[:, :, :, 3:7],
