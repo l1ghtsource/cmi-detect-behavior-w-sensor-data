@@ -282,26 +282,7 @@ cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25
 cfg.override_non_target = False
-cfg.tta_strategies = {
-    # 'jitter': {
-    #     'sigma': 0.03,
-    #     'sensors': ['imu', 'thm', 'tof']
-    # },
-    # 'scaling': {
-    #     'sigma': 0.03,
-    #     'sensors': ['imu', 'thm']
-    # },
-    # 'magnitude_warp': {
-    #     'sigma': 0.07, 
-    #     'knot': 3,
-    #     'sensors': ['imu', 'thm']
-    # },
-    # 'time_warp': {
-    #     'sigma': 0.05, 
-    #     'knot': 3,
-    #     'sensors': ['imu', 'tof', 'thm']
-    # },
-}
+cfg.tta_strategies = ['rotation_z']
 
 # --- logging ---
 cfg.do_wandb_log = True

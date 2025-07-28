@@ -2,6 +2,7 @@ import pandas as pd
 import polars as pl
 import numpy as np
 from scipy.stats import mode
+from scipy.spatial.transform import Rotation as R
 import glob
 import os
 
@@ -27,7 +28,6 @@ from utils.data_preproc import (
     fe,
     get_rev_mapping
 )
-from utils.tta import apply_tta
 
 # TODO: multigpu inference
 
@@ -89,6 +89,80 @@ for w_key in ['imu_only', 'imu+tof+thm']:
             'weight': params['weight']
         }
 
+def apply_sequence_tta(df, tta_strategies, use_imu_only):
+    augmented_sequences = []
+    augmented_sequences.append(df.copy())
+    
+    if not tta_strategies:
+        return augmented_sequences
+    
+    sequence_ids = df['sequence_id'].unique() if 'sequence_id' in df.columns else [0]
+    
+    for strategy in tta_strategies:
+        try:
+            if strategy == 'jitter' and use_imu_only:
+                df_jitter = df.copy()
+                for seq_id in sequence_ids:
+                    mask = df_jitter['sequence_id'] == seq_id if 'sequence_id' in df_jitter.columns else slice(None)
+                    
+                    acc_cols = [col for col in df_jitter.columns if col.startswith('acc_')]
+                    rot_cols = [col for col in df_jitter.columns if col.startswith('rot_')]
+                    
+                    jitter_strength = 0.03
+                    
+                    for col in acc_cols + rot_cols:
+                        if col in df_jitter.columns:
+                            data_std = df_jitter.loc[mask, col].std()
+                            if pd.isna(data_std) or data_std == 0:
+                                continue
+                            noise = np.random.normal(0, jitter_strength * data_std, len(df_jitter.loc[mask, col]))
+                            df_jitter.loc[mask, col] += noise
+                
+                augmented_sequences.append(df_jitter)
+            
+            elif strategy == 'rotation_z' and use_imu_only:
+                df_rot = df.copy()
+                for seq_id in sequence_ids:
+                    mask = df_rot['sequence_id'] == seq_id if 'sequence_id' in df_rot.columns else slice(None)
+                    
+                    max_angle_deg = 30
+                    angle = np.random.uniform(-max_angle_deg, max_angle_deg) * np.pi / 180
+                    cos_angle = np.cos(angle)
+                    sin_angle = np.sin(angle)
+                    
+                    if 'acc_x' in df_rot.columns and 'acc_y' in df_rot.columns:
+                        acc_x_orig = df_rot.loc[mask, 'acc_x'].values.copy()
+                        acc_y_orig = df_rot.loc[mask, 'acc_y'].values.copy()
+                        
+                        df_rot.loc[mask, 'acc_x'] = cos_angle * acc_x_orig - sin_angle * acc_y_orig
+                        df_rot.loc[mask, 'acc_y'] = sin_angle * acc_x_orig + cos_angle * acc_y_orig
+                    
+                    if all(col in df_rot.columns for col in ['rot_w', 'rot_x', 'rot_y', 'rot_z']):
+                        quat_data = df_rot.loc[mask, ['rot_w', 'rot_x', 'rot_y', 'rot_z']].values
+                        
+                        if np.any(np.isnan(quat_data)) or quat_data.shape[0] == 0:
+                            continue
+                        
+                        quat_scipy_format = quat_data[:, [1, 2, 3, 0]]
+                        
+                        z_rotation = R.from_euler('z', angle)
+                        
+                        original_rotations = R.from_quat(quat_scipy_format)
+                        rotated_rotations = z_rotation * original_rotations
+                        quat_rotated_scipy = rotated_rotations.as_quat()
+                        
+                        df_rot.loc[mask, 'rot_w'] = quat_rotated_scipy[:, 3]
+                        df_rot.loc[mask, 'rot_x'] = quat_rotated_scipy[:, 0]
+                        df_rot.loc[mask, 'rot_y'] = quat_rotated_scipy[:, 1]
+                        df_rot.loc[mask, 'rot_z'] = quat_rotated_scipy[:, 2]
+                
+                augmented_sequences.append(df_rot)
+                
+        except Exception as e:
+            print('uhh its bad...')
+
+    return augmented_sequences
+
 def preprocess_single_row(test_df, use_imu_only):
     if cfg.use_world_coords:
         test_df = convert_to_world_coordinates(test_df)
@@ -121,37 +195,24 @@ def create_single_batch(processed_df):
     return batch
 
 def predict_single_batch(model, batch, use_imu_only):
-    if not use_tta:
-        outputs, aux2_outputs, *_ = forward_model(model, batch, imu_only=use_imu_only)
-        return outputs.cpu().numpy(), aux2_outputs.cpu().numpy()
+    if use_imu_only:
+        outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4, ext5, ext6 = forward_model(
+            model, batch, imu_only=use_imu_only
+        )
+        
+        if cfg.ext_weights_imu:
+            w0, w1, w2, w3, w4, w5, w6 = cfg.ext_weights_imu
+            outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4 + w5 * ext5 + w6 * ext6
     else:
-        for key in batch.keys():
-            batch[key] = batch[key].cpu()
-        augmented_batches = apply_tta(batch, cfg.tta_strategies)
+        outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4 = forward_model(
+            model, batch, imu_only=use_imu_only
+        )
         
-        batch_tta_logits = []
-        batch_tta_logits_aux2 = []
-        
-        for aug_batch in augmented_batches:
-            for key in aug_batch.keys():
-                aug_batch[key] = aug_batch[key].to(device)
-            if use_imu_only:
-                outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4, ext5, ext6 = forward_model(model, batch, imu_only=use_imu_only)
-                if cfg.ext_weights_imu != []:
-                    w0, w1, w2, w3, w4, w5, w6 = cfg.ext_weights_imu
-                    outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4 + w5 * ext5 + w6 * ext6
-            else:
-                outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4 = forward_model(model, batch, imu_only=use_imu_only)
-                if cfg.ext_weights_all != []:
-                    w0, w1, w2, w3, w4 = cfg.ext_weights_all
-                    outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4
-            batch_tta_logits.append(outputs.cpu().numpy())
-            batch_tta_logits_aux2.append(aux2_outputs.cpu().numpy())
-        
-        avg_tta_logits = np.mean(batch_tta_logits, axis=0)
-        avg_tta_logits_aux2 = np.mean(batch_tta_logits_aux2, axis=0)
-        
-        return avg_tta_logits, avg_tta_logits_aux2
+        if cfg.ext_weights_all:
+            w0, w1, w2, w3, w4 = cfg.ext_weights_all
+            outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4
+    
+    return outputs.cpu().numpy(), aux2_outputs.cpu().numpy()
 
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
@@ -168,9 +229,10 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         test_demographics = demographics.to_pandas()
         test_df = test_df.merge(test_demographics, how='left', on='subject')
 
-    processed_df = preprocess_single_row(test_df, use_imu_only)
-    
-    batch = create_single_batch(processed_df)
+    if use_tta:
+        augmented_sequences = apply_sequence_tta(test_df, cfg.tta_strategies, use_imu_only)
+    else:
+        augmented_sequences = [test_df]
     
     all_model_averaged_logits = []
     all_model_averaged_logits_aux2 = []
@@ -188,12 +250,36 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
 
         with torch.no_grad():
             for i, model in enumerate(model_data['models']):
-                logits, logits_aux2 = predict_single_batch(model, batch, use_imu_only)
-                if cfg.use_entmax: # apply entmax
-                    logits = entmax_bisect(torch.tensor(logits, device=device), alpha=cfg.entmax_alpha, dim=1).cpu().numpy()
-                    logits_aux2 = entmax_bisect(torch.tensor(logits_aux2, device=device), alpha=cfg.entmax_alpha, dim=1).cpu().numpy()
-                fold_logits.append(logits)
-                fold_logits_aux2.append(logits_aux2)
+                
+                tta_logits = []
+                tta_logits_aux2 = []
+                
+                for aug_df in augmented_sequences:
+                    processed_df = preprocess_single_row(aug_df.copy(), use_imu_only)
+                    batch = create_single_batch(processed_df)
+                    
+                    logits, logits_aux2 = predict_single_batch(model, batch, use_imu_only)
+                    
+                    if cfg.use_entmax:
+                        logits = entmax_bisect(
+                            torch.tensor(logits, device=device), 
+                            alpha=cfg.entmax_alpha, 
+                            dim=1
+                        ).cpu().numpy()
+                        logits_aux2 = entmax_bisect(
+                            torch.tensor(logits_aux2, device=device), 
+                            alpha=cfg.entmax_alpha, 
+                            dim=1
+                        ).cpu().numpy()
+                    
+                    tta_logits.append(logits)
+                    tta_logits_aux2.append(logits_aux2)
+                
+                avg_tta_logits = np.mean(tta_logits, axis=0)
+                avg_tta_logits_aux2 = np.mean(tta_logits_aux2, axis=0)
+                
+                fold_logits.append(avg_tta_logits)
+                fold_logits_aux2.append(avg_tta_logits_aux2)
 
         model_averaged_logits = np.mean(np.array(fold_logits), axis=0)
         model_averaged_logits_aux2 = np.mean(np.array(fold_logits_aux2), axis=0)
