@@ -3,6 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm
 import math
+from types import SimpleNamespace
 
 # take it from https://github.com/zclzcl0223/CMamba/blob/main/models/CMamba.py
 
@@ -500,9 +501,9 @@ class TSClassModel(nn.Module):
     """
     def __init__(
         self,
-        seq_len: int,
-        channels: int,
-        num_classes: int,
+        seq_len: int = 120,
+        channels: int = 32,
+        num_classes: int = 18,
         d_model: int = 64,
         patch_len: int = 16,
         stride: int = 8,
@@ -532,34 +533,33 @@ class TSClassModel(nn.Module):
             d_model, patch_len, stride, padding, head_dropout
         )
 
-        self.encoder = CMambaEncoder(
-            d_model=d_model,
-            d_ff=d_ff,
-            d_state=d_state,
-            dt_rank=dt_rank,
-            e_layers=e_layers,
-            dropout=dropout,
-            pscan=pscan,
-            bias=bias,
-            dt_init=dt_init,
-            dt_scale=dt_scale,
-            dt_min=dt_min,
-            dt_max=dt_max,
-            dt_init_floor=dt_init_floor,
-            patch_num=self.patch_num,
-            gddmlp=gddmlp,
-            reduction=reduction,
-            avg=avg,
-            max_pool=max_pool,
-            c_out=channels
-        )
+        configs = SimpleNamespace()
+        configs.d_model = d_model
+        configs.d_ff = d_ff
+        configs.d_state = d_state
+        configs.dt_rank = dt_rank
+        configs.e_layers = e_layers
+        configs.dropout = dropout
+        configs.pscan = pscan
+        configs.bias = bias
+        configs.dt_init = dt_init
+        configs.dt_scale = dt_scale
+        configs.dt_min = dt_min
+        configs.dt_max = dt_max
+        configs.dt_init_floor = dt_init_floor
+        configs.gddmlp = gddmlp
+        configs.reduction = reduction
+        configs.avg = avg
+        configs.max = max_pool
+        configs.c_out = channels
 
-        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.encoder = CMambaEncoder(configs)
+
         self.classifier = nn.Linear(d_model, num_classes)
 
     def forward(self, x):
         bs, _, _, n_vars = x.shape
-        x = x.squeeze(1).permute(0, 3, 2)
+        x = x.squeeze(1).permute(0, 2, 1)
 
         mean = x.mean(-1, keepdim=True)
         std = torch.sqrt(x.var(-1, keepdim=True, unbiased=False) + 1e-5)
@@ -570,7 +570,7 @@ class TSClassModel(nn.Module):
 
         x = x.view(bs, n_vars, x.size(1), x.size(2)).permute(0, 1, 3, 2)
 
-        x = self.pool(x).squeeze(-1)
+        x = x.mean(-1)
         x = x.mean(1)
 
         return self.classifier(x)
