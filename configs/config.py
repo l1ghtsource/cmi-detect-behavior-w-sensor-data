@@ -250,6 +250,7 @@ cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
 # --- mixup ---
 cfg.use_mixup = True
+cfg.is_zebra = False
 cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 

@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from configs.config import cfg
 
 class MixupLoss:
     def __init__(self, main_criterion, seq_type_criterion, orientation_criterion):
@@ -14,6 +15,57 @@ class MixupLoss:
         return main_loss, seq_type_loss, orientation_loss
 
 def mixup_batch(batch, alpha=1.0, device='cuda'):
+    if cfg.is_zebra:
+        return mixup_batch_zebra(batch=batch, alpha=alpha, device=device)
+    else:
+        return mixup_batch_normal(batch=batch, alpha=alpha, device=device)
+
+def mixup_batch_zebra(batch, alpha=1.0, device='cuda'):
+    batch_size = batch['main_target'].size()[0]
+    index = torch.randperm(batch_size).to(device)
+    
+    mixed_batch = {}
+    
+    target_keys = {'main_target', 'seq_type_aux_target', 'orientation_aux_target'}
+    
+    for key in batch.keys():
+        if key not in target_keys:
+            original_data = batch[key]
+            
+            if len(original_data.shape) == 4:
+                mixed_data = original_data.clone()
+                mixed_data[:, :, 0::2, :] = original_data[:, :, 0::2, :]
+                mixed_data[:, :, 1::2, :] = original_data[index][:, :, 1::2, :]
+                mixed_batch[key] = mixed_data
+            elif len(original_data.shape) == 3:
+                mixed_data = original_data.clone()
+                mixed_data[:, 0::2, :] = original_data[:, 0::2, :]
+                mixed_data[:, 1::2, :] = original_data[index][:, 1::2, :]
+                mixed_batch[key] = mixed_data
+            elif len(original_data.shape) == 2:
+                mixed_data = original_data.clone()
+                mixed_data[:, 0::2] = original_data[:, 0::2]
+                mixed_data[:, 1::2] = original_data[index][:, 1::2]
+                mixed_batch[key] = mixed_data
+            else:
+                mixed_batch[key] = original_data
+        else:
+            mixed_batch[key] = batch[key]
+    
+    targets_a = batch['main_target']
+    targets_b = batch['main_target'][index]
+    
+    seq_type_targets_a = batch['seq_type_aux_target']
+    seq_type_targets_b = batch['seq_type_aux_target'][index]
+
+    orientation_targets_a = batch['orientation_aux_target']
+    orientation_targets_b = batch['orientation_aux_target'][index]
+    
+    lam = 0.5
+    
+    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
+
+def mixup_batch_normal(batch, alpha=1.0, device='cuda'):
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
@@ -44,7 +96,7 @@ def mixup_batch(batch, alpha=1.0, device='cuda'):
     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
 
 # mixup only in (label <= 7) or (label > 7) groups
-# def mixup_batch(batch, alpha=1.0, device='cuda'):
+# def mixup_batch_normal(batch, alpha=1.0, device='cuda'):
 #     if alpha > 0:
 #         lam = np.random.beta(alpha, alpha)
 #     else:
