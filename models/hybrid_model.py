@@ -161,7 +161,7 @@ class ConvTran_SingleSensor_NoTranLol_Extractor(nn.Module):
                  dim_ff=cfg.convtran_dim_ff, 
                  dropout=cfg.convtran_dropout,
                  ks1=cfg.convtran_ks1,
-                 ks2=cfg.convtran_ks1,
+                 ks2=cfg.convtran_ks2,
                  se_r=cfg.convtran_se_r):
         super().__init__()
 
@@ -485,7 +485,7 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  convtran_dim_ff=cfg.convtran_dim_ff, 
                  convtran_dropout=cfg.convtran_dropout,
                  convtran_ks1=cfg.convtran_ks1,
-                 convtran_ks2=cfg.convtran_ks1,
+                 convtran_ks2=cfg.convtran_ks2,
                  convtran_se_r=cfg.convtran_se_r,
                  out_size_public2=256+32,
                  cnn1d_out_channels=32,
