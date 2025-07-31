@@ -176,13 +176,13 @@ cfg.timemil_extractor = 'inception_time' # ['inception_time', 'lite', 'resnet', 
 cfg.timemil_singlebranch = True
 
 # --- convtran ---
-cfg.convtran_emb_size = 128
+cfg.convtran_emb_size = 128# -> 128 ok
 cfg.convtran_num_heads = 8
-cfg.convtran_dim_ff = 256
-cfg.convtran_dropout = 0.1
-cfg.convtran_ks1 = 15
-cfg.convtran_ks2 = 3
-cfg.convtran_se_r = 16
+cfg.convtran_dim_ff = 128#256 -> 128 better
+cfg.convtran_dropout = 0.3#0.1 -> 0.3 is better
+cfg.convtran_ks1 = 7#15 -> 7 better
+cfg.convtran_ks2 = 5#3 # -> 5 better
+cfg.convtran_se_r = 16# -> 16 ok
 cfg.convtran_type = 'notran' # ['default', 'notran', 'multiscale', 'residual', 'inception', 'se']
 
 # --- cnn1d ---
