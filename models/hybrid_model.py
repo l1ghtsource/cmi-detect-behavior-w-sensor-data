@@ -489,9 +489,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  convtran_se_r=cfg.convtran_se_r,
                  out_size_public2=256+32,
                  cnn1d_out_channels=32,
-                 multibigru_dim=128,
+                 multibigru_dim=64, # was 128
                  multibigru_layers=3,
-                 multibigru_dropout=0.1,
+                 multibigru_dropout=0.3, # was 0.1
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
                  attention_n_heads=8,
@@ -731,9 +731,9 @@ class MultiSensor_HybridModel_v1(nn.Module):
                  dim_ff_public=256,
                  dropout_public=0.3,
                  cnn1d_out_channels=32,
-                 multibigru_dim=128,
+                 multibigru_dim=64, # was 128
                  multibigru_layers=3,
-                 multibigru_dropout=0.1,
+                 multibigru_dropout=0.3, # was 0.1
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
                  attention_n_heads=8,

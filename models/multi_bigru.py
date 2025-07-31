@@ -112,9 +112,9 @@ class MultiResidualBiGRU_SingleSensor_Extractor(nn.Module):
 
 class MultiResidualBiGRU_SingleSensor_v1(nn.Module):
     def __init__(self, 
-                 multibigru_dim=128,
-                 multibigru_layers=3,
-                 multibigru_dropout=0.2,
+                 multibigru_dim=64,#128, -> 64 the same
+                 multibigru_layers=3,# 3 -> ok
+                 multibigru_dropout=0.3,#0.2, -> 0.3 better
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
                  attention_n_heads=8,
