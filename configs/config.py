@@ -118,7 +118,7 @@ cfg.fe_relative_quat = False # add relative quat to first frame
 cfg.use_quat6d = False # better rot repr for nn
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
-cfg.use_dct = True # dct -> bp -> idct
+cfg.use_dct = False # dct -> bp -> idct
 
 # if cfg.fe_mag_ang:
 #     cfg.imu_add += 4
@@ -242,7 +242,7 @@ cfg.rotation_max_angle = 30
 cfg.moda_proba = 0.0 # bad ??
 cfg.moda_sensors = ['imu']
 
-cfg.time_mask_proba = 0.0 # in testing
+cfg.time_mask_proba = 0.0 # useless ??
 cfg.time_mask_n_features = 3
 cfg.time_mask_max_width_frac = 0.2
 cfg.time_mask_sensors = ['imu', 'thm', 'tof']
@@ -253,9 +253,9 @@ cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
 # --- mixup ---
 cfg.use_mixup = True
-cfg.is_zebra = False
 cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
+cfg.is_zebra = False
 
 # --- ema ---
 cfg.use_ema = False
