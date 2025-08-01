@@ -236,10 +236,7 @@ class MetaFeatureExtractor(nn.Module):
         return torch.cat([mean, std, max_val, min_val, slope], dim=1)
 
 class Public2_SingleSensor_Extractor(nn.Module):
-    def __init__(
-        self,
-        channel_size=cfg.imu_vars, 
-    ):
+    def __init__(self, channel_size):
         super().__init__()
 
         self.meta_extractor = MetaFeatureExtractor()
@@ -247,52 +244,53 @@ class Public2_SingleSensor_Extractor(nn.Module):
             nn.Linear(5 * channel_size, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.3),
         )
 
-        self.branches = nn.ModuleList(
-            [
-                nn.Sequential(
-                    MultiScaleConv1d(1, 12, kernel_sizes=[3, 5, 7]),
-                    ResidualSEBlock(36, 48, 3, dropout=0.3),
-                    ResidualSEBlock(48, 48, 3, dropout=0.3),
-                )
-                for _ in range(channel_size)
-            ]
+        self.conv_shared = MultiScaleConv1d(
+            in_channels=channel_size,
+            out_channels=64,
+            kernel_sizes=[3, 5, 7]
+        ) 
+        self.bn_shared = nn.BatchNorm1d(64 * 3)
+        self.relu_shared = nn.ReLU()
+
+        self.res_block = ResidualSEBlock(
+            in_channels=64*3,
+            out_channels=64,
+            kernel_size=7,
+            dropout=0.3
         )
 
         self.bigru = nn.GRU(
-            input_size=48 * channel_size,
+            input_size=64,
             hidden_size=128,
-            num_layers=2,
+            num_layers=1,
             batch_first=True,
             bidirectional=True,
             dropout=0.2,
         )
 
-        self.attention_pooling = AttentionLayer(256)
+        self.attention_pooling = AttentionLayer(128*2)
 
     def forward(self, x, pad_mask=None):
-        x = x.squeeze(1) # (bs, l, c)
+        x = x.squeeze(1)
 
-        meta = self.meta_extractor(x, pad_mask=pad_mask)
-        meta_proj = self.meta_dense(meta)
+        meta = self.meta_extractor(x, pad_mask)
+        meta = self.meta_dense(meta)
 
-        branch_outputs = []
-        for i in range(x.shape[2]):
-            channel_input = x[:, :, i].unsqueeze(1)
-            processed = self.branches[i](channel_input)
-            branch_outputs.append(processed.transpose(1, 2))
+        x_conv = x.permute(0, 2, 1)
+        x_conv = self.relu_shared(self.bn_shared(
+            self.conv_shared(x_conv)
+        ))
 
-        combined = torch.cat(branch_outputs, dim=2)
+        x_conv = self.res_block(x_conv)
+        x_seq = x_conv.permute(0, 2, 1)
 
-        gru_out, _ = self.bigru(combined)
+        gru_out, _ = self.bigru(x_seq)
+        pooled = self.attention_pooling(gru_out)
 
-        pooled_output = self.attention_pooling(gru_out)
-
-        fused = torch.cat([pooled_output, meta_proj], dim=1) # 256 + 32 = 288
-
-        return fused
+        return torch.cat([pooled, meta], dim=1)
     
 class Public_SingleSensor_v1(nn.Module):
     def __init__(self, 
