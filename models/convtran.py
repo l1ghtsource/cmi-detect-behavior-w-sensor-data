@@ -220,14 +220,11 @@ class ConvTran_SingleSensor_NoTranLol_Extractor(nn.Module):
                  emb_size=cfg.convtran_emb_size, 
                  num_heads=cfg.convtran_num_heads, 
                  dim_ff=cfg.convtran_dim_ff, 
-                 dropout=cfg.convtran_dropout,
-                 ks1=cfg.convtran_ks1,
-                 ks2=cfg.convtran_ks2,
-                 se_r=cfg.convtran_se_r):
+                 dropout=cfg.convtran_dropout):
         super().__init__()
 
         self.embed_layer = nn.Sequential(
-            nn.Conv2d(1, emb_size * 4, kernel_size=[1, ks1], padding='same'),
+            nn.Conv2d(1, emb_size * 4, kernel_size=[1, 15], padding='same'),
             nn.BatchNorm2d(emb_size * 4),
             nn.GELU()
         )
@@ -239,12 +236,12 @@ class ConvTran_SingleSensor_NoTranLol_Extractor(nn.Module):
         )
 
         self.conv_extra = nn.Sequential(
-            nn.Conv1d(emb_size, emb_size, kernel_size=ks2, padding=1, dilation=1),
+            nn.Conv1d(emb_size, emb_size, kernel_size=3, padding=1, dilation=1),
             nn.BatchNorm1d(emb_size),
             nn.GELU(),
             nn.Dropout(dropout)
         )
-        self.se = SEBlock228(emb_size, r=se_r)
+        self.se = SEBlock228(emb_size, r=16)
 
         self.ffn = nn.Sequential(
             nn.Linear(emb_size, dim_ff),
@@ -281,9 +278,6 @@ class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
                  convtran_num_heads=cfg.convtran_num_heads, 
                  convtran_dim_ff=cfg.convtran_dim_ff, 
                  convtran_dropout=cfg.convtran_dropout,
-                 convtran_ks1=cfg.convtran_ks1,
-                 convtran_ks2=cfg.convtran_ks2,
-                 convtran_se_r=cfg.convtran_se_r,
                  seq_len=cfg.seq_len,
                  head_droupout=0.2,
                  attention_n_heads=8,
@@ -308,10 +302,7 @@ class ConvTran_SingleSensor_NoTranLol_v1(nn.Module):
                 emb_size=convtran_emb_size, 
                 num_heads=convtran_num_heads, 
                 dim_ff=convtran_dim_ff, 
-                dropout=convtran_dropout,
-                ks1=convtran_ks1,
-                ks2=convtran_ks2,
-                se_r=convtran_se_r
+                dropout=convtran_dropout
             )
 
         final_hidden_dim = (convtran_emb_size) * 5
