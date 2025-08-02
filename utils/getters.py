@@ -523,6 +523,9 @@ def get_prefix(imu_only):
 
     if cfg.use_quat6d:
         prefix_parts.append('use_quat6d')
+
+    if cfg.use_dct:
+        prefix_parts.append('use_dct')
     
     prefix_parts.append(cfg.optim_type)
 
