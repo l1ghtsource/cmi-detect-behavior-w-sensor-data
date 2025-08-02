@@ -86,7 +86,7 @@ class Encoder(nn.Module):
 
         return x
 
-class HybridModel_SingleSensor_v1(nn.Module):
+class PatchModel(nn.Module):
     def __init__(
             self, 
             patch_size=4, 
