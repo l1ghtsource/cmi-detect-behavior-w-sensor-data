@@ -57,15 +57,16 @@ def torch_lineplot_gpu(imu_batch, img_h=1920, img_w=400, line_w=1.5):
     return canvas
 
 class SignalModel(nn.Module):
-    def __init__(self, num_classes, pretrained=True, dropout=0.1):
+    def __init__(self, num_classes, pretrained=True, dropout=0.3):
         super().__init__()
 
         self.backbone = timm.create_model(
-            'vit_base_patch16_224',
+            'timm/convnextv2_nano.fcmae_ft_in22k_in1k',
             pretrained=pretrained,
+            dropout_rate=dropout,
             num_classes=0
         )
-        feat_dim = self.backbone.num_features
+        feat_dim = 640
 
         self.register_buffer('norm_mean', torch.tensor([0.485, 0.456, 0.406]).view(1,3,1,1))
         self.register_buffer('norm_std',  torch.tensor([0.229, 0.224, 0.225]).view(1,3,1,1))
