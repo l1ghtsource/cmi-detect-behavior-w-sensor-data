@@ -63,7 +63,7 @@ class SignalModel(nn.Module):
         self.backbone = timm.create_model(
             'timm/convnextv2_nano.fcmae_ft_in22k_in1k',
             pretrained=pretrained,
-            dropout_rate=dropout,
+            drop_rate=dropout,
             num_classes=0
         )
         feat_dim = 640
