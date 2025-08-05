@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_dct import dct, idct
+from torch_geometric.nn import GCNConv, GATConv, global_mean_pool
 
 from modules.inceptiontime_replacers import Resnet1DFeatureExtractor
 from models.convtran import SEBlock228
@@ -714,6 +715,25 @@ class HybridModel_SingleSensor_v1(nn.Module):
         ext6_out1 = self.ext6_head1(extractor_features[5])
 
         return out1, out2, out3, ext1_out1, ext2_out1, ext3_out1, ext4_out1, ext5_out1, ext6_out1
+
+class GraphFusion(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, heads=4, dropout=0.1):
+        super(GraphFusion, self).__init__()
+        # self.conv1 = GCNConv(input_dim, hidden_dim)
+        # self.conv2 = GCNConv(hidden_dim, output_dim)
+        self.conv1 = GATConv(input_dim, hidden_dim, heads=heads, dropout=dropout)
+        self.conv2 = GATConv(hidden_dim * heads, output_dim, heads=1, concat=True, dropout=dropout)
+        self.norm = nn.LayerNorm(output_dim)
+        self.relu = nn.ReLU()
+
+    def forward(self, x, edge_index, batch):
+        x = self.conv1(x, edge_index)
+        x = self.relu(x)
+        x = self.conv2(x, edge_index)
+        
+        x = global_mean_pool(x, batch)
+        x = self.norm(x)
+        return x
     
 class MultiSensor_HybridModel_v1(nn.Module):
     def __init__(self, 
@@ -729,6 +749,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
                  head_droupout=0.2,
                  attention_n_heads=8,
                  attention_dropout=0.2,
+                 use_gnn_fusion=cfg.use_gnn_fusion,
                  num_classes=cfg.main_num_classes):
         super().__init__()
         
@@ -775,22 +796,47 @@ class MultiSensor_HybridModel_v1(nn.Module):
                 bidir=True,
                 dropout=multibigru_dropout
             )
+
+        self.use_gnn_fusion = use_gnn_fusion
         
-        extractor_feature_dims = {
-            'extractor1': (dim_ff_public // 2) * 11,
-            'extractor2': (DEFAULT_WIDTH) * 11,
-            'extractor3': (cnn1d_out_channels * 4) * 11,
-            'extractor4': (multibigru_dim) * 11
-        }
+        if self.use_gnn_fusion:
+            gnn_input_dims = {
+                'extractor1': dim_ff_public // 2,
+                'extractor2': DEFAULT_WIDTH,
+                'extractor3': cnn1d_out_channels * 4,
+                'extractor4': multibigru_dim,
+            }
+            self.num_branches = len(self.channel_sizes)
+
+            self.graph_fusions = nn.ModuleDict()
+            for i in range(1, 5):
+                extractor_name = f'extractor{i}'
+                input_dim = gnn_input_dims[extractor_name]
+                self.graph_fusions[extractor_name] = GraphFusion(
+                    input_dim=input_dim,
+                    hidden_dim=input_dim,
+                    output_dim=final_hidden_dim
+                )
+                
+            edge_index = torch.combinations(torch.arange(self.num_branches), r=2).t().contiguous()
+            edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
+            self.register_buffer('edge_index', edge_index)
+        else:
+            extractor_feature_dims = {
+                'extractor1': (dim_ff_public // 2) * 11,
+                'extractor2': (DEFAULT_WIDTH) * 11,
+                'extractor3': (cnn1d_out_channels * 4) * 11,
+                'extractor4': (multibigru_dim) * 11
+            }
         
-        self.extractor_projections = nn.ModuleDict()
-        for extractor_name, feature_dim in extractor_feature_dims.items():
-            self.extractor_projections[f'{extractor_name}_projection'] = nn.Sequential(
-                nn.Linear(feature_dim, final_hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(head_droupout),
-                nn.BatchNorm1d(final_hidden_dim)
-            )
+            self.extractor_projections = nn.ModuleDict()
+            for extractor_name, feature_dim in extractor_feature_dims.items():
+                self.extractor_projections[f'{extractor_name}_projection'] = nn.Sequential(
+                    nn.Linear(feature_dim, final_hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(head_droupout),
+                    nn.BatchNorm1d(final_hidden_dim)
+                )
         
         self.self_attention = nn.MultiheadAttention(
             embed_dim=final_hidden_dim,
@@ -869,12 +915,22 @@ class MultiSensor_HybridModel_v1(nn.Module):
                 feature = self.branch_extractors[f'{branch_name}_extractor4'](x)
             
             branch_features.append(feature)
-        
-        x_cat = torch.cat(branch_features, dim=1)
-        
-        projected = self.extractor_projections[f'{extractor_name}_projection'](x_cat)
-        
-        return projected
+
+        if self.use_gnn_fusion:
+            x_stack = torch.stack(branch_features, dim=1)
+            bs, num_nodes, _ = x_stack.shape
+            node_features = x_stack.view(-1, x_stack.size(2))
+            batch_idx = torch.arange(bs, device=self.edge_index.device).repeat_interleave(num_nodes)
+            fused_features = self.graph_fusions[extractor_name](
+                x=node_features, 
+                edge_index=self.edge_index, 
+                batch=batch_idx
+            )
+        else:
+            x_cat = torch.cat(branch_features, dim=1)
+            fused_features = self.extractor_projections[f'{extractor_name}_projection'](x_cat)
+
+        return fused_features
     
     def forward(self, _x, thm, tof, pad_mask=None):
         # input is (bs, 1, T, C)
