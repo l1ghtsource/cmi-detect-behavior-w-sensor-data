@@ -116,9 +116,18 @@ cfg.fe_gravity = False # gravity vector [vx, vy, vz]
 cfg.kaggle_fe = True # some fe before init ds (so augs works bad)
 cfg.fe_relative_quat = False # add relative quat to first frame
 cfg.use_quat6d = False # better rot repr for nn
+cfg.use_thm_neighbour_diff = False # use thm neighbour sensor differences
+cfg.use_thm_diff = False # use simple thm.diff() like grad
+cfg.use_tof_stats = False # use mean, std, min, max, range for tof
+cfg.use_tof_com = False # use center of mass (minimum distance point)
+cfg.use_tof_grad = False # use x/y mean gradients
+cfg.use_tof_neg_count = False # num of -1 in tof image
+cfg.use_tof_contact_area = False # num of <N points in tof image
+cfg.use_tof_neighbour_diff = False # use tof neighbour sensor differences
 cfg.imu_only = True # use only imu sensor
 cfg.imu_add = 0 # new features
 cfg.use_dct = False # dct -> bp -> idct
+cfg.use_gnn_fusion = False # gat instead of concat branch fusion in hybrid model
 
 # if cfg.fe_mag_ang:
 #     cfg.imu_add += 4
