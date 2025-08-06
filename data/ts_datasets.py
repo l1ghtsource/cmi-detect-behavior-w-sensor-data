@@ -613,7 +613,7 @@ class TS_CMIDataset_DecomposeWHAR(TS_CMIDataset):
         features = super().__getitem__(idx)
         
         imu_data = features['imu'].unsqueeze(0) # (1, seq_len, 7)
-        thm_data = features['thm'].transpose(0, 1).unsqueeze(-1) # (5, seq_len, 1)
+        thm_data = features['thm'].transpose(0, 1).unsqueeze(-1).transpose(0, 2) # (1, seq_len, 5)
         tof_data = features['tof'].view(-1, 5, 64).transpose(0, 1) # (5, seq_len, 64)
         pad_mask = features['pad_mask'] # (seq_len,)
         

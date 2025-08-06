@@ -124,7 +124,7 @@ cfg.use_tof_grad = False # use x/y mean gradients
 cfg.use_tof_neg_count = False # num of -1 in tof image
 cfg.use_tof_contact_area = False # num of <N points in tof image
 cfg.use_tof_neighbour_diff = False # use tof neighbour sensor differences
-cfg.imu_only = True # use only imu sensor
+cfg.imu_only = False # use only imu sensor
 cfg.imu_add = 0 # new features
 cfg.use_dct = False # dct -> bp -> idct
 cfg.use_gnn_fusion = False # gat instead of concat branch fusion in hybrid model
@@ -286,13 +286,13 @@ cfg.weights_pathes = {
         },
     }
 }
-cfg.ext_weights_imu = [] #[0.76034298, 0.88646032, 0.36542368, 0.16731129, 0.49523816, 0.83187372, 0.88942603] # -> 0.8337930121036714 (was 0.829743509510857)
-cfg.ext_weights_all = [] #[0.79060402, 0.28657821, 0.46755736, 0.44863906, 0.26708854] # -> 0.8799300236232007 (was 0.8783956558301291)
+cfg.ext_weights_imu = []
+cfg.ext_weights_all = []
 cfg.is_soft = True
-cfg.use_entmax = False
-cfg.entmax_alpha = 1.25
+cfg.use_entmax = True
+cfg.entmax_alpha = 1.15
 cfg.override_non_target = False
-cfg.tta_strategies = ['rotation_z']
+cfg.tta_strategies = []
 
 # --- logging ---
 cfg.do_wandb_log = True

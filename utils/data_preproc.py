@@ -435,107 +435,112 @@ def fe(df):
 
     if cfg.use_thm_diff:
         for i in range(1, 6):
-            for j in (1): # in (-3, -2, -1, 1, 2, 3):
+            for j in [1]: # in (-3, -2, -1, 1, 2, 3):
                 df[f'thm_{i}_diff_{j}'] = df.groupby('sequence_id')[f'thm_{i}'].diff(j)
 
-    def compute_tof_features_for_sequence(group):
-        seq_len = len(group)
+    # def compute_tof_features_for_sequence(group):
+    #     seq_len = len(group)
         
-        features = {}
+    #     features = {}
         
-        for sensor_id in range(1, 6):
-            sensor_cols = [col for col in cfg.tof_cols if col.startswith(f'tof_{sensor_id}_')]
+    #     for sensor_id in range(1, 6):
+    #         sensor_cols = [col for col in cfg.tof_cols if col.startswith(f'tof_{sensor_id}_')]
             
-            if not sensor_cols:
-                continue
+    #         if not sensor_cols:
+    #             continue
                 
-            sensor_data = group[sensor_cols].values # (seq_len, 64)
-            sensor_images = sensor_data.reshape(seq_len, 8, 8)
+    #         sensor_data = group[sensor_cols].values # (seq_len, 64)
+    #         sensor_images = sensor_data.reshape(seq_len, 8, 8)
             
-            stats_mean, stats_std, stats_min, stats_max, stats_range = [], [], [], [], []
-            com_x, com_y = [], []
-            grad_x_mean, grad_y_mean = [], []
-            neg_count = []
-            contact_area_50, contact_area_100, contact_area_200 = [], [], []
+    #         stats_mean, stats_std, stats_min, stats_max, stats_range = [], [], [], [], []
+    #         com_x, com_y = [], []
+    #         grad_x_mean, grad_y_mean = [], []
+    #         neg_count = []
+    #         contact_area_50, contact_area_100, contact_area_200 = [], [], []
             
-            for t in range(seq_len):
-                img = sensor_images[t]
+    #         for t in range(seq_len):
+    #             img = sensor_images[t]
                 
-                img_clean = np.where(img == -1, np.nan, img)
-                
-                mean_val = np.nanmean(img_clean)
-                std_val = np.nanstd(img_clean)
-                min_val = np.nanmin(img_clean)
-                max_val = np.nanmax(img_clean)
-                range_val = max_val - min_val if not (np.isnan(max_val) or np.isnan(min_val)) else 0
-                
-                stats_mean.append(mean_val if not np.isnan(mean_val) else 0)
-                stats_std.append(std_val if not np.isnan(std_val) else 0)
-                stats_min.append(min_val if not np.isnan(min_val) else 0)
-                stats_max.append(max_val if not np.isnan(max_val) else 0)
-                stats_range.append(range_val if not np.isnan(range_val) else 0)
-                
-                if not np.isnan(min_val):
-                    min_idx = np.unravel_index(np.nanargmin(img_clean), img_clean.shape)
-                    com_x.append(min_idx[1])
-                    com_y.append(min_idx[0])
-                else:
-                    com_x.append(4)
-                    com_y.append(4)
-                
-                img_filled = img_clean.copy()
-                nan_mask = np.isnan(img_filled)
-                if np.any(nan_mask):
-                    img_filled[nan_mask] = mean_val if not np.isnan(mean_val) else 0
-                
-                grad_x = np.abs(np.diff(img_filled, axis=1))  # (8, 7)
-                grad_y = np.abs(np.diff(img_filled, axis=0))  # (7, 8)
-                
-                grad_x_mean.append(np.mean(grad_x))
-                grad_y_mean.append(np.mean(grad_y))
-                
-                neg_count.append(np.sum(img == -1))
+    #             img_clean = np.where(img == -1, np.nan, img)
 
-                contact_area_50.append(np.sum((img_clean < 50) & (~np.isnan(img_clean))))
-                contact_area_100.append(np.sum((img_clean < 100) & (~np.isnan(img_clean))))
-                contact_area_200.append(np.sum((img_clean < 200) & (~np.isnan(img_clean))))
+    #             if cfg.use_tof_stats:
+    #                 mean_val = np.nanmean(img_clean)
+    #                 std_val = np.nanstd(img_clean)
+    #                 min_val = np.nanmin(img_clean)
+    #                 max_val = np.nanmax(img_clean)
+    #                 range_val = max_val - min_val if not (np.isnan(max_val) or np.isnan(min_val)) else 0
+                    
+    #                 stats_mean.append(mean_val if not np.isnan(mean_val) else 0)
+    #                 stats_std.append(std_val if not np.isnan(std_val) else 0)
+    #                 stats_min.append(min_val if not np.isnan(min_val) else 0)
+    #                 stats_max.append(max_val if not np.isnan(max_val) else 0)
+    #                 stats_range.append(range_val if not np.isnan(range_val) else 0)
                 
-            if cfg.use_tof_stats:
-                features[f'tof_{sensor_id}_mean'] = stats_mean
-                features[f'tof_{sensor_id}_std'] = stats_std
-                features[f'tof_{sensor_id}_min'] = stats_min
-                features[f'tof_{sensor_id}_max'] = stats_max
-                features[f'tof_{sensor_id}_range'] = stats_range
-            
-            if cfg.use_tof_com:
-                features[f'tof_{sensor_id}_com_x'] = com_x
-                features[f'tof_{sensor_id}_com_y'] = com_y
+    #             if cfg.use_tof_com:
+    #                 if not np.isnan(min_val):
+    #                     min_idx = np.unravel_index(np.nanargmin(img_clean), img_clean.shape)
+    #                     com_x.append(min_idx[1])
+    #                     com_y.append(min_idx[0])
+    #                 else:
+    #                     com_x.append(4)
+    #                     com_y.append(4)
+                
+    #             if cfg.use_tof_grad:
+    #                 img_filled = img_clean.copy()
+    #                 nan_mask = np.isnan(img_filled)
+    #                 if np.any(nan_mask):
+    #                     img_filled[nan_mask] = mean_val if not np.isnan(mean_val) else 0
+                    
+    #                 grad_x = np.abs(np.diff(img_filled, axis=1))  # (8, 7)
+    #                 grad_y = np.abs(np.diff(img_filled, axis=0))  # (7, 8)
+                    
+    #                 grad_x_mean.append(np.mean(grad_x))
+    #                 grad_y_mean.append(np.mean(grad_y))
+                
+    #             if cfg.use_tof_neg_count:
+    #                 neg_count.append(np.sum(img == -1))
 
-            if cfg.use_tof_grad:
-                features[f'tof_{sensor_id}_grad_x'] = grad_x_mean
-                features[f'tof_{sensor_id}_grad_y'] = grad_y_mean
+    #             if cfg.use_tof_contact_area:
+    #                 contact_area_50.append(np.sum((img_clean < 50) & (~np.isnan(img_clean))))
+    #                 contact_area_100.append(np.sum((img_clean < 100) & (~np.isnan(img_clean))))
+    #                 contact_area_200.append(np.sum((img_clean < 200) & (~np.isnan(img_clean))))
+                
+    #         if cfg.use_tof_stats:
+    #             features[f'tof_{sensor_id}_mean'] = stats_mean
+    #             features[f'tof_{sensor_id}_std'] = stats_std
+    #             features[f'tof_{sensor_id}_min'] = stats_min
+    #             features[f'tof_{sensor_id}_max'] = stats_max
+    #             features[f'tof_{sensor_id}_range'] = stats_range
             
-            if cfg.use_tof_neg_count:
-                features[f'tof_{sensor_id}_neg_count'] = neg_count
+    #         if cfg.use_tof_com:
+    #             features[f'tof_{sensor_id}_com_x'] = com_x
+    #             features[f'tof_{sensor_id}_com_y'] = com_y
 
-            if cfg.use_tof_contact_area:
-                features[f'tof_{sensor_id}_contact_area_50'] = contact_area_50
-                features[f'tof_{sensor_id}_contact_area_100'] = contact_area_100
-                features[f'tof_{sensor_id}_contact_area_200'] = contact_area_200
+    #         if cfg.use_tof_grad:
+    #             features[f'tof_{sensor_id}_grad_x'] = grad_x_mean
+    #             features[f'tof_{sensor_id}_grad_y'] = grad_y_mean
+            
+    #         if cfg.use_tof_neg_count:
+    #             features[f'tof_{sensor_id}_neg_count'] = neg_count
+
+    #         if cfg.use_tof_contact_area:
+    #             features[f'tof_{sensor_id}_contact_area_50'] = contact_area_50
+    #             features[f'tof_{sensor_id}_contact_area_100'] = contact_area_100
+    #             features[f'tof_{sensor_id}_contact_area_200'] = contact_area_200
         
-        return pd.DataFrame(features, index=group.index)
+    #     return pd.DataFrame(features, index=group.index)
     
-    tof_features = df.groupby('sequence_id', group_keys=False).apply(compute_tof_features_for_sequence)
+    # tof_features = df.groupby('sequence_id', group_keys=False).apply(compute_tof_features_for_sequence)
     
-    if cfg.use_tof_neighbour_diff:
-        sensor_pairs = [(2, 1), (1, 5), (5, 4), (4, 3), (3, 2)]
-        for s1, s2 in sensor_pairs:
-            if f'tof_{s1}_mean' in tof_features.columns and f'tof_{s2}_mean' in tof_features.columns:
-                tof_features[f'tof_mean_diff_{s1}_{s2}'] = (
-                    tof_features[f'tof_{s1}_mean'] - tof_features[f'tof_{s2}_mean']
-                )
+    # if cfg.use_tof_neighbour_diff:
+    #     sensor_pairs = [(2, 1), (1, 5), (5, 4), (4, 3), (3, 2)]
+    #     for s1, s2 in sensor_pairs:
+    #         if f'tof_{s1}_mean' in tof_features.columns and f'tof_{s2}_mean' in tof_features.columns:
+    #             tof_features[f'tof_mean_diff_{s1}_{s2}'] = (
+    #                 tof_features[f'tof_{s1}_mean'] - tof_features[f'tof_{s2}_mean']
+    #             )
 
-    df = df.join(tof_features)
+    # df = df.join(tof_features)
 
     df[cfg.imu_cols] = df[cfg.imu_cols].ffill().bfill().fillna(0).values.astype('float32')
     df[cfg.thm_cols] = df[cfg.thm_cols].ffill().bfill().fillna(0).values.astype('float32')

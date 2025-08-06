@@ -798,6 +798,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
             )
 
         self.use_gnn_fusion = use_gnn_fusion
+        self.num_branches = len(self.channel_sizes)
         
         if self.use_gnn_fusion:
             gnn_input_dims = {
@@ -806,7 +807,6 @@ class MultiSensor_HybridModel_v1(nn.Module):
                 'extractor3': cnn1d_out_channels * 4,
                 'extractor4': multibigru_dim,
             }
-            self.num_branches = len(self.channel_sizes)
 
             self.graph_fusions = nn.ModuleDict()
             for i in range(1, 5):
@@ -823,10 +823,10 @@ class MultiSensor_HybridModel_v1(nn.Module):
             self.register_buffer('edge_index', edge_index)
         else:
             extractor_feature_dims = {
-                'extractor1': (dim_ff_public // 2) * 11,
-                'extractor2': (DEFAULT_WIDTH) * 11,
-                'extractor3': (cnn1d_out_channels * 4) * 11,
-                'extractor4': (multibigru_dim) * 11
+                'extractor1': (dim_ff_public // 2) * self.num_branches,
+                'extractor2': (DEFAULT_WIDTH) * self.num_branches,
+                'extractor3': (cnn1d_out_channels * 4) * self.num_branches,
+                'extractor4': (multibigru_dim) * self.num_branches
             }
         
             self.extractor_projections = nn.ModuleDict()
@@ -941,7 +941,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
             'fe1': _x[:, :, :, 7:20+3],
             'fe2': _x[:, :, :, 20+3:29+3],
             'full': _x,
-            'thm': thm.permute(0, 3, 2, 1),
+            'thm': thm[:, :, :, :5],
             'tof1': tof[:, 0:1, :, :],
             'tof2': tof[:, 1:2, :, :],
             'tof3': tof[:, 2:3, :, :],
