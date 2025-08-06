@@ -128,6 +128,7 @@ cfg.imu_only = False # use only imu sensor
 cfg.imu_add = 0 # new features
 cfg.use_dct = False # dct -> bp -> idct
 cfg.use_gnn_fusion = False # gat instead of concat branch fusion in hybrid model
+cfg.reverse_seq = False # seq -> seq[::-1]
 
 # if cfg.fe_mag_ang:
 #     cfg.imu_add += 4

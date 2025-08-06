@@ -492,8 +492,11 @@ class HybridModel_SingleSensor_v1(nn.Module):
                  attention_n_heads=8,
                  attention_dropout=0.2,
                  use_dct=cfg.use_dct,
+                 reverse_seq=cfg.reverse_seq,
                  num_classes=cfg.main_num_classes):
         super().__init__()
+
+        self.reverse_seq = reverse_seq
         
         self.use_dct = use_dct
         if self.use_dct:
@@ -671,6 +674,9 @@ class HybridModel_SingleSensor_v1(nn.Module):
     def forward(self, _x, pad_mask=None):
         # input is (bs, 1, T, C)
 
+        if self.reverse_seq:
+            _x = _x.flip(dims=[2])
+
         if self.use_dct:
             x_wave = _x.squeeze(1).permute(0, 2, 1)
             x_wave = self.dct_bp(x_wave)
@@ -750,8 +756,11 @@ class MultiSensor_HybridModel_v1(nn.Module):
                  attention_n_heads=8,
                  attention_dropout=0.2,
                  use_gnn_fusion=cfg.use_gnn_fusion,
+                 reverse_seq=cfg.reverse_seq,
                  num_classes=cfg.main_num_classes):
         super().__init__()
+
+        self.reverse_seq = reverse_seq
         
         self.channel_sizes = {
             'imu': 3,      # x_imu: 0-2
@@ -934,6 +943,11 @@ class MultiSensor_HybridModel_v1(nn.Module):
     
     def forward(self, _x, thm, tof, pad_mask=None):
         # input is (bs, 1, T, C)
+
+        if self.reverse_seq:
+            _x = _x.flip(dims=[2])
+            thm = thm.flip(dims=[2])
+            tof = tof.flip(dims=[2])
         
         x_dict = {
             'imu': _x[:, :, :, :3],
