@@ -275,14 +275,42 @@ cfg.weights_pathes = {
             'weight': 1,
             'model_params': {
                 'num_classes': 18,
+                'use_dct': False,
+                'reverse_seq': False, # seq
+            }
+        },
+        '/kaggle/input/cmi-85row-imu/kaggle/working/weights': { # full data model - 85 row (like 79, just rev seq)
+            'weight': 1,
+            'model_params': {
+                'num_classes': 18,
+                'use_dct': False,
+                'reverse_seq': True, # seq[::-1]
             }
         },
     },
     'imu+tof+thm': {
-        '/kaggle/input/timemil-soupchik-imu-16-06/top3_avg_models_76row_excel': { # top3 avg model - 76 row
+        '/kaggle/input/timemil-soupchik-imu-16-06/top3_avg_models_81row_excel': { # top3 avg models - 81 row [zebra mixup]
             'weight': 1,
             'model_params': {
                 'num_classes': 18,
+                'use_gnn_fusion': False,
+                'reverse_seq': False, # seq
+            }
+        },
+        '/kaggle/input/cmi-another-checkpoints/top3_avg_models_76row_excel': { # top3 avg models - 76 row [normal mixup]
+            'weight': 1,
+            'model_params': {
+                'num_classes': 18,
+                'use_gnn_fusion': False,
+                'reverse_seq': False, # seq
+            }
+        },
+        '/kaggle/input/cmi-more-another-checkpoints/top3_avg_models_84row_excel': { # top3 avg models - 84 row [normal mixup]
+            'weight': 1,
+            'model_params': {
+                'num_classes': 18,
+                'use_gnn_fusion': False,
+                'reverse_seq': True, # seq[::-1]
             }
         },
     }
@@ -290,8 +318,8 @@ cfg.weights_pathes = {
 cfg.ext_weights_imu = []
 cfg.ext_weights_all = []
 cfg.is_soft = True
-cfg.use_entmax = True
-cfg.entmax_alpha = 1.15
+cfg.use_entmax = False
+cfg.entmax_alpha = 1.25
 cfg.override_non_target = False
 cfg.tta_strategies = []
 
