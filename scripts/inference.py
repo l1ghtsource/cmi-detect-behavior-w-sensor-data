@@ -250,8 +250,8 @@ def process_model_group(models_on_device, preprocessed_batches_on_device, use_im
             tta_logits_orient_gpu.append(logits_orient_gpu)
             
         sum_tta_logits = torch.sum(torch.stack(tta_logits_gpu), dim=0)
-        sum_tta_logits_aux2 = torch.sum(torch.stack(tta_logits_orient_gpu), dim=0)
-        sum_tta_logits_orient = torch.sum(torch.stack(tta_logits_aux2_gpu), dim=0)
+        sum_tta_logits_aux2 = torch.sum(torch.stack(tta_logits_aux2_gpu), dim=0)
+        sum_tta_logits_orient = torch.sum(torch.stack(tta_logits_orient_gpu), dim=0)
         
         fold_logits_sum_list.append(sum_tta_logits)
         fold_logits_aux2_sum_list.append(sum_tta_logits_aux2)
