@@ -536,5 +536,11 @@ def get_prefix(imu_only):
 
     if cfg.denoise_data != 'none':
         prefix_parts.append(cfg.denoise_data)
+
+    if cfg.reverse_seq:
+        prefix_parts.append('reverse_seq')
+
+    if cfg.is_zebra:
+        prefix_parts.append('zebra')
     
     return '_'.join(prefix_parts) + '_'
