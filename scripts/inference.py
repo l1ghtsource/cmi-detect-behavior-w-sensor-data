@@ -207,7 +207,7 @@ def create_single_batch(processed_df, device):
 
 def predict_single_batch(model, batch, use_imu_only):
     if use_imu_only:
-        outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4, ext5, ext6 = forward_model(
+        outputs, aux2_outputs, orient_outputs, ext1, ext2, ext3, ext4, ext5, ext6 = forward_model(
             model, batch, imu_only=use_imu_only
         )
         
@@ -215,7 +215,7 @@ def predict_single_batch(model, batch, use_imu_only):
             w0, w1, w2, w3, w4, w5, w6 = cfg.ext_weights_imu
             outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4 + w5 * ext5 + w6 * ext6
     else:
-        outputs, aux2_outputs, _orient, ext1, ext2, ext3, ext4 = forward_model(
+        outputs, aux2_outputs, orient_outputs, ext1, ext2, ext3, ext4 = forward_model(
             model, batch, imu_only=use_imu_only
         )
         
@@ -223,36 +223,43 @@ def predict_single_batch(model, batch, use_imu_only):
             w0, w1, w2, w3, w4 = cfg.ext_weights_all
             outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4
     
-    return outputs.detach(), aux2_outputs.detach()
+    return outputs.detach(), aux2_outputs.detach(), orient_outputs.detach()
 
 def process_model_group(models_on_device, preprocessed_batches_on_device, use_imu_only):
     group_device = models_on_device[0][1] 
     
     fold_logits_sum_list = []
     fold_logits_aux2_sum_list = []
+    fold_logits_orient_sum_list = []
     
     for model, _ in models_on_device:
         tta_logits_gpu = []
         tta_logits_aux2_gpu = []
+        tta_logits_orient_gpu = []
         
         for batch in preprocessed_batches_on_device:
-            logits_gpu, logits_aux2_gpu = predict_single_batch(model, batch, use_imu_only)
+            logits_gpu, logits_aux2_gpu, logits_orient_gpu = predict_single_batch(model, batch, use_imu_only)
             
             if cfg.use_entmax:
                 logits_gpu = entmax_bisect(logits_gpu, alpha=cfg.entmax_alpha, dim=1)
                 logits_aux2_gpu = entmax_bisect(logits_aux2_gpu, alpha=cfg.entmax_alpha, dim=1)
+                logits_orient_gpu = entmax_bisect(logits_orient_gpu, alpha=cfg.entmax_alpha, dim=1)
             
             tta_logits_gpu.append(logits_gpu)
             tta_logits_aux2_gpu.append(logits_aux2_gpu)
+            tta_logits_orient_gpu.append(logits_orient_gpu)
             
         sum_tta_logits = torch.sum(torch.stack(tta_logits_gpu), dim=0)
-        sum_tta_logits_aux2 = torch.sum(torch.stack(tta_logits_aux2_gpu), dim=0)
+        sum_tta_logits_aux2 = torch.sum(torch.stack(tta_logits_orient_gpu), dim=0)
+        sum_tta_logits_orient = torch.sum(torch.stack(tta_logits_aux2_gpu), dim=0)
         
         fold_logits_sum_list.append(sum_tta_logits)
         fold_logits_aux2_sum_list.append(sum_tta_logits_aux2)
+        fold_logits_orient_sum_list.append(sum_tta_logits_orient)
         
     sum_fold_logits = torch.sum(torch.stack(fold_logits_sum_list), dim=0)
     sum_fold_logits_aux2 = torch.sum(torch.stack(fold_logits_aux2_sum_list), dim=0)
+    sum_fold_logits_orient = torch.sum(torch.stack(fold_logits_orient_sum_list), dim=0)
     
     num_folds = len(models_on_device)
     num_tta = len(preprocessed_batches_on_device)
@@ -260,8 +267,9 @@ def process_model_group(models_on_device, preprocessed_batches_on_device, use_im
     
     model_averaged_logits = sum_fold_logits.cpu().numpy() / total_elements
     model_averaged_logits_aux2 = sum_fold_logits_aux2.cpu().numpy() / total_elements
+    model_averaged_logits_orient = sum_fold_logits_orient.cpu().numpy() / total_elements
     
-    return model_averaged_logits, model_averaged_logits_aux2
+    return model_averaged_logits, model_averaged_logits_aux2, model_averaged_logits_orient
 
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
@@ -292,6 +300,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     
     all_model_averaged_logits = []
     all_model_averaged_logits_aux2 = []
+    all_model_averaged_logits_orient = []
     model_weights = []
 
     w_key = 'imu_only' if use_imu_only else 'imu+tof+thm'
@@ -321,36 +330,55 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         
         for future in concurrent.futures.as_completed(futures):
             task_data = futures[future]
-            logits, logits_aux2 = future.result()
+            logits, logits_aux2, logits_orient = future.result()
             
             model_weights.append(task_data['weight'])
             all_model_averaged_logits.append(logits)
             all_model_averaged_logits_aux2.append(logits_aux2)
+            all_model_averaged_logits_orient.append(logits_orient)
     
     if cfg.is_soft:
         model_weights = np.array(model_weights)
         all_model_averaged_logits = np.array(all_model_averaged_logits)
         all_model_averaged_logits_aux2 = np.array(all_model_averaged_logits_aux2)
+        all_model_averaged_logits_orient = np.array(all_model_averaged_logits_orient)
         
         final_averaged_logits = np.sum(all_model_averaged_logits * model_weights[:, np.newaxis, np.newaxis], axis=0)
         final_averaged_logits_aux2 = np.sum(all_model_averaged_logits_aux2 * model_weights[:, np.newaxis, np.newaxis], axis=0)
-        print(final_averaged_logits)
+        final_averaged_logits_orient = np.sum(all_model_averaged_logits_orient * model_weights[:, np.newaxis, np.newaxis], axis=0)
+        print(f'{final_averaged_logits=}')
 
         majority_vote_indices = np.argmax(final_averaged_logits, axis=1)
         majority_vote_indices_aux2 = np.argmax(final_averaged_logits_aux2, axis=1)
+        majority_vote_indices_orient = np.argmax(final_averaged_logits_orient, axis=1)
     else:
         all_model_predictions = [np.argmax(logits, axis=1) for logits in all_model_averaged_logits]
         all_model_predictions_aux2 = [np.argmax(logits_aux2, axis=1) for logits_aux2 in all_model_averaged_logits_aux2]
+        all_model_predictions_orient = [np.argmax(logits_orient, axis=1) for logits_orient in all_model_averaged_logits_orient]
         all_models_predictions_array = np.array(all_model_predictions)
         majority_vote_indices, _ = mode(all_models_predictions_array, axis=0, keepdims=False)
         all_models_predictions_array_aux2 = np.array(all_model_predictions_aux2)
         majority_vote_indices_aux2, _ = mode(all_models_predictions_array_aux2, axis=0, keepdims=False)
+        all_models_predictions_array_orient = np.array(all_model_predictions_orient)
+        majority_vote_indices_orient, _ = mode(all_models_predictions_array_orient, axis=0, keepdims=False)
 
     if cfg.override_non_target:
         print('override non target (using aux2 head)')
         final_preds = []
         for output_idx, aux2_idx in zip(majority_vote_indices, majority_vote_indices_aux2):
             if output_idx <= 7 and aux2_idx == 0:
+                final_preds.append(8)
+            else:
+                final_preds.append(output_idx)
+        final_labels = [reverse_mapping[class_idx] for class_idx in final_preds]
+    else:
+        final_labels = [reverse_mapping[class_idx] for class_idx in majority_vote_indices]
+
+    if cfg.orient_postproc:
+        print('seated straight -> non target')
+        final_preds = []
+        for output_idx, aux2_idx, orient_idx in zip(majority_vote_indices, majority_vote_indices_aux2, majority_vote_indices_orient):
+            if output_idx <= 7 and orient_idx == 0: # and aux2_idx == 0
                 final_preds.append(8)
             else:
                 final_preds.append(output_idx)

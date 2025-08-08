@@ -321,6 +321,7 @@ cfg.is_soft = True
 cfg.use_entmax = False
 cfg.entmax_alpha = 1.25
 cfg.override_non_target = False
+cfg.orient_postproc = False
 cfg.tta_strategies = []
 
 # --- logging ---
