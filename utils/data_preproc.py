@@ -40,80 +40,86 @@ def remove_gravity_from_acc_df(acc_data, rot_data):
         quat_values = rot_data[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
     else:
         quat_values = rot_data
-
-    num_samples = acc_values.shape[0]
-    linear_accel = np.zeros_like(acc_values)
-    
-    gravity_world = np.array([0, 0, 9.81])
-
-    for i in range(num_samples):
-        if np.all(np.isnan(quat_values[i])) or np.all(np.isclose(quat_values[i], 0)):
-            linear_accel[i, :] = acc_values[i, :] 
-            continue
-
-        try:
-            rotation = R.from_quat(quat_values[i])
-            gravity_sensor_frame = rotation.apply(gravity_world, inverse=True)
-            linear_accel[i, :] = acc_values[i, :] - gravity_sensor_frame
-        except ValueError:
-             linear_accel[i, :] = acc_values[i, :]
-             
+    linear_accel = acc_values.copy()
+    invalid_quat_mask = np.isnan(quat_values).any(axis=1) | np.all(np.isclose(quat_values, 0), axis=1)
+    valid_quat_mask = ~invalid_quat_mask
+    valid_quats = quat_values[valid_quat_mask]
+    if valid_quats.shape[0] == 0:
+        return linear_accel
+    try:
+        rotation = R.from_quat(valid_quats)
+        gravity_world = np.array([0, 0, 9.81])
+        gravity_sensor_frame = rotation.apply(gravity_world, inverse=True)
+        linear_accel[valid_quat_mask] = acc_values[valid_quat_mask] - gravity_sensor_frame
+    except ValueError:
+        for i in np.where(valid_quat_mask)[0]:
+            try:
+                q = quat_values[i]
+                rotation = R.from_quat(q)
+                gravity_sensor_frame = rotation.apply(gravity_world, inverse=True)
+                linear_accel[i, :] = acc_values[i, :] - gravity_sensor_frame
+            except ValueError:
+                continue
+                
     return linear_accel
 
-def calculate_angular_velocity_from_quat(rot_data, time_delta=1/200): # Assuming 200Hz sampling rate
+def calculate_angular_velocity_from_quat(rot_data, time_delta=1/200, sequence_ids=None):
     if isinstance(rot_data, pd.DataFrame):
         quat_values = rot_data[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
     else:
         quat_values = rot_data
-
     num_samples = quat_values.shape[0]
     angular_vel = np.zeros((num_samples, 3))
-
-    for i in range(num_samples - 1):
-        q_t = quat_values[i]
-        q_t_plus_dt = quat_values[i+1]
-
-        if np.all(np.isnan(q_t)) or np.all(np.isclose(q_t, 0)) or \
-           np.all(np.isnan(q_t_plus_dt)) or np.all(np.isclose(q_t_plus_dt, 0)):
-            continue
-
-        try:
-            rot_t = R.from_quat(q_t)
-            rot_t_plus_dt = R.from_quat(q_t_plus_dt)
-            delta_rot = rot_t.inv() * rot_t_plus_dt
-            angular_vel[i, :] = delta_rot.as_rotvec() / time_delta
-        except ValueError:
-            pass
-            
+    q_t = quat_values[:-1]
+    q_t_plus_dt = quat_values[1:]
+    valid_mask = ~(np.isnan(q_t).any(axis=1) | np.all(np.isclose(q_t, 0), axis=1) |
+                   np.isnan(q_t_plus_dt).any(axis=1) | np.all(np.isclose(q_t_plus_dt, 0), axis=1))
+    if sequence_ids is not None:
+        is_same_sequence = (sequence_ids[:-1] == sequence_ids[1:])
+        valid_mask &= is_same_sequence
+    valid_indices = np.where(valid_mask)[0]
+    if len(valid_indices) == 0:
+        return angular_vel
+    q_t_valid = q_t[valid_indices]
+    q_t_plus_dt_valid = q_t_plus_dt[valid_indices]
+    try:
+        rot_t = R.from_quat(q_t_valid)
+        rot_t_plus_dt = R.from_quat(q_t_plus_dt_valid)
+        
+        delta_rot = rot_t.inv() * rot_t_plus_dt
+        angular_vel[valid_indices, :] = delta_rot.as_rotvec() / time_delta
+    except ValueError:
+        pass
     return angular_vel
 
-def calculate_angular_distance(rot_data):
+def calculate_angular_distance(rot_data, sequence_ids=None):
     if isinstance(rot_data, pd.DataFrame):
         quat_values = rot_data[['rot_x', 'rot_y', 'rot_z', 'rot_w']].values
     else:
         quat_values = rot_data
-
     num_samples = quat_values.shape[0]
     angular_dist = np.zeros(num_samples)
+    q1 = quat_values[:-1]
+    q2 = quat_values[1:]
+    valid_mask = ~(np.isnan(q1).any(axis=1) | np.all(np.isclose(q1, 0), axis=1) |
+                   np.isnan(q2).any(axis=1) | np.all(np.isclose(q2, 0), axis=1))
 
-    for i in range(num_samples - 1):
-        q1 = quat_values[i]
-        q2 = quat_values[i+1]
-
-        if np.all(np.isnan(q1)) or np.all(np.isclose(q1, 0)) or \
-           np.all(np.isnan(q2)) or np.all(np.isclose(q2, 0)):
-            angular_dist[i] = 0
-            continue
-        try:
-            r1 = R.from_quat(q1)
-            r2 = R.from_quat(q2)
-            relative_rotation = r1.inv() * r2
-            angle = np.linalg.norm(relative_rotation.as_rotvec())
-            angular_dist[i] = angle
-        except ValueError:
-            angular_dist[i] = 0
-            pass
-            
+    if sequence_ids is not None:
+        is_same_sequence = (sequence_ids[:-1] == sequence_ids[1:])
+        valid_mask &= is_same_sequence
+    valid_indices = np.where(valid_mask)[0]
+    if len(valid_indices) == 0:
+        return angular_dist
+    q1_valid = q1[valid_indices]
+    q2_valid = q2[valid_indices]
+    try:
+        r1 = R.from_quat(q1_valid)
+        r2 = R.from_quat(q2_valid)
+        relative_rotation = r1.inv() * r2
+        angle = np.linalg.norm(relative_rotation.as_rotvec(), axis=1)
+        angular_dist[valid_indices] = angle
+    except ValueError:
+        pass
     return angular_dist
 
 def convert_to_world_coordinates(df):
@@ -175,36 +181,29 @@ def apply_symmetry(data): # TODO: test it?? its can be wrong..
     return transformed
 
 def fe(df):
+    sequence_ids = df['sequence_id'].values
+
     if cfg.kaggle_fe:
-        df['acc_mag'] = np.sqrt(df['acc_x']**2 + df['acc_y']**2 + df['acc_z']**2)
-        df['rot_angle'] = 2 * np.arccos(df['rot_w'].clip(-1, 1))
+        df['acc_mag'] = np.linalg.norm(df[['acc_x', 'acc_y', 'acc_z']].values, axis=1)
+        df['rot_angle'] = 2 * np.arccos(np.clip(df['rot_w'].values, -1.0, 1.0))
         
         df['acc_mag_jerk'] = df.groupby('sequence_id')['acc_mag'].diff().fillna(0)
         df['rot_angle_vel'] = df.groupby('sequence_id')['rot_angle'].diff().fillna(0)
         
-        def get_linear_accel(df):
-            res = remove_gravity_from_acc_df(
-                df[['acc_x', 'acc_y', 'acc_z']],
-                df[['rot_x', 'rot_y', 'rot_z', 'rot_w']]
-            )
-            res = pd.DataFrame(res, columns=['linear_acc_x', 'linear_acc_y', 'linear_acc_z'], index=df.index)
-            return res
+        linear_accel_values = remove_gravity_from_acc_df(
+            df[['acc_x', 'acc_y', 'acc_z']],
+            df[['rot_x', 'rot_y', 'rot_z', 'rot_w']]
+        )
+        df[['linear_acc_x', 'linear_acc_y', 'linear_acc_z']] = linear_accel_values
         
-        linear_accel_df = df.groupby('sequence_id').apply(get_linear_accel, include_groups=False)
-        linear_accel_df = linear_accel_df.droplevel('sequence_id')
-        df = df.join(linear_accel_df)
-        
-        df['linear_acc_mag'] = np.sqrt(df['linear_acc_x']**2 + df['linear_acc_y']**2 + df['linear_acc_z']**2)
+        df['linear_acc_mag'] = np.linalg.norm(df[['linear_acc_x', 'linear_acc_y', 'linear_acc_z']].values, axis=1)
         df['linear_acc_mag_jerk'] = df.groupby('sequence_id')['linear_acc_mag'].diff().fillna(0)
 
-        def calc_angular_velocity(df):
-            res = calculate_angular_velocity_from_quat( df[['rot_x', 'rot_y', 'rot_z', 'rot_w']] )
-            res = pd.DataFrame(res, columns=['angular_vel_x', 'angular_vel_y', 'angular_vel_z'], index=df.index)
-            return res
-        
-        angular_velocity_df = df.groupby('sequence_id').apply(calc_angular_velocity, include_groups=False)
-        angular_velocity_df = angular_velocity_df.droplevel('sequence_id')
-        df = df.join(angular_velocity_df)
+        angular_vel_values = calculate_angular_velocity_from_quat(
+            df[['rot_x', 'rot_y', 'rot_z', 'rot_w']], 
+            sequence_ids=sequence_ids
+        )
+        df[['angular_vel_x', 'angular_vel_y', 'angular_vel_z']] = angular_vel_values
 
         # df['angular_jerk_x'] = df.groupby('sequence_id')['angular_vel_x'].diff().fillna(0)
         # df['angular_jerk_y'] = df.groupby('sequence_id')['angular_vel_y'].diff().fillna(0)
@@ -214,27 +213,22 @@ def fe(df):
         # df['angular_snap_y'] = df.groupby('sequence_id')['angular_jerk_y'].diff().fillna(0)
         # df['angular_snap_z'] = df.groupby('sequence_id')['angular_jerk_z'].diff().fillna(0)
 
-        def calc_angular_distance(df):
-            res = calculate_angular_distance(df[['rot_x', 'rot_y', 'rot_z', 'rot_w']])
-            res = pd.DataFrame(res, columns=['angular_distance'], index=df.index)
-            return res
-        
-        angular_distance_df = df.groupby('sequence_id').apply(calc_angular_distance, include_groups=False)
-        angular_distance_df = angular_distance_df.droplevel('sequence_id')
-        df = df.join(angular_distance_df)
+        angular_dist_values = calculate_angular_distance(
+            df[['rot_x', 'rot_y', 'rot_z', 'rot_w']], 
+            sequence_ids=sequence_ids
+        )
+        df['angular_distance'] = angular_dist_values
 
         def compute_detrended_velocity(group):
             acc_cols = ['linear_acc_x', 'linear_acc_y', 'linear_acc_z']
-            vel = group[acc_cols].cumsum() * 0.1
-            vel.columns = ['linear_vel_x', 'linear_vel_y', 'linear_vel_z']
+            vel_values = (group[acc_cols].values).cumsum(axis=0) * 0.1
             t = np.arange(len(group))
-            for col in vel.columns:
-                trend = np.polyval(np.polyfit(t, vel[col], 2), t)
-                vel[col] -= trend
-            return vel
+            for i in range(vel_values.shape[1]):
+                trend = np.polyval(np.polyfit(t, vel_values[:, i], 2), t)
+                vel_values[:, i] -= trend
+            return pd.DataFrame(vel_values, index=group.index, columns=['linear_vel_x', 'linear_vel_y', 'linear_vel_z'])
         
-        linear_vel_df = df.groupby('sequence_id').apply(compute_detrended_velocity, include_groups=False)
-        linear_vel_df = linear_vel_df.droplevel('sequence_id')
+        linear_vel_df = df.groupby('sequence_id', group_keys=False).apply(compute_detrended_velocity)
         df = df.join(linear_vel_df)
 
         # def compute_detrended_position(group):
