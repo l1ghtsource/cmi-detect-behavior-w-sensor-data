@@ -5,9 +5,9 @@ from scipy.stats import mode
 from scipy.spatial.transform import Rotation as R
 import glob
 import os
+import concurrent.futures
 
 import torch
-from torch.utils.data import DataLoader
 from entmax import entmax_bisect
 
 from configs.config import cfg
@@ -29,9 +29,13 @@ from utils.data_preproc import (
     get_rev_mapping
 )
 
-# TODO: multigpu inference
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+    num_gpus = torch.cuda.device_count()
+    devices = [torch.device(f'cuda:{i}') for i in range(num_gpus)]
+    print(f'using {num_gpus} gpus: {devices}')
+else:
+    devices = [torch.device('cpu')]
+    print('uhhhh cpu :(')
 
 reverse_mapping, aux1_reverse_mapping, aux2_reverse_mapping = get_rev_mapping()
 TSDataset = get_ts_dataset()
@@ -43,12 +47,16 @@ loaded_models = {
 
 use_tta = len(cfg.tta_strategies) > 0
 
+model_group_idx = 0
 for w_key in ['imu_only', 'imu+tof+thm']:
     if w_key not in cfg.weights_pathes:
         continue
         
     for weights_path, params in cfg.weights_pathes[w_key].items():
+        group_device = devices[model_group_idx % len(devices)]
+        
         print(f'loading models for {w_key}: {weights_path}')
+        print(f'  -> all models in this group will be assigned to {group_device=}')
         
         if w_key == 'imu_only':
             TSModel = HybridModel_SingleSensor_v1
@@ -60,6 +68,7 @@ for w_key in ['imu_only', 'imu+tof+thm']:
         )
         if not ckpt_files:
             print(f'  no checkpoints found in {weights_path}')
+            model_group_idx += 1
             continue
 
         fold_models = []
@@ -67,27 +76,28 @@ for w_key in ['imu_only', 'imu+tof+thm']:
             print(f'  loading checkpoint: {os.path.basename(ckpt)}')
 
             is_ema = ckpt.endswith('_ema.pt') or '_ema_' in os.path.basename(ckpt)
-            model = TSModel(**params['model_params']).to(device)
+            model = TSModel(**params['model_params']).to(group_device)
 
-            state_dict = torch.load(ckpt, map_location=device)
+            state_dict = torch.load(ckpt, map_location=group_device)
             model.load_state_dict(state_dict, strict=False)
 
             if not is_ema and cfg.use_ema:
                 ema_ckpt = ckpt.replace('.pt', '_ema.pt')
                 if os.path.isfile(ema_ckpt):
-                    ema_state = torch.load(ema_ckpt, map_location=device)
+                    ema_state = torch.load(ema_ckpt, map_location=group_device)
                     for name, p in model.named_parameters():
                         if name in ema_state:
                             p.data.copy_(ema_state[name])
 
             model.eval()
-            fold_models.append(model)
+            fold_models.append((model, group_device))
 
         loaded_models.setdefault(w_key, {})[weights_path] = {
             'models': fold_models,
             'params': params,
             'weight': params['weight']
         }
+        model_group_idx += 1
 
 def apply_sequence_tta(df, tta_strategies, use_imu_only):
     augmented_sequences = []
@@ -98,6 +108,7 @@ def apply_sequence_tta(df, tta_strategies, use_imu_only):
     
     sequence_ids = df['sequence_id'].unique() if 'sequence_id' in df.columns else [0]
     
+    print(f'{tta_strategies=}')
     for strategy in tta_strategies:
         try:
             if strategy == 'jitter' and use_imu_only:
@@ -180,7 +191,7 @@ def preprocess_single_row(test_df, use_imu_only):
 
     return fast_seq_agg(test_df)
 
-def create_single_batch(processed_df):
+def create_single_batch(processed_df, device):
     test_dataset = TSDataset(
         dataframe=processed_df,
         seq_len=cfg.seq_len,
@@ -212,7 +223,37 @@ def predict_single_batch(model, batch, use_imu_only):
             w0, w1, w2, w3, w4 = cfg.ext_weights_all
             outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4
     
-    return outputs.cpu().numpy(), aux2_outputs.cpu().numpy()
+    return outputs.cpu().detach().numpy(), aux2_outputs.cpu().detach().numpy()
+
+def process_model_fold(model, device, augmented_sequences, use_imu_only):
+    tta_logits = []
+    tta_logits_aux2 = []
+    
+    for aug_df in augmented_sequences:
+        processed_df = preprocess_single_row(aug_df.copy(), use_imu_only)
+        batch = create_single_batch(processed_df, device)
+        
+        logits, logits_aux2 = predict_single_batch(model, batch, use_imu_only)
+        
+        if cfg.use_entmax:
+            logits = entmax_bisect(
+                torch.tensor(logits, device=device), 
+                alpha=cfg.entmax_alpha, 
+                dim=1
+            ).cpu().numpy()
+            logits_aux2 = entmax_bisect(
+                torch.tensor(logits_aux2, device=device), 
+                alpha=cfg.entmax_alpha, 
+                dim=1
+            ).cpu().numpy()
+        
+        tta_logits.append(logits)
+        tta_logits_aux2.append(logits_aux2)
+        
+    avg_tta_logits = np.mean(tta_logits, axis=0)
+    avg_tta_logits_aux2 = np.mean(tta_logits_aux2, axis=0)
+    
+    return avg_tta_logits, avg_tta_logits_aux2
 
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
@@ -248,36 +289,20 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         fold_logits = []
         fold_logits_aux2 = []
 
-        with torch.no_grad():
-            for i, model in enumerate(model_data['models']):
-                
-                tta_logits = []
-                tta_logits_aux2 = []
-                
-                for aug_df in augmented_sequences:
-                    processed_df = preprocess_single_row(aug_df.copy(), use_imu_only)
-                    batch = create_single_batch(processed_df)
-                    
-                    logits, logits_aux2 = predict_single_batch(model, batch, use_imu_only)
-                    
-                    if cfg.use_entmax:
-                        logits = entmax_bisect(
-                            torch.tensor(logits, device=device), 
-                            alpha=cfg.entmax_alpha, 
-                            dim=1
-                        ).cpu().numpy()
-                        logits_aux2 = entmax_bisect(
-                            torch.tensor(logits_aux2, device=device), 
-                            alpha=cfg.entmax_alpha, 
-                            dim=1
-                        ).cpu().numpy()
-                    
-                    tta_logits.append(logits)
-                    tta_logits_aux2.append(logits_aux2)
-                
-                avg_tta_logits = np.mean(tta_logits, axis=0)
-                avg_tta_logits_aux2 = np.mean(tta_logits_aux2, axis=0)
-                
+        with torch.no_grad(), concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for model, device in model_data['models']:
+                future = executor.submit(
+                    process_model_fold,
+                    model,
+                    device,
+                    augmented_sequences,
+                    use_imu_only
+                )
+                futures.append(future)
+            
+            for future in futures:
+                avg_tta_logits, avg_tta_logits_aux2 = future.result()
                 fold_logits.append(avg_tta_logits)
                 fold_logits_aux2.append(avg_tta_logits_aux2)
 
@@ -311,6 +336,7 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
         majority_vote_indices_aux2, _ = mode(all_models_predictions_array_aux2, axis=0, keepdims=False)
 
     if cfg.override_non_target:
+        print('override non target (using aux2 head)')
         final_preds = []
         for output_idx, aux2_idx in zip(majority_vote_indices, majority_vote_indices_aux2):
             if output_idx <= 7 and aux2_idx == 0:
