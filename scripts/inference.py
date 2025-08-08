@@ -223,37 +223,45 @@ def predict_single_batch(model, batch, use_imu_only):
             w0, w1, w2, w3, w4 = cfg.ext_weights_all
             outputs = w0 * outputs + w1 * ext1 + w2 * ext2 + w3 * ext3 + w4 * ext4
     
-    return outputs.cpu().detach().numpy(), aux2_outputs.cpu().detach().numpy()
+    return outputs.detach(), aux2_outputs.detach()
 
-def process_model_fold(model, device, augmented_sequences, use_imu_only):
-    tta_logits = []
-    tta_logits_aux2 = []
+def process_model_group(models_on_device, preprocessed_batches_on_device, use_imu_only):
+    group_device = models_on_device[0][1] 
     
-    for aug_df in augmented_sequences:
-        processed_df = preprocess_single_row(aug_df.copy(), use_imu_only)
-        batch = create_single_batch(processed_df, device)
-        
-        logits, logits_aux2 = predict_single_batch(model, batch, use_imu_only)
-        
-        if cfg.use_entmax:
-            logits = entmax_bisect(
-                torch.tensor(logits, device=device), 
-                alpha=cfg.entmax_alpha, 
-                dim=1
-            ).cpu().numpy()
-            logits_aux2 = entmax_bisect(
-                torch.tensor(logits_aux2, device=device), 
-                alpha=cfg.entmax_alpha, 
-                dim=1
-            ).cpu().numpy()
-        
-        tta_logits.append(logits)
-        tta_logits_aux2.append(logits_aux2)
-        
-    avg_tta_logits = np.mean(tta_logits, axis=0)
-    avg_tta_logits_aux2 = np.mean(tta_logits_aux2, axis=0)
+    fold_logits_sum_list = []
+    fold_logits_aux2_sum_list = []
     
-    return avg_tta_logits, avg_tta_logits_aux2
+    for model, _ in models_on_device:
+        tta_logits_gpu = []
+        tta_logits_aux2_gpu = []
+        
+        for batch in preprocessed_batches_on_device:
+            logits_gpu, logits_aux2_gpu = predict_single_batch(model, batch, use_imu_only)
+            
+            if cfg.use_entmax:
+                logits_gpu = entmax_bisect(logits_gpu, alpha=cfg.entmax_alpha, dim=1)
+                logits_aux2_gpu = entmax_bisect(logits_aux2_gpu, alpha=cfg.entmax_alpha, dim=1)
+            
+            tta_logits_gpu.append(logits_gpu)
+            tta_logits_aux2_gpu.append(logits_aux2_gpu)
+            
+        sum_tta_logits = torch.sum(torch.stack(tta_logits_gpu), dim=0)
+        sum_tta_logits_aux2 = torch.sum(torch.stack(tta_logits_aux2_gpu), dim=0)
+        
+        fold_logits_sum_list.append(sum_tta_logits)
+        fold_logits_aux2_sum_list.append(sum_tta_logits_aux2)
+        
+    sum_fold_logits = torch.sum(torch.stack(fold_logits_sum_list), dim=0)
+    sum_fold_logits_aux2 = torch.sum(torch.stack(fold_logits_aux2_sum_list), dim=0)
+    
+    num_folds = len(models_on_device)
+    num_tta = len(preprocessed_batches_on_device)
+    total_elements = num_folds * num_tta
+    
+    model_averaged_logits = sum_fold_logits.cpu().numpy() / total_elements
+    model_averaged_logits_aux2 = sum_fold_logits_aux2.cpu().numpy() / total_elements
+    
+    return model_averaged_logits, model_averaged_logits_aux2
 
 def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     test_df = sequence.to_pandas()
@@ -275,61 +283,64 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     else:
         augmented_sequences = [test_df]
     
+    preprocessed_batches_by_device = {dev: [] for dev in devices}
+    for aug_df in augmented_sequences:
+        processed_df = preprocess_single_row(aug_df.copy(), use_imu_only)
+        for dev in devices:
+            batch = create_single_batch(processed_df, dev)
+            preprocessed_batches_by_device[dev].append(batch)
+    
     all_model_averaged_logits = []
     all_model_averaged_logits_aux2 = []
-    all_model_predictions = []
-    all_model_predictions_aux2 = []
     model_weights = []
 
     w_key = 'imu_only' if use_imu_only else 'imu+tof+thm'
     
+    tasks_to_run = []
     for weights_path, model_data in loaded_models[w_key].items():
-        model_weights.append(model_data['weight'])
+        group_device = model_data['models'][0][1]
         
-        fold_logits = []
-        fold_logits_aux2 = []
-
-        with torch.no_grad(), concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = []
-            for model, device in model_data['models']:
-                future = executor.submit(
-                    process_model_fold,
-                    model,
-                    device,
-                    augmented_sequences,
-                    use_imu_only
-                )
-                futures.append(future)
+        task_data = {
+            'models_on_device': model_data['models'],
+            'preprocessed_batches_on_device': preprocessed_batches_by_device[group_device],
+            'use_imu_only': use_imu_only,
+            'weight': model_data['weight']
+        }
+        tasks_to_run.append(task_data)
+        
+    with torch.no_grad(), concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {
+            executor.submit(
+                process_model_group, 
+                task['models_on_device'], 
+                task['preprocessed_batches_on_device'], 
+                task['use_imu_only']
+            ): task 
+            for task in tasks_to_run
+        }
+        
+        for future in concurrent.futures.as_completed(futures):
+            task_data = futures[future]
+            logits, logits_aux2 = future.result()
             
-            for future in futures:
-                avg_tta_logits, avg_tta_logits_aux2 = future.result()
-                fold_logits.append(avg_tta_logits)
-                fold_logits_aux2.append(avg_tta_logits_aux2)
-
-        model_averaged_logits = np.mean(np.array(fold_logits), axis=0)
-        model_averaged_logits_aux2 = np.mean(np.array(fold_logits_aux2), axis=0)
-        
-        all_model_averaged_logits.append(model_averaged_logits)
-        all_model_averaged_logits_aux2.append(model_averaged_logits_aux2)
-        
-        if not cfg.is_soft:
-            model_predictions = np.argmax(model_averaged_logits, axis=1)
-            model_predictions_aux2 = np.argmax(model_averaged_logits_aux2, axis=1)
-            all_model_predictions.append(model_predictions)
-            all_model_predictions_aux2.append(model_predictions_aux2)
-
+            model_weights.append(task_data['weight'])
+            all_model_averaged_logits.append(logits)
+            all_model_averaged_logits_aux2.append(logits_aux2)
+    
     if cfg.is_soft:
         model_weights = np.array(model_weights)
-        
         all_model_averaged_logits = np.array(all_model_averaged_logits)
         all_model_averaged_logits_aux2 = np.array(all_model_averaged_logits_aux2)
         
         final_averaged_logits = np.sum(all_model_averaged_logits * model_weights[:, np.newaxis, np.newaxis], axis=0)
         final_averaged_logits_aux2 = np.sum(all_model_averaged_logits_aux2 * model_weights[:, np.newaxis, np.newaxis], axis=0)
+        print(final_averaged_logits)
 
         majority_vote_indices = np.argmax(final_averaged_logits, axis=1)
         majority_vote_indices_aux2 = np.argmax(final_averaged_logits_aux2, axis=1)
     else:
+        all_model_predictions = [np.argmax(logits, axis=1) for logits in all_model_averaged_logits]
+        all_model_predictions_aux2 = [np.argmax(logits_aux2, axis=1) for logits_aux2 in all_model_averaged_logits_aux2]
         all_models_predictions_array = np.array(all_model_predictions)
         majority_vote_indices, _ = mode(all_models_predictions_array, axis=0, keepdims=False)
         all_models_predictions_array_aux2 = np.array(all_model_predictions_aux2)
