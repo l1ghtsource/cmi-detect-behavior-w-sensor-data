@@ -216,7 +216,7 @@ cfg.max_norm = 2.0
 cfg.use_lookahead = False
 cfg.use_sam = False
 cfg.scheduler = 'cosine' # ['cosine', 'cosine_cycle', 'linear']
-cfg.optim_type = 'adamw' # ['adamw', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
+cfg.optim_type = 'adamw' # ['adamw', 'adam', 'adan', 'adamp', 'madgrad', 'adafisherw', 'ranger', 'muonwauxadam']
 
 # --- ts augs ---
 cfg.max_augmentations_per_sample = 1

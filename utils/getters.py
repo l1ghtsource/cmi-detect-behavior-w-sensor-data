@@ -1,5 +1,5 @@
 import torch.nn as nn
-from torch.optim import AdamW
+from torch.optim import AdamW, Adam
 from optimizers.adan import Adan
 from optimizers.adamp import AdamP
 from optimizers.madgrad import MADGRAD
@@ -124,6 +124,8 @@ class SafeMuonWithAuxAdam(SingleDeviceMuonWithAuxAdam):
 def get_optimizer(model, lr=cfg.lr, lr_muon=cfg.lr_muon, weight_decay=cfg.weight_decay):
     if cfg.optim_type == 'adamw':
         return AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    if cfg.optim_type == 'adam':
+        return Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     elif cfg.optim_type == 'adan':
         return Adan(model.parameters(), lr=lr, weight_decay=weight_decay)
     elif cfg.optim_type == 'adamp':
