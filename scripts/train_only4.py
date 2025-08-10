@@ -4,6 +4,7 @@ import gc
 
 import pandas as pd
 import numpy as np
+import math
 
 from tqdm import tqdm
 
@@ -46,24 +47,39 @@ from utils.data_preproc import (
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
 
-def batch_hard_triplet_loss(labels, embeddings, margin, device):
-    pairwise_dist = torch.cdist(embeddings, embeddings, p=2)
+class ArcMarginProduct(nn.Module):
+    def __init__(self, in_features, out_features, s=30.0, m=0.50, easy_margin=False):
+        super(ArcMarginProduct, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.s = s
+        self.m = m
+        self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        nn.init.xavier_uniform_(self.weight)
 
-    mask_positive = (labels.unsqueeze(1) == labels.unsqueeze(0)).bool().to(device)
-    mask_negative = ~mask_positive
-    
-    anchor_positive_dist = pairwise_dist.clone()
-    anchor_positive_dist[~mask_positive] = -float('inf')
-    hardest_positive_dist, _ = torch.max(anchor_positive_dist, dim=1)
+        self.easy_margin = easy_margin
+        self.cos_m = math.cos(m)
+        self.sin_m = math.sin(m)
+        self.th = math.cos(math.pi - m)
+        self.mm = math.sin(math.pi - m) * m
 
-    anchor_negative_dist = pairwise_dist.clone()
-    anchor_negative_dist[mask_positive] = float('inf')
-    hardest_negative_dist, _ = torch.min(anchor_negative_dist, dim=1)
-    
-    triplet_loss = F.relu(hardest_positive_dist - hardest_negative_dist + margin)
-    
-    return triplet_loss.mean()
+    def forward(self, input, label):
+        cosine = F.linear(F.normalize(input), F.normalize(self.weight))
+        sine = torch.sqrt((1.0 - torch.pow(cosine, 2)).clamp(0, 1))
+        phi = cosine * self.cos_m - sine * self.sin_m
+        if self.easy_margin:
+            phi = torch.where(cosine > 0, phi, cosine)
+        else:
+            phi = torch.where(cosine > self.th, phi, cosine - self.mm)
 
+        one_hot = torch.zeros(cosine.size(), device=input.device)
+        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+        
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        output *= self.s
+
+        return output
+    
 # --- set seed ---
 
 seed_everything()
@@ -105,8 +121,9 @@ train_seq = fast_seq_agg(train)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
+def train_epoch(train_loader, model, arcface_head, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, ema=None, current_step=0, num_warmup_steps=0, fold=None):
     model.train()
+    arcface_head.train()
         
     total_loss = 0
     total_samples = 0
@@ -128,23 +145,11 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            _embeds, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
+            embeds, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
 
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
-
-            with torch.no_grad():
-                embeds, *_ = forward_model(model, batch, imu_only=cfg.imu_only)
-            
-            # embeds = F.normalize(embeds, p=2, dim=1)
-
-            triplet_loss = batch_hard_triplet_loss(
-                labels=targets,
-                embeddings=embeds,
-                margin=1.0,
-                device=device
-            )
 
             ce_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, seq_type_loss, orientation_loss = mixup_criterion(
                 outputs, seq_type_outputs, orientation_outputs, 
@@ -154,7 +159,12 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
                 orientation_targets_a, orientation_targets_b, lam
             )  
 
-            main_loss = ce_loss + 0.5 * triplet_loss  
+            arcface_logits_a = arcface_head(embeds, targets_a)
+            arcface_logits_b = arcface_head(embeds, targets_b)
+            arcface_loss = lam * main_criterion(arcface_logits_a, targets_a) + (1 - lam) * main_criterion(arcface_logits_b, targets_b)
+
+            main_loss = ce_loss + 0.5 * arcface_loss
+
             ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss) / 4
             loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
         else:
@@ -164,13 +174,10 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
             orientation_aux_targets = batch['orientation_aux_target']
 
             ce_loss = main_criterion(outputs, targets)
-            triplet_loss = batch_hard_triplet_loss(
-                labels=targets,
-                embeddings=embeds,
-                margin=1.0,
-                device=device
-            )
-            main_loss = ce_loss + 0.5 * triplet_loss
+            arcface_logits = arcface_head(embeds, targets)
+            arcface_loss = main_criterion(arcface_logits, targets)
+
+            main_loss = ce_loss + 0.5 * arcface_loss
 
             ext1_out1_loss = hybrid_criterions[0](ext1_out1, targets)
             ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
@@ -202,7 +209,7 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
             wandb.log({
                 f'fold_{fold}/train_batch_loss': loss.item(),
                 f'fold_{fold}/train_ce_loss': ce_loss.item(),
-                f'fold_{fold}/train_triplet_loss': triplet_loss.item(),
+                f'fold_{fold}/train_arcface_loss': arcface_loss.item(),
                 f'fold_{fold}/train_main_loss': main_loss.item(),
                 f'fold_{fold}/train_ext1_out1_loss': ext1_out1_loss.item(),
                 f'fold_{fold}/train_ext2_out1_loss': ext2_out1_loss.item(),
@@ -222,8 +229,9 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
 
     return avg_loss, avg_m, bm, mm, current_step
 
-def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema=None):
+def valid_epoch(val_loader, model, arcface_head, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema=None):
     model.eval()
+    arcface_head.eval()
 
     if cfg.use_ema and ema is not None:
         ema.apply_shadow()
@@ -245,13 +253,10 @@ def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_c
             orientation_aux_targets = batch['orientation_aux_target']
 
             ce_loss = main_criterion(outputs, targets)
-            triplet_loss = batch_hard_triplet_loss(
-                labels=targets,
-                embeddings=embeds,
-                margin=1.0,
-                device=device
-            )
-            main_loss = ce_loss + 0.5 * triplet_loss
+            arcface_logits = arcface_head(embeds, targets)
+            arcface_loss = main_criterion(arcface_logits, targets)
+
+            main_loss = ce_loss + 0.5 * arcface_loss
 
             ext1_out1_loss = hybrid_criterions[0](ext1_out1, targets)
             ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
@@ -572,9 +577,22 @@ def run_training_with_stratified_group_kfold():
         # if cfg.do_wandb_log:
         #     wandb.watch(model, log='all', log_freq=10)
 
+        embedding_size = 256 * 4
+        arcface_head = ArcMarginProduct(
+            in_features=embedding_size,
+            out_features=cfg.main_num_classes,
+            s=30,
+            m=0.5
+        ).to(device)
+
         ema = EMA(model, decay=cfg.ema_decay) if cfg.use_ema else None
 
-        optimizer = get_optimizer(model=model, lr=cfg.lr, lr_muon=cfg.lr_muon, weight_decay=cfg.weight_decay)
+        optimizer_params = [
+            {'params': model.parameters()},
+            {'params': arcface_head.parameters()}
+        ]
+        optimizer = torch.optim.AdamW(optimizer_params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+        #get_optimizer(model=model, lr=cfg.lr, lr_muon=cfg.lr_muon, weight_decay=cfg.weight_decay)
         if cfg.use_lookahead:
             optimizer = Lookahead(optimizer)    
         if cfg.use_sam:
@@ -619,10 +637,10 @@ def run_training_with_stratified_group_kfold():
             print(f'{epoch=}')
             
             train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
-                train_loader, model, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, 
+                train_loader, model, arcface_head, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, arcface_head, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema)
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
