@@ -12,6 +12,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from transformers import (
     get_cosine_schedule_with_warmup,
@@ -44,6 +45,24 @@ from utils.data_preproc import (
 )
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
+
+def batch_hard_triplet_loss(labels, embeddings, margin, device):
+    pairwise_dist = torch.cdist(embeddings, embeddings, p=2)
+
+    mask_positive = (labels.unsqueeze(1) == labels.unsqueeze(0)).bool().to(device)
+    mask_negative = ~mask_positive
+    
+    anchor_positive_dist = pairwise_dist.clone()
+    anchor_positive_dist[~mask_positive] = -float('inf')
+    hardest_positive_dist, _ = torch.max(anchor_positive_dist, dim=1)
+
+    anchor_negative_dist = pairwise_dist.clone()
+    anchor_negative_dist[mask_positive] = float('inf')
+    hardest_negative_dist, _ = torch.min(anchor_negative_dist, dim=1)
+    
+    triplet_loss = F.relu(hardest_positive_dist - hardest_negative_dist + margin)
+    
+    return triplet_loss.mean()
 
 # --- set seed ---
 
@@ -109,25 +128,50 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
         is_warmup_phase = current_step < num_warmup_steps
         if cfg.use_mixup and curr_proba > cfg.mixup_proba and not is_warmup_phase:
             mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam = mixup_batch(batch, cfg.mixup_alpha, device)
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
-            main_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, seq_type_loss, orientation_loss = mixup_criterion(
+            _embeds, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, mixed_batch, imu_only=cfg.imu_only)
+
+            targets = batch['main_target']
+            seq_type_aux_targets = batch['seq_type_aux_target']
+            orientation_aux_targets = batch['orientation_aux_target']
+
+            with torch.no_grad():
+                embeds, *_ = forward_model(model, batch, imu_only=cfg.imu_only)
+            
+            # embeds = F.normalize(embeds, p=2, dim=1)
+
+            triplet_loss = batch_hard_triplet_loss(
+                labels=targets,
+                embeddings=embeds,
+                margin=1.0,
+                device=device
+            )
+
+            ce_loss, ext1_out1_loss, ext2_out1_loss, ext3_out1_loss, ext4_out1_loss, seq_type_loss, orientation_loss = mixup_criterion(
                 outputs, seq_type_outputs, orientation_outputs, 
                 ext1_out1, ext2_out1, ext3_out1, ext4_out1,
                 targets_a, targets_b, 
                 seq_type_targets_a, seq_type_targets_b, 
                 orientation_targets_a, orientation_targets_b, lam
-            )      
+            )  
+
+            main_loss = ce_loss + 0.5 * triplet_loss  
             ext_out1_loss = (ext1_out1_loss + ext2_out1_loss + ext3_out1_loss + ext4_out1_loss) / 4
             loss = cfg.main_weight * main_loss + cfg.main_weight * ext_out1_loss + cfg.seq_type_aux_weight * seq_type_loss + cfg.orientation_aux_weight * orientation_loss
-            targets = batch['main_target']
-            seq_type_aux_targets = batch['seq_type_aux_target']
-            orientation_aux_targets = batch['orientation_aux_target']
         else:
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
+            embeds, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
-            main_loss = main_criterion(outputs, targets)
+
+            ce_loss = main_criterion(outputs, targets)
+            triplet_loss = batch_hard_triplet_loss(
+                labels=targets,
+                embeddings=embeds,
+                margin=1.0,
+                device=device
+            )
+            main_loss = ce_loss + 0.5 * triplet_loss
+
             ext1_out1_loss = hybrid_criterions[0](ext1_out1, targets)
             ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
             ext3_out1_loss = hybrid_criterions[2](ext3_out1, targets)
@@ -157,6 +201,8 @@ def train_epoch(train_loader, model, optimizer, main_criterion, hybrid_criterion
         if cfg.do_wandb_log: # every batch
             wandb.log({
                 f'fold_{fold}/train_batch_loss': loss.item(),
+                f'fold_{fold}/train_ce_loss': ce_loss.item(),
+                f'fold_{fold}/train_triplet_loss': triplet_loss.item(),
                 f'fold_{fold}/train_main_loss': main_loss.item(),
                 f'fold_{fold}/train_ext1_out1_loss': ext1_out1_loss.item(),
                 f'fold_{fold}/train_ext2_out1_loss': ext2_out1_loss.item(),
@@ -193,11 +239,20 @@ def valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_c
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
     
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
+            embeds, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             targets = batch['main_target']
             seq_type_aux_targets = batch['seq_type_aux_target']
             orientation_aux_targets = batch['orientation_aux_target']
-            main_loss = main_criterion(outputs, targets)
+
+            ce_loss = main_criterion(outputs, targets)
+            triplet_loss = batch_hard_triplet_loss(
+                labels=targets,
+                embeddings=embeds,
+                margin=1.0,
+                device=device
+            )
+            main_loss = ce_loss + 0.5 * triplet_loss
+
             ext1_out1_loss = hybrid_criterions[0](ext1_out1, targets)
             ext2_out1_loss = hybrid_criterions[1](ext2_out1, targets)
             ext3_out1_loss = hybrid_criterions[2](ext3_out1, targets)
@@ -249,7 +304,7 @@ def get_oof_predictions(model, val_loader, output_index=0):
         for batch in val_loader:
             for key in batch.keys():
                 batch[key] = batch[key].to(device)
-            outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
+            _embeds, outputs, seq_type_outputs, orientation_outputs, ext1_out1, ext2_out1, ext3_out1, ext4_out1 = forward_model(model, batch, imu_only=cfg.imu_only)
             
             if output_index == 0:
                 selected_output = outputs
