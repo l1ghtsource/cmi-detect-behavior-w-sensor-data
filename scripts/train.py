@@ -586,7 +586,7 @@ def run_training_with_stratified_group_kfold():
                 print(f'{dynamic_weights=}')
                 class_weights_main_tensor = dynamic_weights.to(device)
                 main_criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing, weight=class_weights_main_tensor)
-                hybrid_criterions = [nn.CrossEntropyLoss(weight=class_weights_main_tensor) for _ in range(4)]
+                hybrid_criterions = [nn.CrossEntropyLoss(weight=class_weights_main_tensor) for _ in range(6)]
                 if cfg.do_wandb_log:
                     wandb.log({f'fold_{fold}/class_weights_epoch_{epoch}': class_weights_main_tensor.cpu().numpy()})
             
