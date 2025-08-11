@@ -266,6 +266,9 @@ cfg.mixup_alpha = 0.4
 cfg.is_zebra = False
 cfg.is_cutmix = False
 cfg.is_wtfmix = False
+cfg.is_warpix = False
+cfg.is_channel_wtfmix = False
+cfg.is_shufflemix = False
 
 # --- ema ---
 cfg.use_ema = False

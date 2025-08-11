@@ -551,6 +551,15 @@ def get_prefix(imu_only):
     if cfg.is_wtfmix:
         prefix_parts.append('wtfmix')
 
+    if cfg.is_warpix:
+        prefix_parts.append('warpmix')
+
+    if cfg.is_channel_wtfmix:
+        prefix_parts.append('channel_wtfmix')
+
+    if cfg.is_shufflemix:
+        prefix_parts.append('shufflemix')
+
     if cfg.use_conf_aware_weights:
         prefix_parts.append('conf_aware')
     
