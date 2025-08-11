@@ -17,6 +17,8 @@ class MixupLoss:
 def mixup_batch(batch, alpha=1.0, device='cuda'):
     if cfg.is_zebra:
         return mixup_batch_zebra(batch=batch, alpha=alpha, device=device)
+    elif cfg.is_cutmix:
+        return cutmix1d_batch(batch=batch, alpha=alpha, device=device)
     else:
         return mixup_batch_normal(batch=batch, alpha=alpha, device=device)
 
@@ -93,6 +95,60 @@ def mixup_batch_normal(batch, alpha=1.0, device='cuda'):
     orientation_targets_a = batch['orientation_aux_target']
     orientation_targets_b = batch['orientation_aux_target'][index]
     
+    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
+
+def cutmix1d_batch(batch, alpha=1.0, device='cuda'):
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+
+    batch_size = batch['main_target'].size(0)
+    index = torch.randperm(batch_size).to(device)
+    mixed_batch = {}
+
+    target_keys = {'main_target', 'seq_type_aux_target', 'orientation_aux_target'}
+
+    for key in batch.keys():
+        if key not in target_keys:
+            original_data = batch[key]
+            if len(original_data.shape) == 4:
+                L = original_data.size(2)
+                cut_length = int(L * (1 - lam))
+                start = np.random.randint(0, L - cut_length + 1)
+                mixed_data = original_data.clone()
+                mixed_data[:, :, start:start+cut_length, :] = original_data[index][:, :, start:start+cut_length, :]
+                mixed_batch[key] = mixed_data
+            elif len(original_data.shape) == 3:
+                L = original_data.size(1)
+                cut_length = int(L * (1 - lam))
+                start = np.random.randint(0, L - cut_length + 1)
+                mixed_data = original_data.clone()
+                mixed_data[:, start:start+cut_length, :] = original_data[index][:, start:start+cut_length, :]
+                mixed_batch[key] = mixed_data
+            elif len(original_data.shape) == 2:
+                L = original_data.size(1)
+                cut_length = int(L * (1 - lam))
+                start = np.random.randint(0, L - cut_length + 1)
+                mixed_data = original_data.clone()
+                mixed_data[:, start:start+cut_length] = original_data[index][:, start:start+cut_length]
+                mixed_batch[key] = mixed_data
+            else:
+                mixed_batch[key] = original_data
+        else:
+            mixed_batch[key] = batch[key]
+
+    targets_a = batch['main_target']
+    targets_b = batch['main_target'][index]
+
+    seq_type_targets_a = batch['seq_type_aux_target']
+    seq_type_targets_b = batch['seq_type_aux_target'][index]
+
+    orientation_targets_a = batch['orientation_aux_target']
+    orientation_targets_b = batch['orientation_aux_target'][index]
+
+    lam = 1 - cut_length / L
+
     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
 
 # mixup only in (label <= 7) or (label > 7) groups

@@ -544,5 +544,11 @@ def get_prefix(imu_only):
 
     if cfg.is_zebra:
         prefix_parts.append('zebra')
+
+    if cfg.is_cutmix:
+        prefix_parts.append('cutmix')
+
+    if cfg.use_conf_aware_weights:
+        prefix_parts.append('conf_aware')
     
     return '_'.join(prefix_parts) + '_'
