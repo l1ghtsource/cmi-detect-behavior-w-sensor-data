@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from sklearn.metrics import confusion_matrix
 
 def calculate_confusion_aware_weights(targets, preds, num_classes, smoothing_factor=0.1):
