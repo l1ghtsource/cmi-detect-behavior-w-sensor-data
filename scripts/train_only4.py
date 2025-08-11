@@ -42,6 +42,7 @@ from utils.data_preproc import (
     fe,
     apply_kalman_to_sequences
 )
+from utils.calc_confusion_aware import calculate_confusion_aware_weights
 from utils.metrics import just_stupid_macro_f1_haha, comp_metric
 from utils.seed import seed_everything
 
@@ -562,12 +563,22 @@ def run_training_with_stratified_group_kfold():
         
         for epoch in range(cfg.n_epochs):
             print(f'{epoch=}')
+
+            if epoch > 0 and cfg.use_conf_aware_weights:
+                print('updating main loss weights based on confusion matrix')
+                dynamic_weights = calculate_confusion_aware_weights(all_targets, all_preds, cfg.main_num_classes)
+                print(f'{dynamic_weights=}')
+                class_weights_main_tensor = dynamic_weights.to(device)
+                main_criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing, weight=class_weights_main_tensor)
+                hybrid_criterions = [nn.CrossEntropyLoss(weight=class_weights_main_tensor) for _ in range(4)]
+                if cfg.do_wandb_log:
+                    wandb.log({f'fold_{fold}/class_weights_epoch_{epoch}': class_weights_main_tensor.cpu().numpy()})
             
             train_loss, avg_m_train, bm_train, mm_train, current_step = train_epoch(
                 train_loader, model, optimizer, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, scheduler, 
                 ema, current_step, num_warmup_steps, fold
             )
-            val_loss, avg_m_val, bm_val, mm_val, _, _ = valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema)
+            val_loss, avg_m_val, bm_val, mm_val, all_targets, all_preds = valid_epoch(val_loader, model, main_criterion, hybrid_criterions, seq_type_criterion, orientation_criterion, device, ema)
             
             print(f'{train_loss=}, {avg_m_train=}, {bm_train=}, {mm_train=},')
             print(f'{val_loss=}, {avg_m_val=}, {bm_val=}, {mm_val=}')
