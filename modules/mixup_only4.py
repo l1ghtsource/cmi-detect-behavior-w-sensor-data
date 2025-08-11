@@ -26,12 +26,8 @@ def mixup_batch(batch, alpha=1.0, device='cuda'):
         return cutmix1d_batch(batch=batch, alpha=alpha, device=device)
     elif cfg.is_wtfmix:
         return wtfmix1d_batch(batch=batch, alpha=alpha, device=device)    
-    elif cfg.is_warpix:
-        return warpmix1d_batch(batch=batch, alpha=alpha, device=device)  
     elif cfg.is_channel_wtfmix:
         return channel_wtfmix1d_batch(batch=batch, alpha=alpha, device=device)  
-    elif cfg.is_shufflemix:
-        return shufflemix1d_batch(batch=batch, alpha=alpha, device=device)  
     else:
         return mixup_batch_normal(batch=batch, alpha=alpha, device=device)
 
@@ -199,52 +195,6 @@ def cutmix1d_batch(batch, alpha=1.0, device='cuda'):
 
     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
 
-def warpmix1d_batch(batch, alpha=1.0, device='cuda', num_segments=3):
-    batch_size = batch['main_target'].size(0)
-    index = torch.randperm(batch_size).to(device)
-    mixed_batch = {}
-    target_keys = {'main_target', 'seq_type_aux_target', 'orientation_aux_target'}
-
-    total_len = None
-    total_replaced = 0
-
-    for key in batch.keys():
-        if key not in target_keys:
-            original_data = batch[key]
-            mixed_data = original_data.clone()
-
-            if len(original_data.shape) in (3, 4):
-                seq_dim = 2 if len(original_data.shape) == 4 else 1
-                L = original_data.size(seq_dim)
-                if total_len is None:
-                    total_len = L
-
-                for _ in range(num_segments):
-                    seg_len = np.random.randint(1, L // (num_segments + 1) + 1)
-                    start = np.random.randint(0, L - seg_len + 1)
-                    total_replaced += seg_len
-                    if len(original_data.shape) == 4:
-                        mixed_data[:, :, start:start+seg_len, :] = original_data[index][:, :, start:start+seg_len, :]
-                    else:
-                        mixed_data[:, start:start+seg_len, :] = original_data[index][:, start:start+seg_len, :]
-            else:
-                mixed_data = original_data
-
-            mixed_batch[key] = mixed_data
-        else:
-            mixed_batch[key] = batch[key]
-
-    lam = 1 - total_replaced / (total_len * num_segments / num_segments)
-
-    targets_a = batch['main_target']
-    targets_b = batch['main_target'][index]
-    seq_type_targets_a = batch['seq_type_aux_target']
-    seq_type_targets_b = batch['seq_type_aux_target'][index]
-    orientation_targets_a = batch['orientation_aux_target']
-    orientation_targets_b = batch['orientation_aux_target'][index]
-
-    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
-
 def channel_wtfmix1d_batch(batch, alpha=1.0, device='cuda'):
     batch_size = batch['main_target'].size(0)
     index = torch.randperm(batch_size).to(device)
@@ -282,53 +232,6 @@ def channel_wtfmix1d_batch(batch, alpha=1.0, device='cuda'):
     seq_type_targets_b = batch['seq_type_aux_target'][index]
     orientation_targets_a = batch['orientation_aux_target']
     orientation_targets_b = batch['orientation_aux_target'][index]
-
-    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
-
-def shufflemix1d_batch(batch, alpha=1.0, device='cuda', num_sources=4):
-    batch_size = batch['main_target'].size(0)
-    idxs = [torch.randperm(batch_size).to(device) for _ in range(num_sources)]
-    mixed_batch = {}
-    target_keys = {'main_target', 'seq_type_aux_target', 'orientation_aux_target'}
-
-    total_len = None
-    seg_len = None
-
-    for key in batch.keys():
-        if key not in target_keys:
-            original_data = batch[key]
-            mixed_data = original_data.clone()
-
-            if len(original_data.shape) in (3, 4):
-                seq_dim = 2 if len(original_data.shape) == 4 else 1
-                L = original_data.size(seq_dim)
-                if total_len is None:
-                    total_len = L
-                seg_len = L // num_sources
-                pos = 0
-                for s in range(num_sources):
-                    start = pos
-                    end = pos + seg_len if s < num_sources - 1 else L
-                    if len(original_data.shape) == 4:
-                        mixed_data[:, :, start:end, :] = original_data[idxs[s]][:, :, start:end, :]
-                    else:
-                        mixed_data[:, start:end, :] = original_data[idxs[s]][:, start:end, :]
-                    pos = end
-            else:
-                mixed_data = original_data
-
-            mixed_batch[key] = mixed_data
-        else:
-            mixed_batch[key] = batch[key]
-
-    lam = 1 / num_sources
-
-    targets_a = batch['main_target']
-    targets_b = batch['main_target'][idxs[0]]
-    seq_type_targets_a = batch['seq_type_aux_target']
-    seq_type_targets_b = batch['seq_type_aux_target'][idxs[0]]
-    orientation_targets_a = batch['orientation_aux_target']
-    orientation_targets_b = batch['orientation_aux_target'][idxs[0]]
 
     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
 
