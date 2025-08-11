@@ -262,7 +262,7 @@ cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
 # --- mixup ---
 cfg.use_mixup = True
-cfg.mixup_proba = 0.7
+cfg.mixup_proba = 0.7 # it's reverse proba lol so real_mixup_proba = 1 - mixup_proba ^_^
 cfg.mixup_alpha = 0.4
 cfg.is_zebra = False
 cfg.is_cutmix = False
