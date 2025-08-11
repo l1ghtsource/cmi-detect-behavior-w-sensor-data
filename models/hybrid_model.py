@@ -942,7 +942,7 @@ class MultiSensor_HybridModel_v1(nn.Module):
         return fused_features
     
     def apply_branch_dropout(self, thm, tof, branch_dropout_prob):
-        if not self.training:
+        if cfg.is_infer:
             return thm, tof
             
         if torch.rand(1).item() < branch_dropout_prob:
