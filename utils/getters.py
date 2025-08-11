@@ -548,6 +548,9 @@ def get_prefix(imu_only):
     if cfg.is_cutmix:
         prefix_parts.append('cutmix')
 
+    if cfg.is_wtfmix:
+        prefix_parts.append('wtfmix')
+
     if cfg.use_conf_aware_weights:
         prefix_parts.append('conf_aware')
     

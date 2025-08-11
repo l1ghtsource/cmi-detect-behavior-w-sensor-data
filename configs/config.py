@@ -265,6 +265,7 @@ cfg.mixup_proba = 0.7
 cfg.mixup_alpha = 0.4
 cfg.is_zebra = False
 cfg.is_cutmix = False
+cfg.is_wtfmix = False
 
 # --- ema ---
 cfg.use_ema = False

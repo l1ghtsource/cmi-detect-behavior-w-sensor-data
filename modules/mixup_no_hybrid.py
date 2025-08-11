@@ -19,6 +19,8 @@ def mixup_batch(batch, alpha=1.0, device='cuda'):
         return mixup_batch_zebra(batch=batch, alpha=alpha, device=device)
     elif cfg.is_cutmix:
         return cutmix1d_batch(batch=batch, alpha=alpha, device=device)
+    elif cfg.is_wtfmix:
+        return wtfmix1d_batch(batch=batch, alpha=alpha, device=device)    
     else:
         return mixup_batch_normal(batch=batch, alpha=alpha, device=device)
 
@@ -148,6 +150,41 @@ def cutmix1d_batch(batch, alpha=1.0, device='cuda'):
     orientation_targets_b = batch['orientation_aux_target'][index]
 
     lam = 1 - cut_length / L
+
+    return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
+
+def wtfmix1d_batch(batch, alpha=1.0, device='cuda'):
+    batch_size = batch['main_target'].size(0)
+    index = torch.randperm(batch_size).to(device)
+
+    mixed_batch = {}
+    target_keys = {'main_target', 'seq_type_aux_target', 'orientation_aux_target'}
+
+    feature_keys = ['imu', 'thm', 'tof']
+    num_from_a = np.random.choice([1, 2])
+    features_from_a = set(np.random.choice(feature_keys, size=num_from_a, replace=False))
+
+    for key in batch.keys():
+        if key in target_keys:
+            mixed_batch[key] = batch[key]
+        elif key in feature_keys:
+            if key in features_from_a:
+                mixed_batch[key] = batch[key]
+            else:
+                mixed_batch[key] = batch[key][index]
+        else:
+            mixed_batch[key] = batch[key]
+
+    targets_a = batch['main_target']
+    targets_b = batch['main_target'][index]
+
+    seq_type_targets_a = batch['seq_type_aux_target']
+    seq_type_targets_b = batch['seq_type_aux_target'][index]
+
+    orientation_targets_a = batch['orientation_aux_target']
+    orientation_targets_b = batch['orientation_aux_target'][index]
+
+    lam = len(features_from_a) / len(feature_keys)
 
     return mixed_batch, targets_a, targets_b, seq_type_targets_a, seq_type_targets_b, orientation_targets_a, orientation_targets_b, lam
 
