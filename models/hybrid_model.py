@@ -941,6 +941,19 @@ class MultiSensor_HybridModel_v1(nn.Module):
 
         return fused_features
     
+    def apply_branch_dropout(self, thm, tof, branch_dropout_prob):
+        if not self.training:
+            return thm, tof
+            
+        if torch.rand(1).item() < branch_dropout_prob:
+            thm = torch.zeros_like(thm)
+        
+        for i in range(5):
+            if torch.rand(1).item() < branch_dropout_prob:
+                tof[:, i:i+1, :, :] = 0
+                
+        return thm, tof
+    
     def forward(self, _x, thm, tof, pad_mask=None):
         # input is (bs, 1, T, C)
 
@@ -948,6 +961,9 @@ class MultiSensor_HybridModel_v1(nn.Module):
             _x = _x.flip(dims=[2])
             thm = thm.flip(dims=[2])
             tof = tof.flip(dims=[2])
+
+        if cfg.branch_dropout_proba > 0:
+            thm, tof = self.apply_branch_dropout(thm, tof, branch_dropout_prob=cfg.branch_dropout_proba)
         
         x_dict = {
             'imu': _x[:, :, :, :3],

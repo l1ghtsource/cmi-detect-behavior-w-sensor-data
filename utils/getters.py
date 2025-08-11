@@ -556,5 +556,8 @@ def get_prefix(imu_only):
 
     if cfg.use_conf_aware_weights:
         prefix_parts.append('conf_aware')
+
+    if cfg.branch_dropout_proba > 0:
+        prefix_parts.append(f'branch_drop_{cfg.branch_dropout_proba}')
     
     return '_'.join(prefix_parts) + '_'
