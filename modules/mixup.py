@@ -30,8 +30,23 @@ def mixup_batch(batch, alpha=1.0, device='cuda'):
         return wtfmix1d_batch(batch=batch, alpha=alpha, device=device)    
     elif cfg.is_channel_wtfmix:
         return channel_wtfmix1d_batch(batch=batch, alpha=alpha, device=device)  
+    elif cfg.is_mixed_mixup:
+        return mixed_mixup_batch(batch=batch, alpha=alpha, device=device)
     else:
         return mixup_batch_normal(batch=batch, alpha=alpha, device=device)
+    
+def mixed_mixup_batch(batch, alpha=1.0, device='cuda'):
+    mixup_probs = list(cfg.mixed_mixup_weights.values())
+    mixup_methods = [
+        mixup_batch_normal,
+        cutmix1d_batch, 
+        channel_wtfmix1d_batch,
+        mixup_batch_zebra
+    ]
+    
+    chosen_method = np.random.choice(mixup_methods, p=mixup_probs)
+    
+    return chosen_method(batch, alpha=alpha, device=device)
 
 def mixup_batch_zebra(batch, alpha=1.0, device='cuda'):
     batch_size = batch['main_target'].size()[0]

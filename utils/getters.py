@@ -554,6 +554,9 @@ def get_prefix(imu_only):
     if cfg.is_channel_wtfmix:
         prefix_parts.append('channel_wtfmix')
 
+    if cfg.is_mixed_mixup:
+        prefix_parts.append('mixed_mixup')
+
     if cfg.use_conf_aware_weights:
         prefix_parts.append('conf_aware')
 

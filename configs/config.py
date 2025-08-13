@@ -274,6 +274,8 @@ cfg.is_zebra = False
 cfg.is_cutmix = False
 cfg.is_wtfmix = False
 cfg.is_channel_wtfmix = False
+cfg.is_mixed_mixup = False
+cfg.mixed_mixup_weights = {'mixup': 0.3, 'cutmix': 0.3, 'channel_wtfmix': 0.3, 'zebra': 0.1}
 
 # --- ema ---
 cfg.use_ema = False
