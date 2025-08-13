@@ -260,6 +260,12 @@ cfg.feature_mask_proba = 0.5 # its good
 cfg.feature_mask_n_features = 1
 cfg.feature_mask_sensors = ['imu', 'thm', 'tof']
 
+cfg.low_pass_filter_proba = 0.0
+cfg.low_pass_filter_min_cutoff = 0.05
+cfg.low_pass_filter_max_cutoff = 0.375
+cfg.low_pass_filter_sample_rate = 10
+cfg.low_pass_filter_sensors = ['imu', 'thm']
+
 # --- mixup ---
 cfg.use_mixup = True
 cfg.mixup_proba = 0.7 # it's reverse proba lol so real_mixup_proba = 1 - mixup_proba ^_^

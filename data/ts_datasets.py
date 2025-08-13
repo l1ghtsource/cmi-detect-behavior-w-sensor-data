@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import pywt
 from scipy.spatial.transform import Rotation as R
+from scipy.signal import butter, lfilter
 from torch.utils.data import Dataset
 from data.ts_augmentations import (
     jitter, 
@@ -25,8 +26,6 @@ from utils.data_preproc import (
     calculate_angular_distance
 )
 from configs.config import cfg
-
-# TODO: all augmentations to gpu!
 
 # classic ts dataset
 class TS_CMIDataset(Dataset):
@@ -204,6 +203,15 @@ class TS_CMIDataset(Dataset):
             return data
         
         n_applied = 0
+
+        if random.random() < cfg.low_pass_filter_proba and sensor_type in cfg.low_pass_filter_sensors:
+            data = self._apply_low_pass_filter(
+                data, 
+                min_cutoff=cfg.low_pass_filter_min_cutoff,
+                max_cutoff=cfg.low_pass_filter_max_cutoff,
+                sample_rate=cfg.low_pass_filter_sample_rate
+            )
+            # n_applied += 1
         
         if random.random() < cfg.time_warp_proba and sensor_type in cfg.time_warp_sensors:
             data = time_warp(data, sigma=0.1, knot=3)
@@ -293,6 +301,20 @@ class TS_CMIDataset(Dataset):
                 augmented_data[:, :3] = window_warp(augmented_data[:, :3], window_ratio=0.1, scales=[0.5, 2.])
         
         return augmented_data
+
+    def _apply_low_pass_filter(self, data, min_cutoff=0.05, max_cutoff=0.375, sample_rate=10):
+        if data.shape[0] <= 1:
+            return data
+        try:
+            cutoff_fraction = np.random.uniform(min_cutoff, max_cutoff)
+            nyquist = 0.5 * sample_rate
+            cutoff = cutoff_fraction * nyquist
+            b, a = butter(N=4, Wn=cutoff/nyquist, btype='low', analog=False)
+            filtered_data = lfilter(b, a, data, axis=0)
+            return filtered_data
+        except Exception as e:
+            print(f'error: {e}')
+            return data
     
     def _apply_rotation_augmentation(self, data):
         acc_data = data[:, :3]  # (seq_len, 3)
