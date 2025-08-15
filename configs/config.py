@@ -284,16 +284,16 @@ cfg.ema_decay = 0.999
 # --- inference params ---
 cfg.weights_pathes = {
     'imu_only': {
-        '/kaggle/input/cmi-rows-79-80-fulldatamodels/imu': { # full data model - 79 row
-            'weight': 1,
+        '/kaggle/input/cmi-rows-79-80-fulldatamodels/imu': { # full data model - 79 row [normal mixup]
+            'weight': 1/2,
             'model_params': {
                 'num_classes': 18,
                 'use_dct': False,
                 'reverse_seq': False, # seq
             }
         },
-        '/kaggle/input/cmi-85row-imu/kaggle/working/weights': { # full data model - 85 row (like 79, just rev seq)
-            'weight': 1,
+        '/kaggle/input/cmi-85row-imu/kaggle/working/weights': { # full data model - 85 row [normal mixup]
+            'weight': 1/2,
             'model_params': {
                 'num_classes': 18,
                 'use_dct': False,
@@ -303,7 +303,7 @@ cfg.weights_pathes = {
     },
     'imu+tof+thm': {
         '/kaggle/input/timemil-soupchik-imu-16-06/top3_avg_models_81row_excel': { # top3 avg models - 81 row [zebra mixup]
-            'weight': 1,
+            'weight': 1/4,
             'model_params': {
                 'num_classes': 18,
                 'use_gnn_fusion': False,
@@ -311,7 +311,7 @@ cfg.weights_pathes = {
             }
         },
         '/kaggle/input/cmi-another-checkpoints/top3_avg_models_76row_excel': { # top3 avg models - 76 row [normal mixup]
-            'weight': 1,
+            'weight': 1/4,
             'model_params': {
                 'num_classes': 18,
                 'use_gnn_fusion': False,
@@ -319,11 +319,19 @@ cfg.weights_pathes = {
             }
         },
         '/kaggle/input/cmi-more-another-checkpoints/top3_avg_models_84row_excel': { # top3 avg models - 84 row [normal mixup]
-            'weight': 1,
+            'weight': 1/4,
             'model_params': {
                 'num_classes': 18,
                 'use_gnn_fusion': False,
                 'reverse_seq': True, # seq[::-1]
+            }
+        },
+        '/kaggle/input/shufflemix-checkpoint-soup/top3_avg_models_93row_excel': { # top3 avg models - 93 row [shufflemix]
+            'weight': 1/4,
+            'model_params': {
+                'num_classes': 18,
+                'use_gnn_fusion': False,
+                'reverse_seq': False, # seq
             }
         },
     }
@@ -331,8 +339,10 @@ cfg.weights_pathes = {
 cfg.ext_weights_imu = []
 cfg.ext_weights_all = []
 cfg.is_soft = True
-cfg.use_entmax = False
-cfg.entmax_alpha = 1.25
+cfg.use_imu_entmax = False
+cfg.use_imu_tof_thm_entmax = False
+cfg.imu_entmax_alpha = 1.15
+cfg.imu_tof_thm_entmax_alpha = 1.15
 cfg.override_non_target = False
 cfg.orient_postproc = False
 cfg.tta_strategies = []

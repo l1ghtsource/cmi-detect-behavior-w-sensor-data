@@ -232,6 +232,13 @@ def process_model_group(models_on_device, preprocessed_batches_on_device, use_im
     fold_logits_aux2_sum_list = []
     fold_logits_orient_sum_list = []
     
+    if use_imu_only:
+        use_entmax = cfg.use_imu_entmax
+        entmax_alpha = cfg.imu_entmax_alpha
+    else:
+        use_entmax = cfg.use_imu_tof_thm_entmax
+        entmax_alpha = cfg.imu_tof_thm_entmax_alpha
+    
     for model, _ in models_on_device:
         tta_logits_gpu = []
         tta_logits_aux2_gpu = []
@@ -240,10 +247,10 @@ def process_model_group(models_on_device, preprocessed_batches_on_device, use_im
         for batch in preprocessed_batches_on_device:
             logits_gpu, logits_aux2_gpu, logits_orient_gpu = predict_single_batch(model, batch, use_imu_only)
             
-            if cfg.use_entmax:
-                logits_gpu = entmax_bisect(logits_gpu, alpha=cfg.entmax_alpha, dim=1)
-                logits_aux2_gpu = entmax_bisect(logits_aux2_gpu, alpha=cfg.entmax_alpha, dim=1)
-                logits_orient_gpu = entmax_bisect(logits_orient_gpu, alpha=cfg.entmax_alpha, dim=1)
+            if use_entmax:
+                logits_gpu = entmax_bisect(logits_gpu, alpha=entmax_alpha, dim=1)
+                logits_aux2_gpu = entmax_bisect(logits_aux2_gpu, alpha=entmax_alpha, dim=1)
+                logits_orient_gpu = entmax_bisect(logits_orient_gpu, alpha=entmax_alpha, dim=1)
             
             tta_logits_gpu.append(logits_gpu)
             tta_logits_aux2_gpu.append(logits_aux2_gpu)
