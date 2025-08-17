@@ -57,6 +57,7 @@ for w_key in ['imu_only', 'imu+tof+thm']:
         
         print(f'loading models for {w_key}: {weights_path}')
         print(f'  -> all models in this group will be assigned to {group_device=}')
+        print(f'  -> seq_len for this group: {params.get("seq_len", cfg.seq_len)}')
         
         if w_key == 'imu_only':
             TSModel = HybridModel_SingleSensor_v1
@@ -95,7 +96,8 @@ for w_key in ['imu_only', 'imu+tof+thm']:
         loaded_models.setdefault(w_key, {})[weights_path] = {
             'models': fold_models,
             'params': params,
-            'weight': params['weight']
+            'weight': params['weight'],
+            'seq_len': params.get('seq_len', cfg.seq_len)
         }
         model_group_idx += 1
 
@@ -191,10 +193,10 @@ def preprocess_single_row(test_df, use_imu_only):
 
     return fast_seq_agg(test_df)
 
-def create_single_batch(processed_df, device):
+def create_single_batch(processed_df, device, seq_len):
     test_dataset = TSDataset(
         dataframe=processed_df,
-        seq_len=cfg.seq_len,
+        seq_len=seq_len,
         train=False,
     )
     
@@ -226,7 +228,7 @@ def predict_single_batch(model, batch, use_imu_only):
     return outputs.detach(), aux2_outputs.detach(), orient_outputs.detach()
 
 def process_model_group(models_on_device, preprocessed_batches_on_device, use_imu_only):
-    group_device = models_on_device[0][1] 
+    group_device = models_on_device[0] 
     
     fold_logits_sum_list = []
     fold_logits_aux2_sum_list = []
@@ -298,12 +300,10 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     else:
         augmented_sequences = [test_df]
     
-    preprocessed_batches_by_device = {dev: [] for dev in devices}
+    preprocessed_sequences = []
     for aug_df in augmented_sequences:
         processed_df = preprocess_single_row(aug_df.copy(), use_imu_only)
-        for dev in devices:
-            batch = create_single_batch(processed_df, dev)
-            preprocessed_batches_by_device[dev].append(batch)
+        preprocessed_sequences.append(processed_df)
     
     all_model_averaged_logits = []
     all_model_averaged_logits_aux2 = []
@@ -315,10 +315,16 @@ def predict(sequence: pl.DataFrame, demographics: pl.DataFrame) -> str:
     tasks_to_run = []
     for weights_path, model_data in loaded_models[w_key].items():
         group_device = model_data['models'][0][1]
+        group_seq_len = model_data['seq_len']
+        
+        preprocessed_batches_on_device = []
+        for processed_df in preprocessed_sequences:
+            batch = create_single_batch(processed_df, group_device, group_seq_len)
+            preprocessed_batches_on_device.append(batch)
         
         task_data = {
             'models_on_device': model_data['models'],
-            'preprocessed_batches_on_device': preprocessed_batches_by_device[group_device],
+            'preprocessed_batches_on_device': preprocessed_batches_on_device,
             'use_imu_only': use_imu_only,
             'weight': model_data['weight']
         }
