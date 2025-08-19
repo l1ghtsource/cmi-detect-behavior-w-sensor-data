@@ -171,51 +171,53 @@ def apply_sequence_tta(df, tta_strategies, use_imu_only):
                 
                 augmented_sequences.append(df_rot)
             
-            elif strategy == 'time_shift':
-                df_shift = df.copy()
-                for seq_id in sequence_ids:
-                    mask = df_shift['sequence_id'] == seq_id if 'sequence_id' in df_shift.columns else slice(None)
-                    
-                    seq_data = df_shift.loc[mask].copy()
-                    seq_length = len(seq_data)
-                    
-                    if seq_length <= 1:
-                        continue
-                    
-                    max_shift_ratio = 0.1
-                    max_shift = int(seq_length * max_shift_ratio)
-                    
-                    if max_shift == 0:
-                        max_shift = 1
-                    
-                    shift = np.random.randint(-max_shift, max_shift + 1)
-                    
-                    if shift == 0:
-                        continue
-                    
-                    cols = [col for col in df_shift.columns if col.startswith(('acc_', 'rot_', 'thm_', 'tof_')) and col in seq_data.columns]
-                    
-                    for col in cols:
-                        original_values = seq_data[col].values.copy()
-                        shifted_values = np.zeros_like(original_values)
+            elif 'time_shift' in strategy:
+                n_shifts = int(strategy.split(':')[-1]) # time_shift:n
+                for i in range(n_shifts):
+                    df_shift = df.copy()
+                    for seq_id in sequence_ids:
+                        mask = df_shift['sequence_id'] == seq_id if 'sequence_id' in df_shift.columns else slice(None)
                         
-                        if shift > 0:
-                            if shift < seq_length:
-                                shifted_values[shift:] = original_values[:-shift]
-                                fill_values = original_values[:min(5, seq_length)]
-                                fill_value = np.nanmean(fill_values) if not np.all(np.isnan(fill_values)) else 0
-                                shifted_values[:shift] = fill_value
-                        else:
-                            abs_shift = abs(shift)
-                            if abs_shift < seq_length:
-                                shifted_values[:-abs_shift] = original_values[abs_shift:]
-                                fill_values = original_values[-min(5, seq_length):]
-                                fill_value = np.nanmean(fill_values) if not np.all(np.isnan(fill_values)) else 0
-                                shifted_values[-abs_shift:] = fill_value
-                                    
-                        df_shift.loc[mask, col] = shifted_values
-                
-                augmented_sequences.append(df_shift)
+                        seq_data = df_shift.loc[mask].copy()
+                        seq_length = len(seq_data)
+                        
+                        if seq_length <= 1:
+                            continue
+                        
+                        max_shift_ratio = 0.1
+                        max_shift = int(seq_length * max_shift_ratio)
+                        
+                        if max_shift == 0:
+                            max_shift = 1
+                        
+                        shift = np.random.randint(-max_shift, max_shift + 1)
+                        
+                        if shift == 0:
+                            continue
+                        
+                        cols = [col for col in df_shift.columns if col.startswith(('acc_', 'rot_', 'thm_', 'tof_')) and col in seq_data.columns]
+                        
+                        for col in cols:
+                            original_values = seq_data[col].values.copy()
+                            shifted_values = np.zeros_like(original_values)
+                            
+                            if shift > 0:
+                                if shift < seq_length:
+                                    shifted_values[shift:] = original_values[:-shift]
+                                    fill_values = original_values[:min(5, seq_length)]
+                                    fill_value = np.nanmean(fill_values) if not np.all(np.isnan(fill_values)) else 0
+                                    shifted_values[:shift] = fill_value
+                            else:
+                                abs_shift = abs(shift)
+                                if abs_shift < seq_length:
+                                    shifted_values[:-abs_shift] = original_values[abs_shift:]
+                                    fill_values = original_values[-min(5, seq_length):]
+                                    fill_value = np.nanmean(fill_values) if not np.all(np.isnan(fill_values)) else 0
+                                    shifted_values[-abs_shift:] = fill_value
+                            
+                            df_shift.loc[mask, col] = shifted_values
+                    
+                    augmented_sequences.append(df_shift)
                 
         except Exception as e:
             print(f'error in strategy {strategy}: {e}')
