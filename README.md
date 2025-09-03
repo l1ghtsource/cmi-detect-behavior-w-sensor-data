@@ -1,6 +1,6 @@
 # CMI - Detect Behavior with Sensor Data (Kaggle Gold Medal, lightsource part)
 
-Full kaggle writeup: tba
+Full kaggle writeup: [link](https://www.kaggle.com/competitions/cmi-detect-behavior-with-sensor-data/writeups/11th-place-solution)
 
 ## Features
 
@@ -20,7 +20,8 @@ Full kaggle writeup: tba
 **Used:**
 - No normalization (better than per-sequence scaling and StandardScaler)
 - TOF: replaced -1 with 255, then divided by 255
-
+- Leftside padding and truncation, seq_len=120
+ 
 **Unsuccessful experiments:**
 - Filtering methods (firwin, wavelet, savgol, butterworth, median) degraded performance
 - Kalman filtering was neutral
