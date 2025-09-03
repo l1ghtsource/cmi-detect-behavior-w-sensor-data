@@ -40,7 +40,7 @@ etc.)
 - fe2: lag/lead diff, cumsum
 - full: all IMU features
 - thm: all THM features (only in IMU+TOF+THM model)
-- tof1--tof5: TOF features from individual sensors (only in IMU+TOF+THM model)
+- tof1-tof5: TOF features from individual sensors (only in IMU+TOF+THM model)
 
 **Extractors:**
 - Public_SingleSensor - based on the most popular public model
