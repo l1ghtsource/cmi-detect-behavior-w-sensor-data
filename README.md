@@ -87,3 +87,7 @@ etc.)
 - TorchJD for multi-task learning
 - Metric learning components to improve the separation of similar classes, also did not provide any gain (arcface, tripletloss, ...)
 - EMA
+
+## Certificate
+
+![certificate](certificate.png)
